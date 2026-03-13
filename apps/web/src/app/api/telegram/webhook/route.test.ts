@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listIncomingBotEventsForTests, resetIncomingBotEventStoreForTests } from "@atlas/db";
+import {
+  listInboxItemsForTests,
+  listIncomingBotEventsForTests,
+  resetIncomingTelegramIngressStoreForTests
+} from "@atlas/db";
 
 import { POST } from "./route";
 
@@ -27,7 +31,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  resetIncomingBotEventStoreForTests();
+  resetIncomingTelegramIngressStoreForTests();
 });
 
 describe("telegram webhook route", () => {
@@ -49,6 +53,7 @@ describe("telegram webhook route", () => {
       error: "invalid_webhook_secret"
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(0);
+    expect(listInboxItemsForTests()).toHaveLength(0);
   });
 
   it("normalizes a Telegram text message and hands it to app services", async () => {
@@ -97,11 +102,20 @@ describe("telegram webhook route", () => {
           chatType: "private"
         }
       },
+      inboxItem: {
+        userId: "123",
+        rawText: " Review   launch checklist ",
+        normalizedText: "Review launch checklist",
+        processingStatus: "received",
+        confidence: 1,
+        linkedTaskIds: []
+      },
       processing: {
         accepted: true
       }
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(1);
   });
 
   it("short-circuits duplicate webhook deliveries before downstream processing", async () => {
@@ -158,8 +172,10 @@ describe("telegram webhook route", () => {
       idempotencyKey: "telegram:webhook:update:42"
     });
     expect(duplicateBody).not.toHaveProperty("ingestion");
+    expect(duplicateBody).not.toHaveProperty("inboxItem");
     expect(duplicateBody).not.toHaveProperty("processing");
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(1);
   });
 
   it("does not attempt bot-event recording for malformed Telegram payloads", async () => {
@@ -179,5 +195,6 @@ describe("telegram webhook route", () => {
       error: "invalid_telegram_update"
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(0);
+    expect(listInboxItemsForTests()).toHaveLength(0);
   });
 });

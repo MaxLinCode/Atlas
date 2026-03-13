@@ -5,7 +5,7 @@ import {
   processInboxItem,
   telegramUpdateSchema
 } from "@atlas/core";
-import { recordIncomingBotEventIfNew } from "@atlas/db";
+import { recordIncomingTelegramMessageIfNew } from "@atlas/db";
 
 type WebhookResult = {
   status: number;
@@ -67,24 +67,6 @@ export async function handleTelegramWebhook(request: Request): Promise<WebhookRe
   }
 
   const idempotencyKey = buildTelegramWebhookIdempotencyKey(parsedUpdate.data.update_id);
-  const botEvent = await recordIncomingBotEventIfNew({
-    userId: String(incomingMessage.from?.id ?? incomingMessage.chat.id),
-    eventType: "telegram_message",
-    idempotencyKey,
-    payload: parsedUpdate.data
-  });
-
-  if (botEvent.status === "duplicate") {
-    return {
-      status: 200,
-      body: {
-        accepted: true,
-        duplicate: true,
-        idempotencyKey
-      }
-    };
-  }
-
   const normalizedMessage = normalizeTelegramUpdate(parsedUpdate.data);
 
   if (!normalizedMessage) {
@@ -98,7 +80,29 @@ export async function handleTelegramWebhook(request: Request): Promise<WebhookRe
     };
   }
 
+  const ingress = await recordIncomingTelegramMessageIfNew({
+    userId: normalizedMessage.user.telegramUserId,
+    eventType: "telegram_message",
+    idempotencyKey,
+    payload: parsedUpdate.data,
+    rawText: normalizedMessage.rawText,
+    normalizedText: normalizedMessage.normalizedText
+  });
+
+  if (ingress.status === "duplicate") {
+    return {
+      status: 200,
+      body: {
+        accepted: true,
+        duplicate: true,
+        idempotencyKey
+      }
+    };
+  }
+
   const processing = await processInboxItem({
+    inboxItemId: ingress.inboxItem.id,
+    sourceEventId: ingress.eventId,
     source: normalizedMessage.source,
     delivery: normalizedMessage.delivery,
     event: normalizedMessage,
@@ -120,6 +124,7 @@ export async function handleTelegramWebhook(request: Request): Promise<WebhookRe
       accepted: true,
       idempotencyKey,
       ingestion: normalizedMessage,
+      inboxItem: ingress.inboxItem,
       processing
     }
   };

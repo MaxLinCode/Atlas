@@ -9,17 +9,25 @@ import {
   uuid,
   varchar
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const inboxItems = pgTable("inbox_items", {
   id: uuid("id").primaryKey(),
   userId: text("user_id").notNull(),
+  sourceEventId: uuid("source_event_id").references(() => botEvents.id),
   rawText: text("raw_text").notNull(),
   normalizedText: text("normalized_text").notNull(),
   processingStatus: varchar("processing_status", { length: 32 }).notNull(),
   confidence: real("confidence").notNull(),
   linkedTaskIds: jsonb("linked_task_ids").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+},
+  (table) => ({
+    sourceEventIdIndex: uniqueIndex("inbox_items_source_event_id_idx")
+      .on(table.sourceEventId)
+      .where(sql`${table.sourceEventId} is not null`)
+  })
+);
 
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey(),

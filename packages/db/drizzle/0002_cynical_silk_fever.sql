@@ -1,0 +1,3 @@
+ALTER TABLE "inbox_items" ADD COLUMN "source_event_id" uuid;--> statement-breakpoint
+ALTER TABLE "inbox_items" ADD CONSTRAINT "inbox_items_source_event_id_bot_events_id_fk" FOREIGN KEY ("source_event_id") REFERENCES "public"."bot_events"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "inbox_items_source_event_id_idx" ON "inbox_items" USING btree ("source_event_id") WHERE "inbox_items"."source_event_id" is not null;
