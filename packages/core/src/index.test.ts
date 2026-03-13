@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildScheduleProposal,
+  getConfig,
+  processInboxItem,
+  userProfileSchema
+} from "./index";
+
+describe("core package", () => {
+  it("validates a user profile with a bounded breakdown level", () => {
+    const result = userProfileSchema.safeParse({
+      userId: "user_1",
+      timezone: "America/Los_Angeles",
+      workdayStartHour: 9,
+      workdayEndHour: 17,
+      deepWorkWindows: [],
+      blackoutWindows: [],
+      focusBlockMinutes: 50,
+      reminderStyle: "gentle",
+      breakdownLevel: 5
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("uses deterministic defaults for local development", () => {
+    const config = getConfig();
+    expect(config.TELEGRAM_WEBHOOK_SECRET).toBe("dev-webhook-secret");
+  });
+
+  it("returns a typed placeholder extraction", async () => {
+    const result = await processInboxItem({ rawText: "Call the doctor tomorrow." });
+    expect(result.accepted).toBe(true);
+    expect(result.extraction?.tasks).toHaveLength(1);
+  });
+
+  it("returns an empty valid schedule proposal for the skeleton", async () => {
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openActions: [],
+      userProfile: {
+        userId: "user_1",
+        timezone: "America/Los_Angeles",
+        workdayStartHour: 9,
+        workdayEndHour: 17,
+        deepWorkWindows: [],
+        blackoutWindows: [],
+        focusBlockMinutes: 50,
+        reminderStyle: "gentle",
+        breakdownLevel: 5
+      },
+      existingBlocks: []
+    });
+
+    expect(result.inserts).toEqual([]);
+    expect(result.moves).toEqual([]);
+  });
+});
