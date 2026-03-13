@@ -147,6 +147,7 @@ OpenAI interprets messy user text and returns structured extraction output.
 ### May read
 
 - Only the prompt context explicitly provided by the application
+- Structured preference, task, and schedule context selected according to `docs/architecture/ai-context-model.md`
 
 ### May write
 
