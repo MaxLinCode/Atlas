@@ -4,6 +4,7 @@ This directory holds durable technical structure docs for Atlas.
 
 ## Files
 
+- `ai-context-model.md`: structured memory and prompt-context design for AI input and output flows
 - `component-contracts.md`: allowed inputs, outputs, and mutations for each major component
 - `system-boundaries.md`: ownership and responsibility boundaries across the stack
 
