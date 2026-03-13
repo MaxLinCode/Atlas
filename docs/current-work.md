@@ -34,6 +34,7 @@ Current implementation step: deploy the durable Telegram webhook ingress path on
 - The next product/backend slice after deployment verification is downstream planner persistence: replace the `processInboxItem` stub with code that reads persisted `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
 - Keep the data-boundary split intact: `bot_events` is operational transport state, `inbox_items` is canonical capture state, and future planner output must not overwrite the meaning of the original inbox record.
 - Use real Postgres credentials in deployed environments; placeholder `localhost` connection strings will fail on Vercel.
+- Current deployment setup still requires manual schema application against hosted Postgres. Follow-up work should add an explicit migration-apply workflow for hosted environments, rename or replace the misleading `pnpm db:migrate` generate-only command, and document a safer deploy sequence so Vercel smoke tests do not depend on manual `psql` steps.
 
 ## inspect-ai-guardrails
 

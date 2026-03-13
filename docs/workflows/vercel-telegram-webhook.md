@@ -66,4 +66,4 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 - Do not log the webhook secret in Vercel function logs or error output.
 - Keep the route handler thin and continue moving persistence and planning behavior into workspace packages.
-- After the first Vercel smoke test, the next backend milestone is replacing the in-memory `bot_events` store with a real Drizzle-backed repository and persisting accepted messages as `inbox_items`.
+- After the first Vercel smoke test, the next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
