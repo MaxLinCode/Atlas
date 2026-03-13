@@ -28,6 +28,7 @@ This document is the top-level technical overview for Atlas. Focused architectur
 - Preserve future seams for Google Calendar without leaking calendar concepts into core scheduling tables.
 - Optimize for reliable execution and observability before optimization or clever abstraction.
 - Keep the MVP lean: prefer one cohesive product package over multiple speculative internal packages.
+- For MVP, Telegram user IDs are the canonical persisted user identifier; introduce an internal Atlas UUID mapping only when multi-surface identity becomes a real product need.
 
 ## Related docs
 

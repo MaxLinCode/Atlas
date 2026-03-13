@@ -12,7 +12,7 @@ import {
 
 export const inboxItems = pgTable("inbox_items", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull(),
+  userId: text("user_id").notNull(),
   rawText: text("raw_text").notNull(),
   normalizedText: text("normalized_text").notNull(),
   processingStatus: varchar("processing_status", { length: 32 }).notNull(),
@@ -23,7 +23,7 @@ export const inboxItems = pgTable("inbox_items", {
 
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull(),
+  userId: text("user_id").notNull(),
   sourceInboxItemId: uuid("source_inbox_item_id").notNull(),
   title: text("title").notNull(),
   status: varchar("status", { length: 32 }).notNull(),
@@ -44,7 +44,7 @@ export const taskActions = pgTable("task_actions", {
 
 export const scheduleBlocks = pgTable("schedule_blocks", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull(),
+  userId: text("user_id").notNull(),
   actionId: uuid("action_id").notNull(),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }).notNull(),
@@ -55,7 +55,7 @@ export const scheduleBlocks = pgTable("schedule_blocks", {
 });
 
 export const userProfiles = pgTable("user_profiles", {
-  userId: uuid("user_id").primaryKey(),
+  userId: text("user_id").primaryKey(),
   timezone: text("timezone").notNull(),
   workdayStartHour: integer("workday_start_hour").notNull(),
   workdayEndHour: integer("workday_end_hour").notNull(),
@@ -70,7 +70,7 @@ export const botEvents = pgTable(
   "bot_events",
   {
     id: uuid("id").primaryKey(),
-    userId: uuid("user_id").notNull(),
+    userId: text("user_id").notNull(),
     direction: varchar("direction", { length: 16 }).notNull(),
     eventType: varchar("event_type", { length: 32 }).notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
@@ -85,7 +85,7 @@ export const botEvents = pgTable(
 
 export const plannerRuns = pgTable("planner_runs", {
   id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull(),
+  userId: text("user_id").notNull(),
   inboxItemId: uuid("inbox_item_id"),
   version: varchar("version", { length: 32 }).notNull(),
   modelInput: jsonb("model_input").notNull(),
