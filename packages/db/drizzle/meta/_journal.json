@@ -8,6 +8,13 @@
       "when": 1773423257861,
       "tag": "0000_fair_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773425432141,
+      "tag": "0001_naive_ares",
+      "breakpoints": true
     }
   ]
 }

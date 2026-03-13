@@ -23,19 +23,25 @@ type StoredBotEvent = IncomingBotEvent & {
 };
 
 export interface IncomingBotEventStore {
-  has(idempotencyKey: string): Promise<boolean>;
-  save(event: StoredBotEvent): Promise<void>;
+  recordIfAbsent(event: StoredBotEvent): Promise<IncomingBotEventRecordResult>;
 }
 
 class InMemoryIncomingBotEventStore implements IncomingBotEventStore {
   private readonly eventsByKey = new Map<string, StoredBotEvent>();
 
-  async has(idempotencyKey: string) {
-    return this.eventsByKey.has(idempotencyKey);
-  }
+  async recordIfAbsent(event: StoredBotEvent): Promise<IncomingBotEventRecordResult> {
+    if (this.eventsByKey.has(event.idempotencyKey)) {
+      return {
+        status: "duplicate"
+      };
+    }
 
-  async save(event: StoredBotEvent) {
     this.eventsByKey.set(event.idempotencyKey, event);
+
+    return {
+      status: "recorded",
+      eventId: event.id
+    };
   }
 
   reset() {
@@ -53,25 +59,14 @@ export async function recordIncomingBotEventIfNew(
   input: IncomingBotEvent,
   store: IncomingBotEventStore = defaultStore
 ): Promise<IncomingBotEventRecordResult> {
-  if (await store.has(input.idempotencyKey)) {
-    return {
-      status: "duplicate"
-    };
-  }
-
   const eventId = randomUUID();
 
-  await store.save({
+  return store.recordIfAbsent({
     id: eventId,
     direction: "incoming",
     retryState: "received",
     ...input
   });
-
-  return {
-    status: "recorded",
-    eventId
-  };
 }
 
 export function resetIncomingBotEventStoreForTests() {

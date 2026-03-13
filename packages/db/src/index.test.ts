@@ -78,4 +78,30 @@ describe("db package", () => {
 
     expect(listIncomingBotEventsForTests()).toHaveLength(2);
   });
+
+  it("treats concurrent duplicate deliveries as a single recorded ingress event", async () => {
+    resetIncomingBotEventStoreForTests();
+
+    const [first, second] = await Promise.all([
+      recordIncomingBotEventIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:42",
+        payload: {
+          update_id: 42
+        }
+      }),
+      recordIncomingBotEventIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:42",
+        payload: {
+          update_id: 42
+        }
+      })
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual(["duplicate", "recorded"]);
+    expect(listIncomingBotEventsForTests()).toHaveLength(1);
+  });
 });

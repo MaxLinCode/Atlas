@@ -21,6 +21,7 @@ Current implementation step: make `apps/web` Telegram webhook ingestion real by 
 - Keep route handlers thin and push product logic into packages.
 - Telegram webhook ingress is now real at the route/service level: secret verification, Telegram payload validation, message normalization, and ingress idempotency are implemented and tested.
 - Current idempotency uses a temporary in-memory `packages/db` repository seam so the webhook flow can stay thin while the real database layer is still being wired.
+- MVP persistence should store Telegram user IDs directly as text across user-linked records; a general internal UUID user model is future work for multi-surface identity.
 - The next webhook milestone is deploying the webhook route on Vercel for a real Telegram smoke test, then replacing the in-memory `bot_events` repository with a real Drizzle/Postgres implementation and persisting accepted inbound messages as actual inbox items before downstream planning.
 - Webhook hardening beyond secret verification and idempotency is future work: keep the secret only in environment-managed secrets, never log it, and add rate limiting or equivalent abuse controls once the core webhook persistence path is fully wired.
 
