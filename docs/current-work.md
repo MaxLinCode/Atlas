@@ -3,7 +3,7 @@
 ## Active focus
 
 Leaner MVP package structure and first real vertical slice for the Telegram-first MVP.
-Current implementation step: deploy the durable Telegram webhook ingress path on Vercel, configure production environment variables in Vercel-managed secrets, and run a real Telegram smoke test against the deployed HTTPS endpoint before resuming downstream planner persistence.
+Current implementation step: replace the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
 
 ## Near-term milestones
 
@@ -22,19 +22,22 @@ Current implementation step: deploy the durable Telegram webhook ingress path on
 - Telegram webhook ingress is now real at the route/service level: secret verification, Telegram payload validation, message normalization, and ingress idempotency are implemented and tested.
 - The persistence path on the active feature branch now writes first-seen Telegram ingress to Drizzle-backed `bot_events` and canonical `inbox_items`, with in-memory storage kept for tests only.
 - MVP persistence should store Telegram user IDs directly as text across user-linked records; a general internal UUID user model is future work for multi-surface identity.
-- The immediate operational milestone is deploying the existing route on Vercel and registering it with Telegram for a real smoke test against the now-durable ingress path.
-- After the Vercel smoke test is green, the next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
+- The Vercel deployment milestone is complete: the production webhook route is live, Telegram `setWebhook` is registered against the deployed HTTPS endpoint, and a real smoke test succeeded.
+- Live duplicate-delivery behavior has also been smoke-tested against production webhook ingress and correctly short-circuits on repeated `update_id` values.
+- The next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
+- End-to-end deployability still needs hardening after the webhook milestone: add a hosted migration-apply workflow, clarify migration command behavior, and document a repeatable production deploy-and-verify sequence.
 - Webhook hardening beyond secret verification and idempotency is future work: keep the secret only in environment-managed secrets, never log it, and add rate limiting or equivalent abuse controls once the core webhook persistence path is fully wired.
 
 ## Next-agent handoff
 
 - Good stop point: Telegram webhook ingress now durably persists first-seen messages into `bot_events` and canonical `inbox_items`, and duplicate deliveries short-circuit without creating duplicate rows.
 - The persistence path is implemented in `packages/db` and exercised by a real Postgres integration test in `tests/integration/postgres-ingress-persistence.test.ts`.
-- The active operational slice on this branch is Vercel deployment and live Telegram webhook smoke testing against that persisted ingress path.
-- The next product/backend slice after deployment verification is downstream planner persistence: replace the `processInboxItem` stub with code that reads persisted `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
+- Vercel deployment and live Telegram webhook smoke testing are complete, including successful webhook registration and a duplicate-delivery smoke test against the deployed route.
+- The active product/backend slice is now downstream planner persistence: replace the `processInboxItem` stub with code that reads persisted `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
 - Keep the data-boundary split intact: `bot_events` is operational transport state, `inbox_items` is canonical capture state, and future planner output must not overwrite the meaning of the original inbox record.
 - Use real Postgres credentials in deployed environments; placeholder `localhost` connection strings will fail on Vercel.
 - Current deployment setup still requires manual schema application against hosted Postgres. Follow-up work should add an explicit migration-apply workflow for hosted environments, rename or replace the misleading `pnpm db:migrate` generate-only command, and document a safer deploy sequence so Vercel smoke tests do not depend on manual `psql` steps.
+- After planner persistence starts moving, keep end-to-end deployability visible as a parallel operational follow-up so production deploys become repeatable without relying on chat history or manual memory.
 
 ## inspect-ai-guardrails
 
