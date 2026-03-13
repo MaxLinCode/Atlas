@@ -2,11 +2,20 @@ import { z } from "zod";
 
 export * from "./telegram";
 
+const postgresConnectionStringSchema = z.string().refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "postgres:" || url.protocol === "postgresql:";
+  } catch {
+    return false;
+  }
+}, "DATABASE_URL must be a Postgres connection string.");
+
 const envSchema = z.object({
-  DATABASE_URL: z.string().url().default("https://example.invalid/db"),
-  OPENAI_API_KEY: z.string().default("dev-openai-key"),
-  TELEGRAM_BOT_TOKEN: z.string().default("dev-telegram-token"),
-  TELEGRAM_WEBHOOK_SECRET: z.string().default("dev-webhook-secret")
+  DATABASE_URL: postgresConnectionStringSchema,
+  OPENAI_API_KEY: z.string().min(1),
+  TELEGRAM_BOT_TOKEN: z.string().min(1),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(1)
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

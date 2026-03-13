@@ -5,6 +5,7 @@ Use this directory for durable implementation playbooks that should outlive a si
 Current playbooks:
 
 - `feature-delivery.md`: standard Git-based workflow for shipping features, fixes, and behavior changes in Atlas
+- `vercel-telegram-webhook.md`: deploy the Telegram webhook app to Vercel and run the first smoke test
 
 Examples:
 

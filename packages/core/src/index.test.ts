@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 
 import {
   buildScheduleProposal,
@@ -27,9 +28,24 @@ describe("core package", () => {
     expect(result.success).toBe(true);
   });
 
-  it("uses deterministic defaults for local development", () => {
-    const config = getConfig();
-    expect(config.TELEGRAM_WEBHOOK_SECRET).toBe("dev-webhook-secret");
+  it("requires explicit config values", () => {
+    expect(() => getConfig({})).toThrow(ZodError);
+  });
+
+  it("accepts explicit config overrides", () => {
+    const config = getConfig({
+      DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+      OPENAI_API_KEY: "test-openai-key",
+      TELEGRAM_BOT_TOKEN: "test-telegram-token",
+      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
+    });
+
+    expect(config).toMatchObject({
+      DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+      OPENAI_API_KEY: "test-openai-key",
+      TELEGRAM_BOT_TOKEN: "test-telegram-token",
+      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
+    });
   });
 
   it("returns a typed placeholder extraction", async () => {
