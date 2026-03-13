@@ -6,3 +6,4 @@ Use this directory for local helpers that support development workflows but are 
 - prefer TypeScript or shell for transparent maintenance
 - document any script that changes local or remote state
 - `db-test-start.sh`, `db-test-reset.sh`, and `db-test-stop.sh` manage the local Homebrew Postgres integration-test database workflow
+- `set-telegram-webhook.sh` registers the Telegram bot webhook against a deployed Atlas URL and then prints Telegram's current webhook state

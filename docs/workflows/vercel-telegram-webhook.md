@@ -67,3 +67,4 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 - Do not log the webhook secret in Vercel function logs or error output.
 - Keep the route handler thin and continue moving persistence and planning behavior into workspace packages.
 - After the first Vercel smoke test, the next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
+- End-to-end deployability is not fully hardened yet. Follow-up work should add a hosted migration-apply workflow, rename or replace any misleading generate-only migration commands, and document a repeatable production deploy checklist that covers schema application, deployment, webhook registration, and post-deploy verification.

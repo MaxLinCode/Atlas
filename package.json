@@ -8,6 +8,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "telegram:webhook:set": "bash scripts/set-telegram-webhook.sh",
     "db:migrate": "pnpm --filter @atlas/db db:migrate",
     "db:studio": "pnpm --filter @atlas/db db:studio",
     "db:test:start": "bash scripts/db-test-start.sh",

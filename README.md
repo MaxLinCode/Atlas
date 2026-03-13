@@ -18,6 +18,7 @@ Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, 
 - `pnpm lint`: lint all workspaces
 - `pnpm typecheck`: run TypeScript checks across the repo
 - `pnpm test`: run the test suite
+- `pnpm telegram:webhook:set`: register the Telegram webhook and print Telegram's current webhook info
 - `pnpm db:migrate`: run Drizzle migrations
 - `pnpm db:studio`: open the Drizzle Studio workflow
 - `pnpm db:test:start`: start the local Homebrew Postgres test service and create `atlas_test`
@@ -48,6 +49,8 @@ Copy `.env.example` for local development and provide real values through your d
 - `OPENAI_API_KEY`: OpenAI API key
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token
 - `TELEGRAM_WEBHOOK_SECRET`: shared secret used to verify Telegram webhook deliveries
+
+To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
 
 ## How We Work
 

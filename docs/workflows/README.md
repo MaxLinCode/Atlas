@@ -12,4 +12,5 @@ Examples:
 - Telegram webhook ingestion flow
 - core planning and scheduling debugging checklist
 - release and migration checklist
+- production deploy and verification checklist for hosted environments
 - local development setup beyond the quickstart
