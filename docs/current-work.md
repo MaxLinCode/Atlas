@@ -7,11 +7,11 @@ Current implementation step: replace the `processInboxItem` stub with planner-ow
 
 ## Near-term milestones
 
-- Wire the Next.js app to the simplified workspace packages.
-- Define the first Drizzle schema and repository interfaces.
-- Implement Telegram webhook ingestion with idempotent bot events.
-- Add core planning contract schemas and basic scheduling input/output types.
-- Build the minimal internal admin views for inspection and debugging.
+- Replace the `processInboxItem` stub with planner-owned persistence over canonical `inbox_items`.
+- Persist validated planner output into `tasks` and `planner_runs`.
+- Add task and planner-run repository APIs alongside the existing ingress store.
+- Validate planner model input and output at the persistence boundary.
+- Flesh out the existing internal admin views with real inspection data.
 
 ## Handoff notes
 
@@ -21,10 +21,14 @@ Current implementation step: replace the `processInboxItem` stub with planner-ow
 - Keep route handlers thin and push product logic into packages.
 - Telegram webhook ingress is now real at the route/service level: secret verification, Telegram payload validation, message normalization, and ingress idempotency are implemented and tested.
 - The persistence path on the active feature branch now writes first-seen Telegram ingress to Drizzle-backed `bot_events` and canonical `inbox_items`, with in-memory storage kept for tests only.
+- The Next.js app is already wired to the simplified workspace packages for webhook, planner, and admin-surface scaffolding.
+- The initial Drizzle schema and migrations already exist for `bot_events`, `inbox_items`, `tasks`, and `planner_runs`.
 - MVP persistence should store Telegram user IDs directly as text across user-linked records; a general internal UUID user model is future work for multi-surface identity.
 - The Vercel deployment milestone is complete: the production webhook route is live, Telegram `setWebhook` is registered against the deployed HTTPS endpoint, and a real smoke test succeeded.
 - Live duplicate-delivery behavior has also been smoke-tested against production webhook ingress and correctly short-circuits on repeated `update_id` values.
 - The next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
+- Core planning and scheduling schemas already live in `packages/core`; the remaining work is using them at the planner boundary with runtime validation and persistence.
+- Minimal internal admin pages already exist for inbox, planner runs, schedule, and settings, but they are still placeholder inspection surfaces rather than data-backed tools.
 - End-to-end deployability still needs hardening after the webhook milestone: add a hosted migration-apply workflow, clarify migration command behavior, and document a repeatable production deploy-and-verify sequence.
 - Webhook hardening beyond secret verification and idempotency is future work: keep the secret only in environment-managed secrets, never log it, and add rate limiting or equivalent abuse controls once the core webhook persistence path is fully wired.
 
