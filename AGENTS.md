@@ -31,6 +31,7 @@ Build Atlas as a production-quality, Telegram-first planning assistant. The code
 
 - Update `README.md` when setup or core commands change.
 - Update `docs/architecture.md` when dependency direction or major flow changes.
+- When touching schemas, migrations, persisted records, ingestion record creation, or core data types, verify the change matches `docs/architecture/data-model-boundaries.md` and update that doc if the ownership model changes.
 - Add an ADR in `docs/decisions/` for meaningful infrastructure or architecture decisions.
 - Update `docs/current-work.md` when the active implementation focus changes.
 
