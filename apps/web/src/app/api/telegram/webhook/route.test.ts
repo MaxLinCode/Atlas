@@ -8,7 +8,23 @@ import {
 import { POST } from "./route";
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
-const ORIGINAL_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+const ORIGINAL_ENV = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET
+};
+
+function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
+  const value = ORIGINAL_ENV[name];
+
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
 
 function buildRequest(body: unknown, secret = "test-webhook-secret") {
   return new Request("http://localhost/api/telegram/webhook", {
@@ -22,15 +38,17 @@ function buildRequest(body: unknown, secret = "test-webhook-secret") {
 }
 
 afterEach(() => {
-  if (ORIGINAL_SECRET === undefined) {
-    delete process.env.TELEGRAM_WEBHOOK_SECRET;
-    return;
-  }
-
-  process.env.TELEGRAM_WEBHOOK_SECRET = ORIGINAL_SECRET;
+  restoreEnv("DATABASE_URL");
+  restoreEnv("OPENAI_API_KEY");
+  restoreEnv("TELEGRAM_BOT_TOKEN");
+  restoreEnv("TELEGRAM_WEBHOOK_SECRET");
 });
 
 beforeEach(() => {
+  process.env.DATABASE_URL = "postgres://atlas:atlas@localhost:5432/atlas";
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
+  process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
   resetIncomingTelegramIngressStoreForTests();
 });
 

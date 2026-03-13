@@ -40,6 +40,15 @@ Notes:
 - The scripts expect Homebrew `postgresql@16` and target the disposable `atlas_test` database by default.
 - `pnpm db:test:reset` is useful if you want a clean local database between manual test runs.
 
+## Environment
+
+Copy `.env.example` for local development and provide real values through your deployment environment for hosted runs.
+
+- `DATABASE_URL`: Postgres connection string
+- `OPENAI_API_KEY`: OpenAI API key
+- `TELEGRAM_BOT_TOKEN`: Telegram bot token
+- `TELEGRAM_WEBHOOK_SECRET`: shared secret used to verify Telegram webhook deliveries
+
 ## How We Work
 
 This repo is designed for human-plus-agent collaboration.
