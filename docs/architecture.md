@@ -32,6 +32,7 @@ This document is the top-level technical overview for Atlas. Focused architectur
 
 ## Related docs
 
+- `docs/architecture/data-model-boundaries.md`: canonical, operational, derived, and deferred data ownership rules
 - `docs/architecture/component-contracts.md`: per-component input, output, and mutation rules
 - `docs/architecture/system-boundaries.md`: stack ownership for Telegram, Vercel, OpenAI, and Neon Postgres
 - `docs/product/mvp-requirements.md`: product scope and explicit non-goals for the MVP
