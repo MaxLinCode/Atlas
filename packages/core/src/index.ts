@@ -24,6 +24,7 @@ export function getConfig(overrides: Partial<Record<keyof AppConfig, string>> = 
 export const inboxItemSchema = z.object({
   id: z.string(),
   userId: z.string(),
+  sourceEventId: z.string(),
   rawText: z.string(),
   normalizedText: z.string(),
   processingStatus: z.enum(["received", "processing", "planned", "needs_clarification"]),

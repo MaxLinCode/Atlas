@@ -15,6 +15,13 @@
       "when": 1773425432141,
       "tag": "0001_naive_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773428956135,
+      "tag": "0002_cynical_silk_fever",
+      "breakpoints": true
     }
   ]
 }

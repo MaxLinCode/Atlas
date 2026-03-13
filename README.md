@@ -20,6 +20,25 @@ Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, 
 - `pnpm test`: run the test suite
 - `pnpm db:migrate`: run Drizzle migrations
 - `pnpm db:studio`: open the Drizzle Studio workflow
+- `pnpm db:test:start`: start the local Homebrew Postgres test service and create `atlas_test`
+- `pnpm db:test:reset`: reset the local `atlas_test` database schema for integration reruns
+- `pnpm db:test:stop`: stop the local Homebrew Postgres test service
+
+## Local Integration DB
+
+Atlas supports an explicit local Postgres workflow for integration tests on macOS with Homebrew `postgresql@16`.
+
+Typical flow:
+
+1. Run `pnpm db:test:start`
+2. Run `DATABASE_URL='postgresql://$USER@localhost:5432/atlas_test' pnpm --filter @atlas/integration-tests test`
+3. Run `pnpm db:test:stop` when you are done
+
+Notes:
+
+- These commands are convenience helpers for local integration testing, not part of normal app startup.
+- The scripts expect Homebrew `postgresql@16` and target the disposable `atlas_test` database by default.
+- `pnpm db:test:reset` is useful if you want a clean local database between manual test runs.
 
 ## How We Work
 
