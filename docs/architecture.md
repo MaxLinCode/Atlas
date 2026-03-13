@@ -5,7 +5,7 @@ This document is the top-level technical overview for Atlas. Focused architectur
 ## Core flow
 
 1. Telegram sends a webhook event to `apps/web`.
-2. The webhook route validates the event, records an idempotent bot event, and stores an inbox item.
+2. The webhook route validates the event, derives an idempotency key from Telegram `update_id`, records the incoming bot event once, skips duplicate deliveries, and stores an inbox item only for first-seen events.
 3. Core planning logic turns the inbox item into basic tasks.
 4. Core scheduling logic assigns those tasks to internal schedule slots based on simple availability rules.
 5. Telegram sends reminders using persisted bot events for retry safety.

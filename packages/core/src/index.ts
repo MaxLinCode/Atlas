@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export * from "./telegram";
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url().default("https://example.invalid/db"),
   OPENAI_API_KEY: z.string().default("dev-openai-key"),
@@ -161,4 +163,3 @@ export async function replanTask(input: unknown) {
     message: "Core package is wired. Replace this stub with replanning logic."
   };
 }
-

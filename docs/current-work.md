@@ -3,6 +3,7 @@
 ## Active focus
 
 Leaner MVP package structure and first real vertical slice for the Telegram-first MVP.
+Current implementation step: make `apps/web` Telegram webhook ingestion real by verifying the webhook secret, parsing Telegram payloads, enforcing ingress idempotency with canonical `bot_events`, normalizing message and user metadata, and handing accepted messages to app services.
 
 ## Near-term milestones
 
@@ -18,6 +19,10 @@ Leaner MVP package structure and first real vertical slice for the Telegram-firs
 - Google Calendar is a future adapter only; do not build sync logic yet.
 - MVP scope is locked in `docs/product/mvp-requirements.md`.
 - Keep route handlers thin and push product logic into packages.
+- Telegram webhook ingress is now real at the route/service level: secret verification, Telegram payload validation, message normalization, and ingress idempotency are implemented and tested.
+- Current idempotency uses a temporary in-memory `packages/db` repository seam so the webhook flow can stay thin while the real database layer is still being wired.
+- The next webhook milestone is deploying the webhook route on Vercel for a real Telegram smoke test, then replacing the in-memory `bot_events` repository with a real Drizzle/Postgres implementation and persisting accepted inbound messages as actual inbox items before downstream planning.
+- Webhook hardening beyond secret verification and idempotency is future work: keep the secret only in environment-managed secrets, never log it, and add rate limiting or equivalent abuse controls once the core webhook persistence path is fully wired.
 
 ## inspect-ai-guardrails
 

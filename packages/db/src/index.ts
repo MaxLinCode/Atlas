@@ -1,3 +1,4 @@
+export * from "./bot-events";
 export * from "./schema";
 
 export type RepositoryHealth = {
@@ -11,4 +12,3 @@ export function getRepositoryHealth(): RepositoryHealth {
     message: "Database repositories are not implemented yet."
   };
 }
-

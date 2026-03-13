@@ -41,6 +41,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 - Webhook entrypoints for Telegram
 - Cron or scheduled entrypoints for reminder dispatch
 - Request validation, authentication, and idempotency boundaries
+- Webhook hardening such as rate limiting, abuse protection, and failed-auth observability
 - Orchestration of core, repository, and integration calls
 - Minimal internal admin or debugging surfaces if needed
 
@@ -54,6 +55,9 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 - Route handlers should stay thin.
 - Vercel is the delivery and orchestration layer, not the domain logic layer.
+- Store webhook secrets only in environment-managed secret storage such as Vercel secrets.
+- Never log webhook secrets in route logs, error messages, or debugging output.
+- Because the Telegram webhook is publicly reachable, future hardening should include rate limiting or equivalent edge protections in addition to secret verification and idempotency.
 
 ## Core package
 
@@ -121,6 +125,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 - OpenAI output must be validated against app-owned schemas before it becomes a task or schedule record.
 - Scheduling decisions should be persisted in Neon and delivered through Telegram, not reconstructed from chat history.
 - Future integrations such as Google Calendar should be adapters around the core system, not replacements for internal state ownership.
+- Public webhook exposure requires layered defenses: secret verification, validation, ingress idempotency, and abuse controls such as rate limiting.
 
 ## MVP non-goals
 

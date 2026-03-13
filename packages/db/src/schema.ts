@@ -5,6 +5,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar
 } from "drizzle-orm/pg-core";
@@ -65,16 +66,22 @@ export const userProfiles = pgTable("user_profiles", {
   breakdownLevel: integer("breakdown_level").notNull()
 });
 
-export const botEvents = pgTable("bot_events", {
-  id: uuid("id").primaryKey(),
-  userId: uuid("user_id").notNull(),
-  direction: varchar("direction", { length: 16 }).notNull(),
-  eventType: varchar("event_type", { length: 32 }).notNull(),
-  idempotencyKey: text("idempotency_key").notNull(),
-  payload: jsonb("payload").notNull(),
-  retryState: varchar("retry_state", { length: 16 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const botEvents = pgTable(
+  "bot_events",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    direction: varchar("direction", { length: 16 }).notNull(),
+    eventType: varchar("event_type", { length: 32 }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    retryState: varchar("retry_state", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    idempotencyKeyIndex: uniqueIndex("bot_events_idempotency_key_idx").on(table.idempotencyKey)
+  })
+);
 
 export const plannerRuns = pgTable("planner_runs", {
   id: uuid("id").primaryKey(),

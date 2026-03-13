@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildScheduleProposal,
+  buildTelegramWebhookIdempotencyKey,
   getConfig,
+  normalizeTelegramText,
+  normalizeTelegramUpdate,
   processInboxItem,
   userProfileSchema
 } from "./index";
@@ -55,5 +58,53 @@ describe("core package", () => {
 
     expect(result.inserts).toEqual([]);
     expect(result.moves).toEqual([]);
+  });
+
+  it("normalizes Telegram text into a planner-friendly string", () => {
+    expect(normalizeTelegramText("  Call   the doctor \n tomorrow  ")).toBe(
+      "Call the doctor tomorrow"
+    );
+  });
+
+  it("derives a stable Telegram webhook idempotency key from update id", () => {
+    expect(buildTelegramWebhookIdempotencyKey(42)).toBe("telegram:webhook:update:42");
+  });
+
+  it("extracts normalized Telegram message metadata from a webhook update", () => {
+    const normalized = normalizeTelegramUpdate({
+      update_id: 42,
+      message: {
+        message_id: 7,
+        date: 1_700_000_000,
+        text: " Review   launch checklist ",
+        chat: {
+          id: 999,
+          type: "private"
+        },
+        from: {
+          id: 123,
+          is_bot: false,
+          first_name: "Max",
+          last_name: "Lin",
+          username: "maxl",
+          language_code: "en"
+        }
+      }
+    });
+
+    expect(normalized).toMatchObject({
+      updateId: 42,
+      messageId: 7,
+      chatId: "999",
+      rawText: " Review   launch checklist ",
+      normalizedText: "Review launch checklist",
+      user: {
+        telegramUserId: "123",
+        displayName: "Max Lin",
+        username: "maxl",
+        languageCode: "en",
+        chatType: "private"
+      }
+    });
   });
 });
