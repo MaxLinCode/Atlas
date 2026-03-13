@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "lint": "next lint",
+    "lint": "eslint src next.config.ts vitest.config.mts eslint.config.mjs --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -17,6 +17,8 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "eslint": "^9.22.0",
+    "eslint-config-next": "^15.5.12",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
