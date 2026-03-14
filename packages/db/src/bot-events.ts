@@ -1,9 +1,23 @@
 import { randomUUID } from "node:crypto";
 
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { botEvents, inboxItems } from "./schema";
+
+export type BotEventDirection = "incoming" | "outgoing";
+export type BotEventRetryState = "received" | "sending" | "sent" | "failed";
+
+type StoredBotEvent = {
+  id: string;
+  userId: string;
+  direction: BotEventDirection;
+  eventType: string;
+  idempotencyKey: string;
+  payload: unknown;
+  retryState: BotEventRetryState;
+};
 
 export type IncomingTelegramMessage = {
   userId: string;
@@ -12,6 +26,14 @@ export type IncomingTelegramMessage = {
   payload: unknown;
   rawText: string;
   normalizedText: string;
+};
+
+export type OutgoingTelegramMessage = {
+  userId: string;
+  eventType: string;
+  idempotencyKey: string;
+  payload: unknown;
+  retryState: Extract<BotEventRetryState, "sending" | "sent" | "failed">;
 };
 
 export type PersistedInboxItem = {
@@ -34,28 +56,34 @@ export type IncomingTelegramMessageRecordResult =
       status: "duplicate";
     };
 
-type StoredBotEvent = {
-  id: string;
-  userId: string;
-  direction: "incoming";
-  eventType: string;
-  idempotencyKey: string;
-  payload: unknown;
-  retryState: "received";
-};
+export type OutgoingTelegramMessageRecordResult =
+  | {
+      status: "reserved";
+      eventId: string;
+    }
+  | {
+      status: "duplicate";
+    };
 
 export interface IncomingTelegramIngressStore {
-  recordIfAbsent(
+  recordIncomingIfAbsent(
     event: StoredBotEvent,
     inboxItem: PersistedInboxItem
   ): Promise<IncomingTelegramMessageRecordResult>;
 }
 
-class InMemoryIncomingTelegramIngressStore implements IncomingTelegramIngressStore {
+export interface OutgoingTelegramDeliveryStore {
+  reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult>;
+  updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void>;
+}
+
+class InMemoryTelegramBotEventStore
+  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore
+{
   private readonly eventsByKey = new Map<string, StoredBotEvent>();
   private readonly inboxItemsById = new Map<string, PersistedInboxItem>();
 
-  async recordIfAbsent(
+  async recordIncomingIfAbsent(
     event: StoredBotEvent,
     inboxItem: PersistedInboxItem
   ): Promise<IncomingTelegramMessageRecordResult> {
@@ -75,6 +103,35 @@ class InMemoryIncomingTelegramIngressStore implements IncomingTelegramIngressSto
     };
   }
 
+  async reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult> {
+    if (this.eventsByKey.has(event.idempotencyKey)) {
+      return {
+        status: "duplicate"
+      };
+    }
+
+    this.eventsByKey.set(event.idempotencyKey, event);
+
+    return {
+      status: "reserved",
+      eventId: event.id
+    };
+  }
+
+  async updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void> {
+    const existingEvent = this.eventsByKey.get(event.idempotencyKey);
+
+    if (!existingEvent) {
+      throw new Error(`Outgoing bot event ${event.idempotencyKey} not found.`);
+    }
+
+    this.eventsByKey.set(event.idempotencyKey, {
+      ...existingEvent,
+      payload: event.payload,
+      retryState: event.retryState
+    });
+  }
+
   reset() {
     this.eventsByKey.clear();
     this.inboxItemsById.clear();
@@ -89,7 +146,9 @@ class InMemoryIncomingTelegramIngressStore implements IncomingTelegramIngressSto
   }
 }
 
-export class PostgresIncomingTelegramIngressStore implements IncomingTelegramIngressStore {
+export class PostgresTelegramBotEventStore
+  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore
+{
   private readonly client;
   private readonly db;
 
@@ -100,7 +159,7 @@ export class PostgresIncomingTelegramIngressStore implements IncomingTelegramIng
     this.db = drizzle(this.client);
   }
 
-  async recordIfAbsent(
+  async recordIncomingIfAbsent(
     event: StoredBotEvent,
     inboxItem: PersistedInboxItem
   ): Promise<IncomingTelegramMessageRecordResult> {
@@ -147,13 +206,54 @@ export class PostgresIncomingTelegramIngressStore implements IncomingTelegramIng
     });
   }
 
+  async reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult> {
+    const insertedEvent = await this.db
+      .insert(botEvents)
+      .values({
+        id: event.id,
+        userId: event.userId,
+        direction: event.direction,
+        eventType: event.eventType,
+        idempotencyKey: event.idempotencyKey,
+        payload: event.payload,
+        retryState: event.retryState
+      })
+      .onConflictDoNothing({
+        target: botEvents.idempotencyKey
+      })
+      .returning({
+        id: botEvents.id
+      });
+
+    if (insertedEvent.length === 0) {
+      return {
+        status: "duplicate"
+      };
+    }
+
+    return {
+      status: "reserved",
+      eventId: event.id
+    };
+  }
+
+  async updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void> {
+    await this.db
+      .update(botEvents)
+      .set({
+        payload: event.payload,
+        retryState: event.retryState
+      })
+      .where(sql`${botEvents.idempotencyKey} = ${event.idempotencyKey} and ${botEvents.direction} = 'outgoing'`);
+  }
+
   async close() {
     await this.client.end();
   }
 }
 
-const defaultInMemoryStore = new InMemoryIncomingTelegramIngressStore();
-let postgresStore: PostgresIncomingTelegramIngressStore | null = null;
+const defaultInMemoryStore = new InMemoryTelegramBotEventStore();
+let postgresStore: PostgresTelegramBotEventStore | null = null;
 
 export async function recordIncomingTelegramMessageIfNew(
   input: IncomingTelegramMessage,
@@ -162,7 +262,7 @@ export async function recordIncomingTelegramMessageIfNew(
   const eventId = randomUUID();
   const inboxItemId = randomUUID();
 
-  return store.recordIfAbsent(
+  return store.recordIncomingIfAbsent(
     {
       id: eventId,
       userId: input.userId,
@@ -184,25 +284,51 @@ export async function recordIncomingTelegramMessageIfNew(
   );
 }
 
+export async function recordOutgoingTelegramMessageIfNew(
+  input: OutgoingTelegramMessage,
+  store: OutgoingTelegramDeliveryStore = getDefaultStore()
+): Promise<OutgoingTelegramMessageRecordResult> {
+  return store.reserveOutgoingIfAbsent({
+    id: randomUUID(),
+    userId: input.userId,
+    direction: "outgoing",
+    eventType: input.eventType,
+    idempotencyKey: input.idempotencyKey,
+    payload: input.payload,
+    retryState: input.retryState
+  });
+}
+
+export async function updateOutgoingTelegramMessage(
+  input: Pick<OutgoingTelegramMessage, "idempotencyKey" | "payload" | "retryState">,
+  store: OutgoingTelegramDeliveryStore = getDefaultStore()
+) {
+  await store.updateOutgoing(input);
+}
+
 export function resetIncomingTelegramIngressStoreForTests() {
   defaultInMemoryStore.reset();
 }
 
 export function listIncomingBotEventsForTests() {
-  return defaultInMemoryStore.listEvents();
+  return defaultInMemoryStore.listEvents().filter((event) => event.direction === "incoming");
+}
+
+export function listOutgoingBotEventsForTests() {
+  return defaultInMemoryStore.listEvents().filter((event) => event.direction === "outgoing");
 }
 
 export function listInboxItemsForTests() {
   return defaultInMemoryStore.listInboxItems();
 }
 
-function getDefaultStore(): IncomingTelegramIngressStore {
+function getDefaultStore(): InMemoryTelegramBotEventStore | PostgresTelegramBotEventStore {
   if (isTestEnvironment()) {
     return defaultInMemoryStore;
   }
 
   if (!postgresStore) {
-    postgresStore = new PostgresIncomingTelegramIngressStore();
+    postgresStore = new PostgresTelegramBotEventStore();
   }
 
   return postgresStore;

@@ -6,12 +6,17 @@ import {
   listTasksForTests,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
+  listOutgoingBotEventsForTests,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests
 } from "@atlas/db";
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
+
+const { sendTelegramMessageMock } = vi.hoisted(() => ({
+  sendTelegramMessageMock: vi.fn()
+}));
 
 vi.mock("@atlas/integrations", () => ({
   planInboxItemWithResponses: async () => ({
@@ -41,7 +46,8 @@ vi.mock("@atlas/integrations", () => ({
         reason: "Schedule the new task in the next slot."
       }
     ]
-  })
+  }),
+  sendTelegramMessage: sendTelegramMessageMock
 }));
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -86,6 +92,19 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+  sendTelegramMessageMock.mockReset();
+  sendTelegramMessageMock.mockResolvedValue({
+    ok: true,
+    result: {
+      message_id: 88,
+      date: 1_700_000_000,
+      chat: {
+        id: "999",
+        type: "private"
+      },
+      text: "Captured and scheduled Review launch checklist."
+    }
+  });
   resetIncomingTelegramIngressStoreForTests();
   resetInboxProcessingStoreForTests();
 });
@@ -175,13 +194,180 @@ describe("telegram webhook route", () => {
       },
       processing: {
         outcome: "planned"
+      },
+      outboundDelivery: {
+        status: "sent",
+        attempts: 1
+      }
+    });
+    expect(response.body).toMatchObject({
+      outboundDelivery: {
+        idempotencyKey: expect.any(String),
+        message: {
+          message_id: 88
+        }
       }
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Captured and scheduled Review launch checklist."
+    });
+  });
+
+  it("retries once when Telegram follow-up delivery fails before succeeding", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    sendTelegramMessageMock
+      .mockRejectedValueOnce(new Error("temporary network error"))
+      .mockResolvedValueOnce({
+        ok: true,
+        result: {
+          message_id: 89,
+          date: 1_700_000_001,
+          chat: {
+            id: "999",
+            type: "private"
+          },
+          text: "Captured and scheduled Review launch checklist."
+        }
+      });
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 43,
+        message: {
+          message_id: 8,
+          date: 1_700_000_001,
+          text: " Review   launch checklist ",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      outboundDelivery: {
+        status: "sent",
+        attempts: 2
+      }
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(2);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+  });
+
+  it("accepts the webhook when both follow-up delivery attempts fail", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    sendTelegramMessageMock.mockRejectedValue(new Error("telegram unavailable"));
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 44,
+        message: {
+          message_id: 9,
+          date: 1_700_000_002,
+          text: " Review   launch checklist ",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      processing: {
+        outcome: "planned"
+      },
+      outboundDelivery: {
+        status: "failed",
+        attempts: 2,
+        error: "telegram unavailable"
+      }
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(2);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(listOutgoingBotEventsForTests()[0]?.retryState).toBe("failed");
+  });
+
+  it("skips Telegram delivery when the follow-up idempotency key is already reserved", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const deliveryStore = {
+      reserveOutgoingIfAbsent: async () => ({
+        status: "duplicate" as const
+      }),
+      updateOutgoing: async () => {
+        throw new Error("should not update duplicate outgoing delivery");
+      }
+    };
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 45,
+        message: {
+          message_id: 10,
+          date: 1_700_000_003,
+          text: " Review   launch checklist ",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        deliveryStore,
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      outboundDelivery: {
+        status: "duplicate",
+        attempts: 0
+      }
+    });
+    expect(sendTelegramMessageMock).not.toHaveBeenCalled();
   });
 
   it("short-circuits duplicate webhook deliveries before downstream processing", async () => {
@@ -247,8 +433,11 @@ describe("telegram webhook route", () => {
     expect(duplicateBody).not.toHaveProperty("ingestion");
     expect(duplicateBody).not.toHaveProperty("inboxItem");
     expect(duplicateBody).not.toHaveProperty("processing");
+    expect(duplicateBody).not.toHaveProperty("outboundDelivery");
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not attempt bot-event recording for malformed Telegram payloads", async () => {
@@ -273,5 +462,7 @@ describe("telegram webhook route", () => {
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(0);
     expect(listInboxItemsForTests()).toHaveLength(0);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).not.toHaveBeenCalled();
   });
 });

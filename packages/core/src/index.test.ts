@@ -6,6 +6,7 @@ import {
   buildInboxPlanningContext,
   buildScheduleAdjustment,
   buildScheduleProposal,
+  buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   getConfig,
   inboxPlanningOutputSchema,
@@ -53,6 +54,12 @@ describe("core package", () => {
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
       TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
     });
+  });
+
+  it("builds a stable Telegram follow-up idempotency key", () => {
+    expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
+      "telegram:followup:inbox-item:inbox-1"
+    );
   });
 
   it("builds planning context aliases for existing tasks and schedule blocks", () => {
