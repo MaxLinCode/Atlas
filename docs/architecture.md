@@ -6,9 +6,10 @@ This document is the top-level technical overview for Atlas. Focused architectur
 
 1. Telegram sends a webhook event to `apps/web`.
 2. The webhook route validates the event, derives an idempotency key from Telegram `update_id`, records the incoming bot event once, skips duplicate deliveries, and stores an inbox item only for first-seen events.
-3. Core planning logic turns the inbox item into basic tasks.
-4. Core scheduling logic assigns those tasks to internal schedule slots based on simple availability rules.
-5. Telegram sends reminders using persisted bot events for retry safety.
+3. An app-layer inbox-processing service loads persisted task and schedule context, then prepares a model input with symbolic aliases for existing tasks and schedule blocks.
+4. The OpenAI Responses API returns structured planning actions that are validated against app-owned schemas in `packages/core`.
+5. The app service resolves symbolic references against persisted Atlas state, then repository-layer persistence records `planner_runs`, creates or updates `tasks` and `schedule_blocks`, and advances the inbox item to `planned`, `needs_clarification`, or a retryable failure state.
+6. Telegram reminder and future conversational reply delivery operate from persisted Atlas state rather than transient webhook context.
 
 ## Dependency direction
 
@@ -22,9 +23,11 @@ This document is the top-level technical overview for Atlas. Focused architectur
 
 ## Design principles
 
-- Accept input fast, then process asynchronously or behind a lightweight job boundary.
-- Start with basic tasks and simple schedule placement before adding richer task shaping.
-- Keep every scheduling decision explainable and traceable to a planner run.
+- Accept input fast, then process it against persisted Atlas state instead of relying on chat transcripts.
+- Prefer schedule-forward task handling in MVP so extracted work gets placed onto time, not left as open-ended backlog by default.
+- Keep every scheduling decision explainable and traceable to a planner run plus validated model output.
+- Keep conversational scheduling anchored to persisted tasks and schedule blocks, not broad recent-message inference.
+- Let the model propose actions, but keep final state mutation and symbolic-reference resolution in the application layer.
 - Preserve future seams for Google Calendar without leaking calendar concepts into core scheduling tables.
 - Optimize for reliable execution and observability before optimization or clever abstraction.
 - Keep the MVP lean: prefer one cohesive product package over multiple speculative internal packages.

@@ -29,7 +29,7 @@ if (!databaseUrl) {
 
     beforeEach(async () => {
       await sql.unsafe("drop schema if exists public cascade;");
-      await sql.unsafe("create schema public;");
+      await sql.unsafe("create schema if not exists public;");
       await applyMigrations(sql);
     });
 

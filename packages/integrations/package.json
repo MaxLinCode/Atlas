@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
-    "openai": "^4.77.0",
+    "openai": "^4.104.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

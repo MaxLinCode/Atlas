@@ -7,6 +7,15 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "@atlas/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@atlas/db": [
+        "../../packages/db/src/index.ts"
+      ],
+      "@atlas/integrations": [
+        "../../packages/integrations/src/index.ts"
       ]
     },
     "plugins": [

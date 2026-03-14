@@ -19,16 +19,17 @@ Use it to keep webhook, schema, repository, and planner work aligned on one ques
 ### `inbox_items`
 
 - Classification: canonical record
-- Represents: the persisted captured brain dump after ingress normalization
-- Source of truth for: what Atlas accepted from the user for downstream processing
+- Represents: the persisted captured brain dump or conversational scheduling input after ingress normalization
+- Source of truth for: what Atlas accepted from the user for downstream processing and later conversational resolution
 - Created by: ingress flow after Telegram validation and before planner extraction mutates downstream task state
-- Allowed mutations: processing status, planner confidence, and links to created task records
+- Allowed mutations: processing status and links to created task records
 - Must not be confused with: raw Telegram payload history, extracted tasks, or planner output
 
 Notes:
 - `raw_text` preserves the accepted user content.
 - `normalized_text` preserves the app-normalized form used for downstream processing.
-- `inbox_items` should exist before extraction creates tasks.
+- `inbox_items` should exist before extraction creates tasks or schedule mutations.
+- `inbox_items` are capture truth, not the long-term source of truth for schedule state themselves.
 
 ### `tasks`
 
@@ -55,6 +56,7 @@ Notes:
 Notes:
 - `schedule_blocks` are Atlas-owned even if future calendar sync is added.
 - External calendar ids are references, not primary schedule ownership.
+- In MVP, `schedule_blocks` should attach directly to canonical `tasks`, not to deferred action-level entities.
 
 ### `user_profiles`
 
@@ -95,6 +97,7 @@ Notes:
 
 Notes:
 - If planner output changes later, the current canonical state still lives in `tasks` and `schedule_blocks`, not in `planner_runs`.
+- `planner_runs` may act as an operational anchor for conversational scheduling resolution, but they do not replace canonical task or schedule ownership.
 
 ## Deferred or non-canonical-for-MVP records
 
@@ -117,6 +120,7 @@ Notes:
 - `linked_task_ids` on `inbox_items` is derived linkage, not the task source of truth itself.
 - `confidence` fields are derived metadata and must not outrank canonical state.
 - `external_calendar_id` on `schedule_blocks` is an external-reference field for future integrations and does not move schedule ownership out of Atlas.
+- Planner-selected intent type or ambiguity state is derived processing metadata, not the canonical meaning of a persisted task or block.
 
 ## Webhook-first rules
 
@@ -125,6 +129,7 @@ Notes:
 - Ingress should persist canonical capture state in `inbox_items` before extraction creates or mutates downstream task state.
 - Planner output may create or update `tasks`, but it must not overwrite the meaning of the original `inbox_items`.
 - Scheduler output may create or update `schedule_blocks`, but it must not redefine task meaning.
+- Conversational schedule moves should resolve against persisted Atlas state instead of treating Telegram history as the scheduler's source of truth.
 
 ## Current schema vs MVP truth
 
