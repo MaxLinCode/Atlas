@@ -2,19 +2,32 @@ import {
   buildTelegramWebhookIdempotencyKey,
   getConfig,
   normalizeTelegramUpdate,
-  processInboxItem,
   telegramUpdateSchema
 } from "@atlas/core";
-import { recordIncomingTelegramMessageIfNew } from "@atlas/db";
+import {
+  recordIncomingTelegramMessageIfNew,
+  type IncomingTelegramIngressStore,
+  type PersistedInboxItem
+} from "@atlas/db";
+
+import { processInboxItem, type ProcessInboxItemDependencies } from "./process-inbox-item";
 
 type WebhookResult = {
   status: number;
   body: Record<string, unknown>;
 };
 
+type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
+  ingressStore?: IncomingTelegramIngressStore;
+  primeProcessingStore?: (inboxItem: PersistedInboxItem) => void | Promise<void>;
+};
+
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
 
-export async function handleTelegramWebhook(request: Request): Promise<WebhookResult> {
+export async function handleTelegramWebhook(
+  request: Request,
+  dependencies: TelegramWebhookDependencies = {}
+): Promise<WebhookResult> {
   const config = getConfig();
   const providedSecret = request.headers.get(TELEGRAM_SECRET_HEADER);
 
@@ -80,14 +93,17 @@ export async function handleTelegramWebhook(request: Request): Promise<WebhookRe
     };
   }
 
-  const ingress = await recordIncomingTelegramMessageIfNew({
-    userId: normalizedMessage.user.telegramUserId,
-    eventType: "telegram_message",
-    idempotencyKey,
-    payload: parsedUpdate.data,
-    rawText: normalizedMessage.rawText,
-    normalizedText: normalizedMessage.normalizedText
-  });
+  const ingress = await recordIncomingTelegramMessageIfNew(
+    {
+      userId: normalizedMessage.user.telegramUserId,
+      eventType: "telegram_message",
+      idempotencyKey,
+      payload: parsedUpdate.data,
+      rawText: normalizedMessage.rawText,
+      normalizedText: normalizedMessage.normalizedText
+    },
+    dependencies.ingressStore
+  );
 
   if (ingress.status === "duplicate") {
     return {
@@ -100,23 +116,17 @@ export async function handleTelegramWebhook(request: Request): Promise<WebhookRe
     };
   }
 
-  const processing = await processInboxItem({
-    inboxItemId: ingress.inboxItem.id,
-    sourceEventId: ingress.eventId,
-    source: normalizedMessage.source,
-    delivery: normalizedMessage.delivery,
-    event: normalizedMessage,
-    userId: normalizedMessage.user.telegramUserId,
-    rawText: normalizedMessage.rawText,
-    normalizedText: normalizedMessage.normalizedText,
-    metadata: {
-      telegramUpdateId: normalizedMessage.updateId,
-      telegramMessageId: normalizedMessage.messageId,
-      chatId: normalizedMessage.chatId,
-      messageDate: normalizedMessage.messageDate,
-      user: normalizedMessage.user
+  await dependencies.primeProcessingStore?.(ingress.inboxItem);
+
+  const processing = await processInboxItem(
+    {
+      inboxItemId: ingress.inboxItem.id
+    },
+    {
+      ...(dependencies.store ? { store: dependencies.store } : {}),
+      ...(dependencies.planner ? { planner: dependencies.planner } : {})
     }
-  });
+  );
 
   return {
     status: 200,

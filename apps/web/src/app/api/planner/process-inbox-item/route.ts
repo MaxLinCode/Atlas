@@ -1,5 +1,5 @@
-import { processInboxItem } from "@atlas/core";
 import { jsonOk } from "@/lib/server/http";
+import { processInboxItem } from "@/lib/server/process-inbox-item";
 
 export async function POST(request: Request) {
   const body = await request.json();

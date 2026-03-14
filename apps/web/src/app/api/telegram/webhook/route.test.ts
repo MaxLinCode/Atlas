@@ -1,11 +1,48 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getDefaultInboxProcessingStore,
+  listPlannerRunsForTests,
+  listScheduleBlocksForTests,
+  listTasksForTests,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
-  resetIncomingTelegramIngressStoreForTests
+  resetInboxProcessingStoreForTests,
+  resetIncomingTelegramIngressStoreForTests,
+  seedInboxItemForProcessingTests
 } from "@atlas/db";
 
-import { POST } from "./route";
+import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
+
+vi.mock("@atlas/integrations", () => ({
+  planInboxItemWithResponses: async () => ({
+    confidence: 0.9,
+    summary: "Captured and scheduled Review launch checklist.",
+    actions: [
+      {
+        type: "create_task",
+        alias: "new_task_1",
+        title: "Review launch checklist",
+        priority: "medium",
+        urgency: "medium"
+      },
+      {
+        type: "create_schedule_block",
+        taskRef: {
+          kind: "created_task",
+          alias: "new_task_1"
+        },
+        scheduleConstraint: {
+          dayOffset: 0,
+          explicitHour: 9,
+          minute: 0,
+          preferredWindow: null,
+          sourceText: "default next slot"
+        },
+        reason: "Schedule the new task in the next slot."
+      }
+    ]
+  })
+}));
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
 const ORIGINAL_ENV = {
@@ -50,23 +87,28 @@ beforeEach(() => {
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
   resetIncomingTelegramIngressStoreForTests();
+  resetInboxProcessingStoreForTests();
 });
 
 describe("telegram webhook route", () => {
   it("rejects requests with the wrong Telegram webhook secret", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    const response = await POST(
+    const response = await handleTelegramWebhook(
       buildRequest(
         {
           update_id: 1
         },
         "wrong-secret"
-      )
+      ),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
     );
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(Promise.resolve(response.body)).resolves.toMatchObject({
       accepted: false,
       error: "invalid_webhook_secret"
     });
@@ -77,7 +119,7 @@ describe("telegram webhook route", () => {
   it("normalizes a Telegram text message and hands it to app services", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    const response = await POST(
+    const response = await handleTelegramWebhook(
       buildRequest({
         update_id: 42,
         message: {
@@ -97,11 +139,15 @@ describe("telegram webhook route", () => {
             language_code: "en"
           }
         }
-      })
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(Promise.resolve(response.body)).resolves.toMatchObject({
       accepted: true,
       idempotencyKey: "telegram:webhook:update:42",
       ingestion: {
@@ -125,21 +171,28 @@ describe("telegram webhook route", () => {
         rawText: " Review   launch checklist ",
         normalizedText: "Review launch checklist",
         processingStatus: "received",
-        confidence: 1,
         linkedTaskIds: []
       },
       processing: {
-        accepted: true
+        outcome: "planned"
       }
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
+    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listTasksForTests()).toHaveLength(1);
+    expect(listScheduleBlocksForTests()).toHaveLength(1);
   });
 
   it("short-circuits duplicate webhook deliveries before downstream processing", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    const firstResponse = await POST(
+    const dependencies = {
+      store: getDefaultInboxProcessingStore(),
+      primeProcessingStore: seedInboxItemForProcessingTests
+    };
+
+    const firstResponse = await handleTelegramWebhook(
       buildRequest({
         update_id: 42,
         message: {
@@ -157,10 +210,11 @@ describe("telegram webhook route", () => {
             last_name: "Lin"
           }
         }
-      })
+      }),
+      dependencies
     );
 
-    const duplicateResponse = await POST(
+    const duplicateResponse = await handleTelegramWebhook(
       buildRequest({
         update_id: 42,
         message: {
@@ -178,11 +232,12 @@ describe("telegram webhook route", () => {
             last_name: "Lin"
           }
         }
-      })
+      }),
+      dependencies
     );
 
     expect(firstResponse.status).toBe(200);
-    const duplicateBody = await duplicateResponse.json();
+    const duplicateBody = duplicateResponse.body;
 
     expect(duplicateBody).toMatchObject({
       accepted: true,
@@ -199,16 +254,20 @@ describe("telegram webhook route", () => {
   it("does not attempt bot-event recording for malformed Telegram payloads", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    const response = await POST(
+    const response = await handleTelegramWebhook(
       buildRequest({
         message: {
           text: "missing update id"
         }
-      })
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(Promise.resolve(response.body)).resolves.toMatchObject({
       accepted: false,
       error: "invalid_telegram_update"
     });

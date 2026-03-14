@@ -21,7 +21,6 @@ export type PersistedInboxItem = {
   rawText: string;
   normalizedText: string;
   processingStatus: "received";
-  confidence: number;
   linkedTaskIds: string[];
 };
 
@@ -137,7 +136,6 @@ export class PostgresIncomingTelegramIngressStore implements IncomingTelegramIng
         rawText: inboxItem.rawText,
         normalizedText: inboxItem.normalizedText,
         processingStatus: inboxItem.processingStatus,
-        confidence: inboxItem.confidence,
         linkedTaskIds: inboxItem.linkedTaskIds
       });
 
@@ -181,7 +179,6 @@ export async function recordIncomingTelegramMessageIfNew(
       rawText: input.rawText,
       normalizedText: input.normalizedText,
       processingStatus: "received",
-      confidence: 1,
       linkedTaskIds: []
     }
   );

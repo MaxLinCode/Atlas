@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 
 export * from "./telegram";
@@ -30,14 +32,20 @@ export function getConfig(overrides: Partial<Record<keyof AppConfig, string>> = 
   });
 }
 
+export const inboxProcessingStatusSchema = z.enum([
+  "received",
+  "processing",
+  "planned",
+  "needs_clarification"
+]);
+
 export const inboxItemSchema = z.object({
   id: z.string(),
   userId: z.string(),
-  sourceEventId: z.string(),
+  sourceEventId: z.string().nullable().optional(),
   rawText: z.string(),
   normalizedText: z.string(),
-  processingStatus: z.enum(["received", "processing", "planned", "needs_clarification"]),
-  confidence: z.number().min(0).max(1),
+  processingStatus: inboxProcessingStatusSchema,
   linkedTaskIds: z.array(z.string()).default([])
 });
 
@@ -65,7 +73,7 @@ export const taskActionSchema = z.object({
 export const scheduleBlockSchema = z.object({
   id: z.string(),
   userId: z.string(),
-  actionId: z.string(),
+  taskId: z.string(),
   startAt: z.string(),
   endAt: z.string(),
   confidence: z.number().min(0).max(1),
@@ -98,22 +106,102 @@ export const userProfileSchema = z.object({
   breakdownLevel: z.number().int().min(1).max(10)
 });
 
-export const plannerExtractionSchema = z.object({
-  tasks: z.array(
-    z.object({
-      title: z.string(),
-      priority: z.enum(["low", "medium", "high"]),
-      urgency: z.enum(["low", "medium", "high"]),
-      confidence: z.number().min(0).max(1)
-    })
-  )
+export const taskCandidateSchema = z.object({
+  title: z.string().min(1),
+  priority: z.enum(["low", "medium", "high"]),
+  urgency: z.enum(["low", "medium", "high"]),
+  confidence: z.number().min(0).max(1)
+});
+
+export const scheduleConstraintSchema = z.object({
+  dayOffset: z.number().int().min(0).max(14),
+  explicitHour: z.number().int().min(0).max(23).nullable(),
+  minute: z.number().int().min(0).max(59),
+  preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
+  sourceText: z.string().min(1)
+});
+
+export const taskReferenceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("created_task"),
+    alias: z.string().min(1)
+  }),
+  z.object({
+    kind: z.literal("existing_task"),
+    alias: z.string().min(1)
+  })
+]);
+
+export const scheduleBlockReferenceSchema = z.object({
+  alias: z.string().min(1)
+});
+
+export const createTaskPlanningActionSchema = z.object({
+  type: z.literal("create_task"),
+  alias: z.string().min(1),
+  title: z.string().min(1),
+  priority: z.enum(["low", "medium", "high"]),
+  urgency: z.enum(["low", "medium", "high"])
+});
+
+export const createScheduleBlockPlanningActionSchema = z.object({
+  type: z.literal("create_schedule_block"),
+  taskRef: taskReferenceSchema,
+  scheduleConstraint: scheduleConstraintSchema,
+  reason: z.string().min(1)
+});
+
+export const moveScheduleBlockPlanningActionSchema = z.object({
+  type: z.literal("move_schedule_block"),
+  blockRef: scheduleBlockReferenceSchema,
+  scheduleConstraint: scheduleConstraintSchema,
+  reason: z.string().min(1)
+});
+
+export const clarifyPlanningActionSchema = z.object({
+  type: z.literal("clarify"),
+  reason: z.string().min(1)
+});
+
+export const planningActionSchema = z.discriminatedUnion("type", [
+  createTaskPlanningActionSchema,
+  createScheduleBlockPlanningActionSchema,
+  moveScheduleBlockPlanningActionSchema,
+  clarifyPlanningActionSchema
+]);
+
+export const inboxPlanningOutputSchema = z.object({
+  confidence: z.number().min(0).max(1),
+  summary: z.string().min(1),
+  actions: z.array(planningActionSchema).min(1)
+});
+
+export const inboxPlanningTaskContextSchema = z.object({
+  alias: z.string().min(1),
+  task: taskSchema
+});
+
+export const inboxPlanningScheduleBlockContextSchema = z.object({
+  alias: z.string().min(1),
+  scheduleBlock: scheduleBlockSchema,
+  taskTitle: z.string().min(1)
+});
+
+export const inboxPlanningContextSchema = z.object({
+  inboxItem: inboxItemSchema,
+  userProfile: userProfileSchema,
+  tasks: z.array(inboxPlanningTaskContextSchema),
+  scheduleBlocks: z.array(inboxPlanningScheduleBlockContextSchema),
+  now: z.string().datetime().optional()
 });
 
 export const scheduleProposalInputSchema = z.object({
   userId: z.string(),
-  openActions: z.array(taskActionSchema),
+  openTasks: z.array(taskSchema),
   userProfile: userProfileSchema,
-  existingBlocks: z.array(scheduleBlockSchema)
+  existingBlocks: z.array(scheduleBlockSchema),
+  scheduleConstraint: scheduleConstraintSchema.nullable().optional(),
+  now: z.string().datetime().optional()
 });
 
 export const scheduleProposalOutputSchema = z.object({
@@ -121,6 +209,7 @@ export const scheduleProposalOutputSchema = z.object({
   moves: z.array(
     z.object({
       blockId: z.string(),
+      taskId: z.string(),
       newStartAt: z.string(),
       newEndAt: z.string(),
       reason: z.string()
@@ -129,47 +218,221 @@ export const scheduleProposalOutputSchema = z.object({
 });
 
 export type InboxItem = z.infer<typeof inboxItemSchema>;
-export type PlannerExtraction = z.infer<typeof plannerExtractionSchema>;
+export type ScheduleConstraint = z.infer<typeof scheduleConstraintSchema>;
 export type ScheduleProposalInput = z.infer<typeof scheduleProposalInputSchema>;
 export type ScheduleProposalOutput = z.infer<typeof scheduleProposalOutputSchema>;
 export type ScheduleBlock = z.infer<typeof scheduleBlockSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskAction = z.infer<typeof taskActionSchema>;
+export type TaskCandidate = z.infer<typeof taskCandidateSchema>;
 export type UserProfile = z.infer<typeof userProfileSchema>;
+export type PlanningAction = z.infer<typeof planningActionSchema>;
+export type InboxPlanningOutput = z.infer<typeof inboxPlanningOutputSchema>;
+export type TaskReference = z.infer<typeof taskReferenceSchema>;
+export type ScheduleBlockReference = z.infer<typeof scheduleBlockReferenceSchema>;
+export type InboxPlanningContext = z.infer<typeof inboxPlanningContextSchema>;
 
-export async function processInboxItem(input: unknown) {
-  const parsed = plannerExtractionSchema.safeParse({
-    tasks: [
-      {
-        title: "Review inbox item",
-        priority: "medium",
-        urgency: "medium",
-        confidence: 0.5
-      }
-    ]
+const DEFAULT_USER_PROFILE: Omit<UserProfile, "userId"> = {
+  timezone: "America/Los_Angeles",
+  workdayStartHour: 9,
+  workdayEndHour: 17,
+  deepWorkWindows: [],
+  blackoutWindows: [],
+  focusBlockMinutes: 60,
+  reminderStyle: "direct",
+  breakdownLevel: 1
+};
+
+export function buildDefaultUserProfile(userId: string): UserProfile {
+  return userProfileSchema.parse({
+    userId,
+    ...DEFAULT_USER_PROFILE
   });
+}
 
-  return {
-    accepted: true,
-    input,
-    extraction: parsed.success ? parsed.data : null,
-    message: "Core package is wired. Replace this stub with structured model calls."
-  };
+export function buildInboxPlanningContext(input: {
+  inboxItem: InboxItem;
+  userProfile: UserProfile;
+  tasks: Task[];
+  scheduleBlocks: ScheduleBlock[];
+  now?: string;
+}): InboxPlanningContext {
+  return inboxPlanningContextSchema.parse({
+    inboxItem: input.inboxItem,
+    userProfile: input.userProfile,
+    tasks: input.tasks.map((task, index) => ({
+      alias: `existing_task_${index + 1}`,
+      task
+    })),
+    scheduleBlocks: input.scheduleBlocks.map((scheduleBlock, index) => ({
+      alias: `schedule_block_${index + 1}`,
+      scheduleBlock,
+      taskTitle: input.tasks.find((task) => task.id === scheduleBlock.taskId)?.title ?? "Scheduled task"
+    })),
+    ...(input.now ? { now: input.now } : {})
+  });
+}
+
+export function resolveTaskReference(
+  context: InboxPlanningContext,
+  reference: TaskReference,
+  createdTaskAliases: Map<string, Task> = new Map()
+) {
+  if (reference.kind === "created_task") {
+    return createdTaskAliases.get(reference.alias) ?? null;
+  }
+
+  const match = context.tasks.find((item) => item.alias === reference.alias);
+  return match?.task ?? null;
+}
+
+export function resolveScheduleBlockReference(
+  context: InboxPlanningContext,
+  reference: ScheduleBlockReference
+) {
+  const match = context.scheduleBlocks.find((item) => item.alias === reference.alias);
+  return match?.scheduleBlock ?? null;
 }
 
 export async function buildScheduleProposal(input: ScheduleProposalInput) {
-  const proposal = {
-    inserts: [],
-    moves: []
-  };
+  const parsed = scheduleProposalInputSchema.parse(input);
+  const profile = parsed.userProfile;
+  const now = new Date(parsed.now ?? new Date().toISOString());
 
-  return scheduleProposalOutputSchema.parse(proposal);
+  const inserts = parsed.openTasks.map((task, index) =>
+    scheduleBlockSchema.parse({
+      id: randomUUID(),
+      userId: task.userId,
+      taskId: task.id,
+      startAt: computeStartAt({
+        now,
+        profile,
+        existingBlocks: parsed.existingBlocks,
+        constraint: parsed.scheduleConstraint ?? null,
+        slotOffset: index
+      }).toISOString(),
+      endAt: computeEndAt({
+        now,
+        profile,
+        existingBlocks: parsed.existingBlocks,
+        constraint: parsed.scheduleConstraint ?? null,
+        slotOffset: index
+      }).toISOString(),
+      confidence: parsed.scheduleConstraint ? 0.84 : 0.72,
+      reason: parsed.scheduleConstraint
+        ? `Scheduled from model timing request: ${parsed.scheduleConstraint.sourceText}`
+        : "Scheduled from model-driven task capture using default planning rules.",
+      rescheduleCount: 0,
+      externalCalendarId: null
+    })
+  );
+
+  return scheduleProposalOutputSchema.parse({
+    inserts,
+    moves: []
+  });
+}
+
+export function buildScheduleAdjustment(input: {
+  block: ScheduleBlock;
+  userProfile: UserProfile;
+  scheduleConstraint: ScheduleConstraint;
+  existingBlocks: ScheduleBlock[];
+  now?: string;
+}) {
+  const now = new Date(input.now ?? new Date().toISOString());
+  const durationMinutes =
+    Math.max(15, Math.round((Date.parse(input.block.endAt) - Date.parse(input.block.startAt)) / 60000)) || 60;
+  const startAt = computeStartAt({
+    now,
+    profile: input.userProfile,
+    existingBlocks: input.existingBlocks.filter((block) => block.id !== input.block.id),
+    constraint: input.scheduleConstraint,
+    slotOffset: 0
+  });
+  const endAt = new Date(startAt.getTime() + durationMinutes * 60_000);
+
+  return {
+    blockId: input.block.id,
+    taskId: input.block.taskId,
+    newStartAt: startAt.toISOString(),
+    newEndAt: endAt.toISOString(),
+    reason: input.scheduleConstraint
+      ? `Moved from model timing request: ${input.scheduleConstraint.sourceText}`
+      : "Moved using default rescheduling rules."
+  };
+}
+
+type ComputeStartAtInput = {
+  now: Date;
+  profile: UserProfile;
+  existingBlocks: ScheduleBlock[];
+  constraint: ScheduleConstraint | null;
+  slotOffset: number;
+};
+
+function computeStartAt(input: ComputeStartAtInput) {
+  const start = new Date(input.now);
+  start.setUTCSeconds(0, 0);
+
+  if (input.constraint) {
+    start.setUTCDate(start.getUTCDate() + input.constraint.dayOffset);
+
+    const hour = input.constraint.explicitHour ?? preferredWindowHour(input.constraint.preferredWindow);
+    start.setUTCHours(hour, input.constraint.minute, 0, 0);
+  } else {
+    start.setUTCHours(input.profile.workdayStartHour + input.slotOffset, 0, 0, 0);
+    if (start <= input.now) {
+      start.setUTCDate(start.getUTCDate() + 1);
+    }
+  }
+
+  while (hasBlockConflict(start, input.profile.focusBlockMinutes, input.existingBlocks)) {
+    start.setUTCHours(start.getUTCHours() + 1, 0, 0, 0);
+  }
+
+  return start;
+}
+
+function computeEndAt(input: ComputeStartAtInput) {
+  const start = computeStartAt(input);
+  return new Date(start.getTime() + input.profile.focusBlockMinutes * 60_000);
+}
+
+function preferredWindowHour(window: ScheduleConstraint["preferredWindow"]) {
+  if (window === "morning") {
+    return 9;
+  }
+
+  if (window === "afternoon") {
+    return 14;
+  }
+
+  if (window === "evening") {
+    return 18;
+  }
+
+  return 9;
+}
+
+function hasBlockConflict(start: Date, durationMinutes: number, existingBlocks: ScheduleBlock[]) {
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+
+  return existingBlocks.some((block) => {
+    const blockStart = Date.parse(block.startAt);
+    const blockEnd = Date.parse(block.endAt);
+    return start.getTime() < blockEnd && end.getTime() > blockStart;
+  });
+}
+
+export async function processInboxItem(input: unknown) {
+  return inboxPlanningOutputSchema.parse(input);
 }
 
 export async function replanTask(input: unknown) {
   return {
     accepted: true,
     input,
-    message: "Core package is wired. Replace this stub with replanning logic."
+    message: "Replanning logic is not implemented yet."
   };
 }

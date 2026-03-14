@@ -66,6 +66,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 - Validated requests to core, integration, and repository layers
 - HTTP responses and operational outcomes for transport boundaries
+- App-layer orchestration for inbox processing over persisted Atlas state
 
 ### May read
 
@@ -83,6 +84,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Authentication and authorization boundaries
 - Idempotency handling
 - Orchestration order across components
+- Which persisted context to load before asking core to classify or schedule an inbox item
 
 ### Forbidden decisions
 
@@ -94,7 +96,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-`packages/core` owns product types, validation schemas, extraction behavior, and scheduling rules for the MVP.
+`packages/core` owns product types, validation schemas, planning-action schemas, symbolic reference rules, and deterministic scheduling helpers for the MVP.
 
 ### Accepts
 
@@ -104,7 +106,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Produces
 
-- Structured task candidates and scheduling proposals
+- Structured planning-action schemas, symbolic reference rules, scheduling proposals, and ambiguity outcomes
 - App-owned validation results and explainable decisions
 
 ### May read
@@ -118,9 +120,10 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Allowed decisions
 
-- Text interpretation and validation through app-owned schemas
+- Validation of model-produced planning output through app-owned schemas
 - Scheduling heuristics that are deterministic and explainable
 - Replanning behavior within the product rules captured in docs
+- Deterministic application of validated planning actions once the app resolves symbolic references to persisted records
 
 ### Forbidden decisions
 
@@ -132,7 +135,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-OpenAI interprets messy user text and returns structured extraction output.
+OpenAI interprets messy user text and returns structured planning output.
 
 ### Accepts
 
@@ -141,8 +144,8 @@ OpenAI interprets messy user text and returns structured extraction output.
 
 ### Produces
 
-- Structured task candidates
-- Optional extraction metadata such as confidence or ambiguity markers
+- Structured planning actions such as create task, create schedule block, move schedule block, or clarify
+- Optional planning metadata such as confidence, ambiguity markers, and scheduling constraint hints
 
 ### May read
 
@@ -155,14 +158,15 @@ OpenAI interprets messy user text and returns structured extraction output.
 
 ### Allowed decisions
 
-- Text interpretation within the provided extraction task
+- Text interpretation within the provided planning task
+- Proposing planning actions and symbolic references from the provided context
 - Limited inference where the text is messy but still reasonably recoverable
 
 ### Forbidden decisions
 
 - Persisting records
 - Triggering side effects directly
-- Acting as the final validator of extracted structure
+- Acting as the final validator of structured output
 - Making autonomous scheduling or reminder mutations in the MVP
 
 ## Neon Postgres contract
@@ -205,6 +209,8 @@ Neon Postgres is the canonical persistence layer for Atlas.
 
 - An inbound Telegram message must be persisted as an inbox item before extraction can create or mutate downstream task state.
 - OpenAI output must be validated against app-owned schemas before any record is created from it.
+- OpenAI may reference existing tasks or schedule blocks only through app-provided symbolic aliases, never raw persistence ids.
+- Conversational scheduling changes must resolve from persisted Atlas state, not from broad recent Telegram history.
 - Scheduling state must be reconstructed from the database, not from Telegram history or model memory.
 - Reminder dispatch must operate from persisted reminder or schedule state, not ad hoc prompt context.
 - Each component should depend on the next narrowest interface available rather than reaching across layers opportunistically.

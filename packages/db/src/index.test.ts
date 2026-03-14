@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   getRepositoryHealth,
+  listPlannerRunsForTests,
+  listScheduleBlocksForTests,
+  listTasksForTests,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   recordIncomingTelegramMessageIfNew,
+  seedInboxItemForProcessingTests,
+  getDefaultInboxProcessingStore,
+  resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests
 } from "./index";
 
@@ -28,6 +34,7 @@ describe("db package", () => {
 
   it("records a first-seen incoming Telegram message as both event and inbox item", async () => {
     resetIncomingTelegramIngressStoreForTests();
+    resetInboxProcessingStoreForTests();
 
     const result = await recordIncomingTelegramMessageIfNew({
       userId: "123",
@@ -135,5 +142,70 @@ describe("db package", () => {
     expect([first.status, second.status].sort()).toEqual(["duplicate", "recorded"]);
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
+  });
+
+  it("stores planner-run-backed task capture results in the in-memory processing repository", async () => {
+    resetInboxProcessingStoreForTests();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-1",
+      userId: "123",
+      sourceEventId: "event-1",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const store = getDefaultInboxProcessingStore();
+    await store.markInboxProcessing("inbox-1");
+    const result = await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-1",
+      confidence: 0.88,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-1",
+        version: "test-v1",
+        modelInput: {
+          normalizedText: "Review launch checklist"
+        },
+        modelOutput: {
+          intentType: "task_capture"
+        },
+        confidence: 0.88
+      },
+      tasks: [
+        {
+          alias: "new_task_1",
+          task: {
+            userId: "123",
+            sourceInboxItemId: "inbox-1",
+            title: "Review launch checklist",
+            status: "open",
+            priority: "medium",
+            urgency: "medium"
+          }
+        }
+      ],
+      scheduleBlocks: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          userId: "123",
+          taskId: "new_task_1",
+          startAt: "2026-03-13T17:00:00.000Z",
+          endAt: "2026-03-13T18:00:00.000Z",
+          confidence: 0.8,
+          reason: "Scheduled from task capture.",
+          rescheduleCount: 0,
+          externalCalendarId: null
+        }
+      ],
+      followUpMessage: "Captured and scheduled Review launch checklist."
+    });
+
+    expect(result.outcome).toBe("planned");
+    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listTasksForTests()).toHaveLength(1);
+    expect(listScheduleBlocksForTests()).toHaveLength(1);
   });
 });

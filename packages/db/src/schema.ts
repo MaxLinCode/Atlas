@@ -18,7 +18,6 @@ export const inboxItems = pgTable("inbox_items", {
   rawText: text("raw_text").notNull(),
   normalizedText: text("normalized_text").notNull(),
   processingStatus: varchar("processing_status", { length: 32 }).notNull(),
-  confidence: real("confidence").notNull(),
   linkedTaskIds: jsonb("linked_task_ids").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 },
@@ -53,7 +52,8 @@ export const taskActions = pgTable("task_actions", {
 export const scheduleBlocks = pgTable("schedule_blocks", {
   id: uuid("id").primaryKey(),
   userId: text("user_id").notNull(),
-  actionId: uuid("action_id").notNull(),
+  taskId: uuid("task_id").notNull().references(() => tasks.id),
+  actionId: uuid("action_id"),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }).notNull(),
   confidence: real("confidence").notNull(),

@@ -11,10 +11,12 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "db:migrate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@atlas/core": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "postgres": "^3.4.5"
   },

@@ -19,7 +19,8 @@ Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, 
 - `pnpm typecheck`: run TypeScript checks across the repo
 - `pnpm test`: run the test suite
 - `pnpm telegram:webhook:set`: register the Telegram webhook and print Telegram's current webhook info
-- `pnpm db:migrate`: run Drizzle migrations
+- `pnpm db:generate`: generate a new Drizzle migration from schema changes
+- `pnpm db:migrate`: apply existing Drizzle migrations to the configured database
 - `pnpm db:studio`: open the Drizzle Studio workflow
 - `pnpm db:test:start`: start the local Homebrew Postgres test service and create `atlas_test`
 - `pnpm db:test:reset`: reset the local `atlas_test` database schema for integration reruns
@@ -32,8 +33,9 @@ Atlas supports an explicit local Postgres workflow for integration tests on macO
 Typical flow:
 
 1. Run `pnpm db:test:start`
-2. Run `DATABASE_URL='postgresql://$USER@localhost:5432/atlas_test' pnpm --filter @atlas/integration-tests test`
-3. Run `pnpm db:test:stop` when you are done
+2. Create `apps/web/.env.test.local` with `DATABASE_URL='postgresql://$USER@localhost:5432/atlas_test'`
+3. Run `pnpm --filter @atlas/integration-tests test`
+4. Run `pnpm db:test:stop` when you are done
 
 Notes:
 
@@ -43,7 +45,8 @@ Notes:
 
 ## Environment
 
-Copy `.env.example` for local development and provide real values through your deployment environment for hosted runs.
+Copy `.env.example` into `apps/web/.env.local` for local development and provide real values through your deployment environment for hosted runs.
+For local-only test credentials, prefer `apps/web/.env.test.local`, which is gitignored and loaded by the Next app, Drizzle config, and integration test runner.
 
 - `DATABASE_URL`: Postgres connection string
 - `OPENAI_API_KEY`: OpenAI API key
@@ -65,7 +68,7 @@ This repo is designed for human-plus-agent collaboration.
 ## MVP flow
 
 1. Telegram webhook receives a freeform message and stores a raw inbox item.
-2. Core planning logic extracts one or more basic tasks with structured OpenAI outputs.
-3. Core scheduling logic assigns tasks onto a simple internal schedule.
+2. The app loads relevant task, schedule, and user-profile context and sends a structured planning request through the OpenAI Responses API.
+3. Validated planning actions create or update tasks and schedule blocks through the repository layer.
 4. Telegram sends reminders tied to scheduled tasks.
 5. More advanced guidance, breakdown, and replanning are deferred beyond MVP.
