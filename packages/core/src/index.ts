@@ -53,11 +53,26 @@ export const taskSchema = z.object({
   id: z.string(),
   userId: z.string(),
   title: z.string(),
-  status: z.enum(["open", "done", "archived"]),
+  sourceInboxItemId: z.string(),
+  lastInboxItemId: z.string(),
+  lifecycleState: z.enum([
+    "captured",
+    "scheduling",
+    "scheduled",
+    "awaiting_followup",
+    "completed",
+    "archived"
+  ]),
+  // Transitional until the dedicated commitment model replaces schedule_blocks.
+  currentCommitmentId: z.string().uuid().nullable().default(null),
+  rescheduleCount: z.number().int().nonnegative(),
+  lastFollowupAt: z.string().datetime().nullable().default(null),
+  completedAt: z.string().datetime().nullable().default(null),
+  archivedAt: z.string().datetime().nullable().default(null),
   priority: z.enum(["low", "medium", "high"]),
   urgency: z.enum(["low", "medium", "high"]),
   energyTag: z.enum(["low", "medium", "high"]).optional(),
-  sourceInboxItemId: z.string()
+  createdAt: z.string().datetime().optional()
 });
 
 export const taskActionSchema = z.object({
@@ -231,6 +246,13 @@ export type InboxPlanningOutput = z.infer<typeof inboxPlanningOutputSchema>;
 export type TaskReference = z.infer<typeof taskReferenceSchema>;
 export type ScheduleBlockReference = z.infer<typeof scheduleBlockReferenceSchema>;
 export type InboxPlanningContext = z.infer<typeof inboxPlanningContextSchema>;
+export type CapturedTaskInput = {
+  userId: string;
+  inboxItemId: string;
+  title: string;
+  priority: Task["priority"];
+  urgency: Task["urgency"];
+};
 
 const DEFAULT_USER_PROFILE: Omit<UserProfile, "userId"> = {
   timezone: "America/Los_Angeles",
@@ -247,6 +269,26 @@ export function buildDefaultUserProfile(userId: string): UserProfile {
   return userProfileSchema.parse({
     userId,
     ...DEFAULT_USER_PROFILE
+  });
+}
+
+export function buildCapturedTask(input: CapturedTaskInput): Omit<Task, "id" | "createdAt"> {
+  return taskSchema.omit({
+    id: true,
+    createdAt: true
+  }).parse({
+    userId: input.userId,
+    sourceInboxItemId: input.inboxItemId,
+    lastInboxItemId: input.inboxItemId,
+    title: input.title,
+    lifecycleState: "scheduling",
+    currentCommitmentId: null,
+    rescheduleCount: 0,
+    lastFollowupAt: null,
+    completedAt: null,
+    archivedAt: null,
+    priority: input.priority,
+    urgency: input.urgency
   });
 }
 

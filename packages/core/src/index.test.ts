@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 
 import {
+  buildCapturedTask,
   buildDefaultUserProfile,
   buildInboxPlanningContext,
   buildScheduleAdjustment,
@@ -15,6 +16,7 @@ import {
   resolveScheduleBlockReference,
   resolveTaskReference,
   scheduleBlockSchema,
+  taskSchema,
   userProfileSchema
 } from "./index";
 
@@ -55,6 +57,71 @@ describe("core package", () => {
     });
   });
 
+  it("builds the default captured task shape in core", () => {
+    expect(
+      buildCapturedTask({
+        userId: "123",
+        inboxItemId: "inbox-1",
+        title: "Review launch checklist",
+        priority: "medium",
+        urgency: "high"
+      })
+    ).toEqual({
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      title: "Review launch checklist",
+      lifecycleState: "scheduling",
+      currentCommitmentId: null,
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "high"
+    });
+  });
+
+  it("accepts task-centric live state on task records", () => {
+    const result = taskSchema.safeParse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-2",
+      title: "Review launch checklist",
+      lifecycleState: "awaiting_followup",
+      currentCommitmentId: "00000000-0000-4000-8000-000000000001",
+      rescheduleCount: 2,
+      lastFollowupAt: "2026-03-15T17:00:00.000Z",
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "high"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects non-uuid current commitment ids on task records", () => {
+    const result = taskSchema.safeParse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-2",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled",
+      currentCommitmentId: "block-1",
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "high"
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("builds planning context aliases for existing tasks and schedule blocks", () => {
     const context = buildInboxPlanningContext({
       inboxItem: {
@@ -72,15 +139,21 @@ describe("core package", () => {
           id: "task-1",
           userId: "123",
           sourceInboxItemId: "inbox-0",
+          lastInboxItemId: "inbox-0",
           title: "Review launch checklist",
-          status: "open",
+          lifecycleState: "scheduled",
+          currentCommitmentId: "00000000-0000-4000-8000-000000000001",
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
           priority: "medium",
           urgency: "medium"
         }
       ],
       scheduleBlocks: [
         {
-          id: "block-1",
+          id: "00000000-0000-4000-8000-000000000001",
           userId: "123",
           taskId: "task-1",
           startAt: "2026-03-13T17:00:00.000Z",
@@ -114,15 +187,21 @@ describe("core package", () => {
           id: "task-1",
           userId: "123",
           sourceInboxItemId: "inbox-0",
+          lastInboxItemId: "inbox-0",
           title: "Review launch checklist",
-          status: "open",
+          lifecycleState: "scheduled",
+          currentCommitmentId: "00000000-0000-4000-8000-000000000001",
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
           priority: "medium",
           urgency: "medium"
         }
       ],
       scheduleBlocks: [
         {
-          id: "block-1",
+          id: "00000000-0000-4000-8000-000000000001",
           userId: "123",
           taskId: "task-1",
           startAt: "2026-03-13T17:00:00.000Z",
@@ -145,7 +224,7 @@ describe("core package", () => {
       resolveScheduleBlockReference(context, {
         alias: "schedule_block_1"
       })?.id
-    ).toBe("block-1");
+    ).toBe("00000000-0000-4000-8000-000000000001");
   });
 
   it("accepts contract-shaped planning outputs", async () => {
@@ -199,8 +278,14 @@ describe("core package", () => {
           id: "task-1",
           userId: "user_1",
           sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
           title: "Review launch checklist",
-          status: "open",
+          lifecycleState: "scheduling",
+          currentCommitmentId: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
           priority: "medium",
           urgency: "medium"
         }

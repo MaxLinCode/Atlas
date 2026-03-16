@@ -220,6 +220,36 @@ if (!databaseUrl) {
       const updatedBlocks = await sql`select start_at, reschedule_count from schedule_blocks`;
       expect(updatedBlocks[0]?.reschedule_count).toBe(1);
     });
+
+    it("enforces the current commitment foreign key on tasks", async () => {
+      await expect(
+        sql`
+          insert into tasks (
+            id,
+            user_id,
+            source_inbox_item_id,
+            last_inbox_item_id,
+            title,
+            lifecycle_state,
+            current_commitment_id,
+            reschedule_count,
+            priority,
+            urgency
+          ) values (
+            '00000000-0000-4000-8000-000000000010',
+            '123',
+            '00000000-0000-4000-8000-000000000011',
+            '00000000-0000-4000-8000-000000000011',
+            'Review launch checklist',
+            'scheduled',
+            '00000000-0000-4000-8000-000000000099',
+            0,
+            'medium',
+            'medium'
+          )
+        `
+      ).rejects.toThrow();
+    });
   });
 }
 
