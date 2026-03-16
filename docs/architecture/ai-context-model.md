@@ -1,33 +1,38 @@
 # AI Context Model
 
-This document defines how Atlas should provide context to AI systems without relying on long conversation history.
+This document defines how Atlas should provide context to AI systems for both conversation mode and mutation mode.
 
 ## Goal
 
 Atlas should feel continuous and context-aware while keeping prompts small, predictable, and grounded in structured product state.
 
-The system should derive assistant continuity from:
+The system should derive assistant continuity from a hybrid of recent conversation and durable state:
 
 - structured user preferences
+- recent relevant conversation turns
 - explicit active task state
-- schedule data retrieved from the database
-- planner and inbox-processing audit state when conversational scheduling needs a safe anchor
+- current task state and accountability state
+- relevant recent or upcoming schedule information
+- planner and inbox-processing audit state when mutation or follow-up needs a safe anchor
 
-It should not depend on replaying large chat transcripts to reconstruct user intent.
+It should not depend on replaying large chat transcripts as the canonical source of truth for product state.
 
 ## Memory principles
 
 1. Store facts, not transcripts.
-   Persist structured information about the user and their work instead of raw chat history wherever possible.
+   Persist structured information about the user and their work instead of treating raw chat history as durable state.
 
 2. Separate durable preferences from temporary task state.
    User preferences change infrequently. Task workflows are short-lived and should be modeled separately.
 
-3. Inject only relevant memory into prompts.
-   Include the minimum useful profile, active task state, and schedule context for the current operation.
+3. Use recent conversation where it improves the assistant.
+   Recent transcript is valid context for conversation mode when it improves planning dialogue, prioritization, or meta-use.
 
-4. Treat the database as the source of truth.
-   The model reasons over app-owned state. It should not act as the system of record.
+4. Inject only relevant memory into prompts.
+   Include only the minimum useful profile, task state, conversational context, and schedule context for the current operation.
+
+5. Treat the database and external integrations as the source of truth for mutations.
+   The model reasons over app-owned state and relevant external state. It should not act as the system of record.
 
 ## Memory layers
 
@@ -83,12 +88,12 @@ Example:
 
 This layer prevents the assistant from losing track of the current workflow without treating the full chat as durable state.
 
-For schedule-forward MVP inbox processing, this layer should be reconstructed from persisted task, schedule block, and planner-run state rather than from loosely replayed Telegram messages.
-When prompting the model, existing tasks and schedule blocks should be represented with app-generated symbolic aliases rather than raw database ids.
+For the conversation-first MVP, this layer may be informed by recent conversation plus persisted task and audit state.
+When prompting the model for mutation mode, existing tasks or schedule-linked records should still be represented with app-generated symbolic aliases or explicit application references rather than raw database ids.
 
 ### Schedule state
 
-Schedule data should come from Atlas's internal persistence layer rather than the model's memory.
+Schedule data should come from Atlas's integrations and persisted linkage, not from the model's memory.
 
 Representative tool or service calls include:
 
@@ -97,33 +102,49 @@ Representative tool or service calls include:
 - `create_task`
 - `update_task`
 
-The database remains the canonical source of truth for scheduled work, reminders, and task state.
+Atlas should treat the external calendar as the canonical source of scheduled time while retaining Atlas-owned task and accountability state in the database.
 
-## Prompt context structure
+## Mode-specific context
 
-Each model request should include only the context needed for the current operation:
+### Conversation mode
+
+Conversation mode should use:
 
 1. System instructions
 2. User preferences
-3. Active task state, if any
-4. Relevant schedule information
-5. Relevant planner or processing anchor state, if any
+3. Recent relevant conversation turns
+4. Active tasks and accountability state relevant to the turn
+5. Relevant recent or upcoming schedule information
 6. The user's latest message
 
-This keeps prompts compact while preserving continuity and reducing token cost.
+This mode is optimized for fluid planning conversation, prioritization help, reflective guidance, and schedule-forward proposals without forcing mutation.
+
+### Mutation mode
+
+Mutation mode should use only what is necessary to safely execute a confirmed or clearly intended change:
+
+1. System instructions
+2. User preferences
+3. Relevant recent conversation turns if needed for clarity
+4. Exact target task and schedule references
+5. Relevant current schedule information
+6. The user's latest message
+
+This mode is optimized for validated task, scheduling, completion, archive, and reschedule writes.
 
 ## Design implications
 
-- Prompt construction should read structured state from repositories or application services, not from raw chat logs.
-- Prompt construction should provide model-readable symbolic references for existing tasks and schedule blocks so the app can safely resolve proposed actions.
-- Structured model output must be validated at the application boundary before it can create or mutate product state.
-- Telegram history should not be treated as canonical memory.
-- Scheduling and reminder decisions should be explainable from stored preferences and schedule state.
-- Conversational schedule adjustments should only be attempted when persisted Atlas state provides one safe target or explicit linkage.
+- Prompt construction should be mode-dependent rather than forcing every turn through the same planning context.
+- Prompt construction may read recent conversation in conversation mode, but should not treat transcript as canonical state.
+- Prompt construction should provide model-readable references for existing tasks and current schedule-linked records so the app can safely resolve proposed mutations.
+- Structured mutation output must be validated at the application boundary before it can create or mutate product state.
+- Atlas should not try to reconstruct all conversational continuity from normalized database records alone.
+- Scheduling and follow-up decisions should be explainable from stored preferences, Atlas task state, and external schedule state.
+- Conversational schedule adjustments should only be attempted when Atlas has one safe target or explicit linkage.
 
 ## Relationship to Atlas architecture
 
-- `packages/core` should define the schemas and product rules for memory-backed context.
-- `packages/db` should persist durable user preferences, active task state, and schedule records.
+- `packages/core` should define the schemas and product rules for mode-aware context.
+- `packages/db` should persist durable user preferences, active task state, task state, and audit records.
 - `packages/integrations` should not own user memory semantics; it should only transport model or Telegram inputs and outputs.
-- `apps/web` should orchestrate retrieval of the relevant context for each request without embedding product logic in route handlers.
+- `apps/web` should orchestrate retrieval of the relevant context for each turn without embedding product logic in route handlers.
