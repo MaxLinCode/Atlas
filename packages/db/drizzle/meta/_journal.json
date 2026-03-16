@@ -26,15 +26,22 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1773460802429,
+      "when": 1773701791094,
       "tag": "0003_schedule_forward_inbox",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1773460802430,
+      "when": 1773701791095,
       "tag": "0004_drop_inbox_confidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773701791096,
+      "tag": "0005_task_centric_tasks",
       "breakpoints": true
     }
   ]

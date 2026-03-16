@@ -66,6 +66,12 @@ describe("process inbox item service", () => {
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listTasksForTests()[0]).toMatchObject({
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      lifecycleState: "scheduled",
+      rescheduleCount: 0
+    });
   });
 
   it("uses model-provided timing constraints for combined task and schedule requests", async () => {
@@ -209,6 +215,11 @@ describe("process inbox item service", () => {
 
     expect(result.outcome).toBe("updated_schedule");
     expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T15:00:00.000Z");
+    expect(listTasksForTests()[0]).toMatchObject({
+      lastInboxItemId: "inbox-move",
+      lifecycleState: "scheduled",
+      rescheduleCount: 1
+    });
   });
 
   it("marks invalid model output references for clarification", async () => {

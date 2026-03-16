@@ -109,8 +109,8 @@ type StoredInboxItem = InboxItem & {
   createdAt?: Date;
 };
 
-type StoredTask = Task & {
-  createdAt?: Date;
+type StoredTask = Omit<Task, "createdAt"> & {
+  createdAt?: string | undefined;
 };
 
 type StoredScheduleBlock = ScheduleBlock;
@@ -189,7 +189,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const aliasToCreatedTaskId = new Map<string, string>();
     const createdTasks = input.tasks.map(({ alias, task }) => {
-      const createdTask = {
+      const createdTask: StoredTask = {
         ...task,
         id: randomUUID()
       };
@@ -202,6 +202,17 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       ...block,
       taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId
     }));
+
+    const persistedCreatedTasks = createdTasks.map((task) => {
+      const currentBlock = remappedBlocks.find((block) => block.taskId === task.id) ?? null;
+      const persistedTask: StoredTask = {
+        ...task,
+        lifecycleState: currentBlock ? "scheduled" : task.lifecycleState,
+        currentCommitmentId: currentBlock?.id ?? null
+      };
+      this.tasksById.set(task.id, persistedTask);
+      return persistedTask;
+    });
 
     for (const block of remappedBlocks) {
       this.scheduleBlocksById.set(block.id, block);
@@ -219,7 +230,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       outcome: "planned",
       inboxItem: updatedInbox,
       plannerRun,
-      createdTasks,
+      createdTasks: persistedCreatedTasks,
       scheduleBlocks: remappedBlocks,
       followUpMessage: input.followUpMessage
     };
@@ -252,6 +263,19 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     };
     this.scheduleBlocksById.set(updatedBlock.id, updatedBlock);
 
+    const task = this.tasksById.get(updatedBlock.taskId);
+
+    if (task) {
+      const updatedTask: StoredTask = {
+        ...task,
+        lastInboxItemId: input.inboxItemId,
+        lifecycleState: "scheduled",
+        currentCommitmentId: updatedBlock.id,
+        rescheduleCount: task.rescheduleCount + 1
+      };
+      this.tasksById.set(task.id, updatedTask);
+    }
+
     const plannerRun = this.insertPlannerRun(input.plannerRun);
     const updatedInbox = {
       ...inboxItem,
@@ -277,12 +301,24 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     followUpMessage: string;
   }): Promise<ProcessedInboxResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
-    const scheduledTasks = input.taskIds
-      .map((taskId) => this.tasksById.get(taskId))
-      .filter((task): task is Task => Boolean(task));
+    const scheduledTasks: Task[] = [];
 
     for (const block of input.scheduleBlocks) {
       this.scheduleBlocksById.set(block.id, block);
+      const task = this.tasksById.get(block.taskId);
+
+      if (task) {
+        const isReschedule = task.currentCommitmentId !== null;
+        const updatedTask: StoredTask = {
+          ...task,
+          lastInboxItemId: input.inboxItemId,
+          lifecycleState: "scheduled",
+          currentCommitmentId: block.id,
+          rescheduleCount: isReschedule ? task.rescheduleCount + 1 : task.rescheduleCount
+        };
+        this.tasksById.set(task.id, updatedTask);
+        scheduledTasks.push(updatedTask);
+      }
     }
 
     const plannerRun = this.insertPlannerRun(input.plannerRun);
@@ -412,10 +448,17 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         id: task.id,
         userId: task.userId,
         sourceInboxItemId: task.sourceInboxItemId,
+        lastInboxItemId: task.lastInboxItemId,
         title: task.title,
-        status: task.status as Task["status"],
+        lifecycleState: task.lifecycleState as Task["lifecycleState"],
+        currentCommitmentId: task.currentCommitmentId,
+        rescheduleCount: task.rescheduleCount,
+        lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+        completedAt: task.completedAt?.toISOString() ?? null,
+        archivedAt: task.archivedAt?.toISOString() ?? null,
         priority: task.priority as Task["priority"],
-        urgency: task.urgency as Task["urgency"]
+        urgency: task.urgency as Task["urgency"],
+        createdAt: task.createdAt.toISOString()
       })),
       scheduleBlocks: blockRows.map((block) => ({
         id: block.id,
@@ -471,8 +514,14 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             id: randomUUID(),
             userId: task.userId,
             sourceInboxItemId: task.sourceInboxItemId,
+            lastInboxItemId: task.lastInboxItemId,
             title: task.title,
-            status: task.status,
+            lifecycleState: task.lifecycleState,
+            currentCommitmentId: task.currentCommitmentId,
+            rescheduleCount: task.rescheduleCount,
+            lastFollowupAt: task.lastFollowupAt ? new Date(task.lastFollowupAt) : null,
+            completedAt: task.completedAt ? new Date(task.completedAt) : null,
+            archivedAt: task.archivedAt ? new Date(task.archivedAt) : null,
             priority: task.priority,
             urgency: task.urgency
           }))
@@ -506,6 +555,18 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         }))
       );
 
+      for (const createdTask of createdTasks) {
+        const currentBlock = remappedBlocks.find((block) => block.taskId === createdTask.id) ?? null;
+
+        await tx
+          .update(tasks)
+          .set({
+            lifecycleState: currentBlock ? "scheduled" : createdTask.lifecycleState,
+            currentCommitmentId: currentBlock?.id ?? null
+          })
+          .where(eq(tasks.id, createdTask.id));
+      }
+
       const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
       const linkedTaskIds = createdTasks.map((task) => task.id);
 
@@ -529,10 +590,20 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           id: task.id,
           userId: task.userId,
           sourceInboxItemId: task.sourceInboxItemId,
+          lastInboxItemId: task.lastInboxItemId,
           title: task.title,
-          status: task.status as Task["status"],
+          lifecycleState: remappedBlocks.some((block) => block.taskId === task.id)
+            ? "scheduled"
+            : (task.lifecycleState as Task["lifecycleState"]),
+          currentCommitmentId:
+            remappedBlocks.find((block) => block.taskId === task.id)?.id ?? task.currentCommitmentId,
+          rescheduleCount: task.rescheduleCount,
+          lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+          completedAt: task.completedAt?.toISOString() ?? null,
+          archivedAt: task.archivedAt?.toISOString() ?? null,
           priority: task.priority as Task["priority"],
-          urgency: task.urgency as Task["urgency"]
+          urgency: task.urgency as Task["urgency"],
+          createdAt: task.createdAt.toISOString()
         })),
         scheduleBlocks: remappedBlocks,
         followUpMessage: input.followUpMessage
@@ -572,6 +643,20 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           rescheduleCount: existingBlock.rescheduleCount + 1
         })
         .where(eq(scheduleBlocks.id, input.blockId));
+
+      const [existingTask] = await tx.select().from(tasks).where(eq(tasks.id, existingBlock.taskId)).limit(1);
+
+      if (existingTask) {
+        await tx
+          .update(tasks)
+          .set({
+            lastInboxItemId: input.inboxItemId,
+            lifecycleState: "scheduled",
+            currentCommitmentId: existingBlock.id,
+            rescheduleCount: existingTask.rescheduleCount + 1
+          })
+          .where(eq(tasks.id, existingTask.id));
+      }
 
       const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
 
@@ -615,20 +700,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
   }): Promise<ProcessedInboxResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
-      const scheduledTasksRows = input.taskIds.length
+      const existingTasksRows = input.taskIds.length
         ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
         : [];
-      const scheduledTasks = scheduledTasksRows
-        .filter((task) => input.taskIds.includes(task.id))
-        .map((task) => ({
-          id: task.id,
-          userId: task.userId,
-          sourceInboxItemId: task.sourceInboxItemId,
-          title: task.title,
-          status: task.status as Task["status"],
-          priority: task.priority as Task["priority"],
-          urgency: task.urgency as Task["urgency"]
-        }));
+      const existingTasksById = new Map(existingTasksRows.map((task) => [task.id, task]));
 
       await tx.insert(scheduleBlocks).values(
         input.scheduleBlocks.map((block) => ({
@@ -644,6 +719,44 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           externalCalendarId: block.externalCalendarId
         }))
       );
+
+      for (const block of input.scheduleBlocks) {
+        const existingTask = existingTasksById.get(block.taskId);
+        const isReschedule = existingTask?.currentCommitmentId !== null;
+        await tx
+          .update(tasks)
+          .set({
+            lastInboxItemId: input.inboxItemId,
+            lifecycleState: "scheduled",
+            currentCommitmentId: block.id,
+            rescheduleCount: isReschedule
+              ? (existingTask?.rescheduleCount ?? 0) + 1
+              : (existingTask?.rescheduleCount ?? 0)
+          })
+          .where(eq(tasks.id, block.taskId));
+      }
+
+      const updatedScheduledTasksRows = input.taskIds.length
+        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        : [];
+      const scheduledTasks = updatedScheduledTasksRows
+        .filter((task) => input.taskIds.includes(task.id))
+        .map((task) => ({
+          id: task.id,
+          userId: task.userId,
+          sourceInboxItemId: task.sourceInboxItemId,
+          lastInboxItemId: task.lastInboxItemId,
+          title: task.title,
+          lifecycleState: task.lifecycleState as Task["lifecycleState"],
+          currentCommitmentId: task.currentCommitmentId,
+          rescheduleCount: task.rescheduleCount,
+          lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+          completedAt: task.completedAt?.toISOString() ?? null,
+          archivedAt: task.archivedAt?.toISOString() ?? null,
+          priority: task.priority as Task["priority"],
+          urgency: task.urgency as Task["urgency"],
+          createdAt: task.createdAt.toISOString()
+        }));
 
       const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
 

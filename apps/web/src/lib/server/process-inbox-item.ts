@@ -1,4 +1,5 @@
 import {
+  buildCapturedTask,
   buildInboxPlanningContext,
   buildScheduleAdjustment,
   buildScheduleProposal,
@@ -167,14 +168,13 @@ async function applyCreatedTaskActions(
 
   const draftTasks: DraftTaskForPersistence[] = createTaskActions.map((action) => ({
     alias: action.alias,
-    task: {
+    task: buildCapturedTask({
       userId: input.context.inboxItem.userId,
-      sourceInboxItemId: input.context.inboxItem.id,
+      inboxItemId: input.context.inboxItem.id,
       title: action.title,
-      status: "open",
       priority: action.priority,
       urgency: action.urgency
-    }
+    })
   }));
   const taskAliasToDraftTask = new Map<string, Task>(
     draftTasks.map(({ alias, task }) => [

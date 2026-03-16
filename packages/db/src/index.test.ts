@@ -266,8 +266,14 @@ describe("db package", () => {
           task: {
             userId: "123",
             sourceInboxItemId: "inbox-1",
+            lastInboxItemId: "inbox-1",
             title: "Review launch checklist",
-            status: "open",
+            lifecycleState: "scheduling",
+            currentCommitmentId: null,
+            rescheduleCount: 0,
+            lastFollowupAt: null,
+            completedAt: null,
+            archivedAt: null,
             priority: "medium",
             urgency: "medium"
           }
@@ -293,5 +299,227 @@ describe("db package", () => {
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
+    expect(listTasksForTests()[0]).toMatchObject({
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      lifecycleState: "scheduled",
+      currentCommitmentId: "00000000-0000-4000-8000-000000000001",
+      rescheduleCount: 0
+    });
+  });
+
+  it("keeps reschedule count at zero when first scheduling an unscheduled existing task", async () => {
+    resetInboxProcessingStoreForTests();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-create-unscheduled",
+      userId: "123",
+      sourceEventId: "event-create-unscheduled",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const store = getDefaultInboxProcessingStore();
+    await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-create-unscheduled",
+      confidence: 0.88,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-create-unscheduled",
+        version: "test-v1",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.88
+      },
+      tasks: [
+        {
+          alias: "new_task_1",
+          task: {
+            userId: "123",
+            sourceInboxItemId: "inbox-create-unscheduled",
+            lastInboxItemId: "inbox-create-unscheduled",
+            title: "Review launch checklist",
+            lifecycleState: "scheduling",
+            currentCommitmentId: null,
+            rescheduleCount: 0,
+            lastFollowupAt: null,
+            completedAt: null,
+            archivedAt: null,
+            priority: "medium",
+            urgency: "medium"
+          }
+        }
+      ],
+      scheduleBlocks: [],
+      followUpMessage: "Captured Review launch checklist."
+    });
+
+    const createdTask = listTasksForTests()[0];
+    expect(createdTask).toMatchObject({
+      lifecycleState: "scheduling",
+      currentCommitmentId: null,
+      rescheduleCount: 0
+    });
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-first-schedule",
+      userId: "123",
+      sourceEventId: "event-first-schedule",
+      rawText: "schedule it",
+      normalizedText: "schedule it",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await store.saveScheduleRequestResult({
+      inboxItemId: "inbox-first-schedule",
+      confidence: 0.9,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-first-schedule",
+        version: "test-v1",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.9
+      },
+      taskIds: [createdTask!.id],
+      scheduleBlocks: [
+        {
+          id: "00000000-0000-4000-8000-000000000002",
+          userId: "123",
+          taskId: createdTask!.id,
+          startAt: "2026-03-14T17:00:00.000Z",
+          endAt: "2026-03-14T18:00:00.000Z",
+          confidence: 0.8,
+          reason: "First schedule for existing task.",
+          rescheduleCount: 0,
+          externalCalendarId: null
+        }
+      ],
+      followUpMessage: "Scheduled it."
+    });
+
+    expect(result.outcome).toBe("scheduled_existing_tasks");
+    expect(listTasksForTests()[0]).toMatchObject({
+      lastInboxItemId: "inbox-first-schedule",
+      lifecycleState: "scheduled",
+      currentCommitmentId: "00000000-0000-4000-8000-000000000002",
+      rescheduleCount: 0
+    });
+  });
+
+  it("increments task reschedule count when replacing an existing current commitment", async () => {
+    resetInboxProcessingStoreForTests();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-create-scheduled",
+      userId: "123",
+      sourceEventId: "event-create-scheduled",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const store = getDefaultInboxProcessingStore();
+    await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-create-scheduled",
+      confidence: 0.88,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-create-scheduled",
+        version: "test-v1",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.88
+      },
+      tasks: [
+        {
+          alias: "new_task_1",
+          task: {
+            userId: "123",
+            sourceInboxItemId: "inbox-create-scheduled",
+            lastInboxItemId: "inbox-create-scheduled",
+            title: "Review launch checklist",
+            lifecycleState: "scheduling",
+            currentCommitmentId: null,
+            rescheduleCount: 0,
+            lastFollowupAt: null,
+            completedAt: null,
+            archivedAt: null,
+            priority: "medium",
+            urgency: "medium"
+          }
+        }
+      ],
+      scheduleBlocks: [
+        {
+          id: "00000000-0000-4000-8000-000000000003",
+          userId: "123",
+          taskId: "new_task_1",
+          startAt: "2026-03-13T17:00:00.000Z",
+          endAt: "2026-03-13T18:00:00.000Z",
+          confidence: 0.8,
+          reason: "Initial schedule.",
+          rescheduleCount: 0,
+          externalCalendarId: null
+        }
+      ],
+      followUpMessage: "Captured and scheduled Review launch checklist."
+    });
+
+    const scheduledTask = listTasksForTests()[0];
+    expect(scheduledTask).toMatchObject({
+      currentCommitmentId: "00000000-0000-4000-8000-000000000003",
+      rescheduleCount: 0
+    });
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-reschedule-existing",
+      userId: "123",
+      sourceEventId: "event-reschedule-existing",
+      rawText: "schedule it for tomorrow",
+      normalizedText: "schedule it for tomorrow",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await store.saveScheduleRequestResult({
+      inboxItemId: "inbox-reschedule-existing",
+      confidence: 0.9,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-reschedule-existing",
+        version: "test-v1",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.9
+      },
+      taskIds: [scheduledTask!.id],
+      scheduleBlocks: [
+        {
+          id: "00000000-0000-4000-8000-000000000004",
+          userId: "123",
+          taskId: scheduledTask!.id,
+          startAt: "2026-03-14T17:00:00.000Z",
+          endAt: "2026-03-14T18:00:00.000Z",
+          confidence: 0.8,
+          reason: "Replacement schedule for existing task.",
+          rescheduleCount: 0,
+          externalCalendarId: null
+        }
+      ],
+      followUpMessage: "Rescheduled it."
+    });
+
+    expect(result.outcome).toBe("scheduled_existing_tasks");
+    expect(listTasksForTests()[0]).toMatchObject({
+      lastInboxItemId: "inbox-reschedule-existing",
+      lifecycleState: "scheduled",
+      currentCommitmentId: "00000000-0000-4000-8000-000000000004",
+      rescheduleCount: 1
+    });
   });
 });
