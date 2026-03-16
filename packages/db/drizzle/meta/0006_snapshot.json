@@ -1,6 +1,6 @@
 {
-  "id": "adcd7426-1a11-423d-9557-7d2aad36d049",
-  "prevId": "ed717c43-c487-4bf3-b12e-d1992feaa7bf",
+  "id": "734dbf90-eba0-402e-be74-195b3c9788f4",
+  "prevId": "adcd7426-1a11-423d-9557-7d2aad36d049",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -421,12 +421,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "current_commitment_id": {
-          "name": "current_commitment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "reschedule_count": {
           "name": "reschedule_count",
           "type": "integer",
@@ -470,24 +464,34 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "external_calendar_event_id": {
+          "name": "external_calendar_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "external_calendar_id": {
+          "name": "external_calendar_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_start_at": {
+          "name": "scheduled_start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_end_at": {
+          "name": "scheduled_end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "tasks_current_commitment_id_schedule_blocks_id_fk": {
-          "name": "tasks_current_commitment_id_schedule_blocks_id_fk",
-          "tableFrom": "tasks",
-          "tableTo": "schedule_blocks",
-          "columnsFrom": [
-            "current_commitment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
