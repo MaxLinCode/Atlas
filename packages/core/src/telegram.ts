@@ -67,6 +67,10 @@ export function buildTelegramWebhookIdempotencyKey(updateId: number) {
   return `telegram:webhook:update:${updateId}`;
 }
 
+export function buildTelegramFollowUpIdempotencyKey(inboxItemId: string) {
+  return `telegram:followup:inbox-item:${inboxItemId}`;
+}
+
 export function normalizeTelegramUpdate(update: TelegramUpdate) {
   const message = update.message ?? update.edited_message;
 

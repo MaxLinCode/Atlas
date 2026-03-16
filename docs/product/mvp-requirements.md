@@ -19,7 +19,10 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 
 - User can send any freeform message to the Telegram bot.
 - The system accepts and stores the message without requiring structure, formatting, or immediate follow-up questions.
+- The inbox is optimized for capture speed, not clean intake.
+- Each message is treated as canonical captured input that may represent task capture, a scheduling request, a schedule adjustment, or an unclear request that needs clarification.
 - The assistant should support fluid planning conversation, including discussion, prioritization help, reflective planning, and meta questions about how Atlas should be used.
+- The inbox is optimized for capture speed, not clean intake.
 - Not every message should be forced into task extraction or a mutation workflow.
 - Each message may represent conversation, task capture, a scheduling request, a schedule adjustment, a follow-up on existing work, or a request for clarification.
 
@@ -32,7 +35,9 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
   - title or short task text
   - source message
   - optional inferred urgency if clearly stated
-- If the message is too ambiguous to safely extract a task, Atlas may stay in conversation mode instead of forcing extraction.
+- If the message is too ambiguous to safely extract a task, it may remain an inbox item without blocking capture.
+- Task capture is schedule-forward in MVP: when Atlas can safely extract a task, it should also try to place that task onto the internal schedule instead of leaving it open-ended by default.
+- If the message is too ambiguous to safely extract a task, Atlas may stay in conversation mode or leave it as an inbox item without blocking capture.
 - Atlas should only extract tasks when doing so is helpful to the user or clearly implied by the conversation.
 - Task capture is schedule-forward in MVP: when Atlas identifies actionable work, it should bias toward also proposing or placing that work onto the schedule instead of leaving it open-ended by default.
 - A single message may contain both task capture and scheduling intent, such as "submit taxes Friday morning."
@@ -72,6 +77,10 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 ## Product Rules
 
 - Capture must never be blocked by the system trying to be clever.
+- Extraction quality matters more than post-capture conversation.
+- Atlas should optimize for structuring time, not accumulating unscheduled backlog.
+- Scheduling in MVP is allowed to be simple, manual-feeling, and limited, as long as it works consistently.
+- Conversational scheduling must stay anchored to persisted tasks, schedule blocks, and planner state rather than implicit chat-history memory.
 - Conversation quality matters as much as extraction quality.
 - Atlas should feel like a planning assistant first and a mutation engine second.
 - Atlas should optimize for structuring time, not accumulating unscheduled backlog.
@@ -85,6 +94,8 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 ## Acceptance Criteria
 
 - A user can send a messy message in Telegram and have it saved successfully every time.
+- A non-trivial portion of brain-dump messages produce usable tasks without manual cleanup.
+- A created task can be assigned a scheduled time in the product, and the default path should attempt that scheduling automatically when safe.
 - The assistant can respond usefully to a planning conversation even when no task or schedule mutation is needed.
 - A non-trivial portion of brain-dump messages produce usable tasks or concrete planning suggestions without manual cleanup.
 - When actionable work is identified, the default path should attempt to propose or apply a scheduled time automatically when safe.

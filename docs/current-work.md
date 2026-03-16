@@ -2,14 +2,18 @@
 
 ## Active focus
 
-Atlas is pivoting toward a conversation-first, schedule-forward product definition.
-Current implementation focus: move the task row to the canonical live-state model while keeping the rest of the schedule-block-backed runtime working. The next pass should define the separate commitment/history model and continue separating conversation mode from mutation mode.
+Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
+Current implementation focus: move the task row toward the canonical live-state model while keeping the schedule-block-backed runtime working, and continue hardening outbound Telegram follow-up delivery plus clarification handling over persisted state.
 
 ## Near-term milestones
 
 - Finish stabilizing the architecture docs around conversation-first, schedule-forward behavior.
+- Tighten outbound Telegram delivery reliability and error observability.
+- Thread clarification handling through persisted inbox, planner-run, task, and schedule state so reply messages can resume processing safely.
+- Back the admin inbox, planner-runs, and schedule pages with real repository data.
 - Define the next data model around task-centric current commitment plus task history.
 - Define runtime behavior for scheduling, follow-up, completion, archive, and reschedule loops.
+- Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
 
 ## Handoff notes
@@ -28,6 +32,13 @@ Current implementation focus: move the task row to the canonical live-state mode
 - The task row now owns lifecycle state, current-commitment linkage, task-level `reschedule_count`, and inbox provenance directly. `schedule_blocks` remain a transitional backing record for the live commitment until the next data-model pass.
 - `planner_runs` should remain an operational audit trail, but they do not need to become the main product memory layer.
 - Symbolic aliases are still important for existing-item mutations, but they are likely unnecessary overhead for simple new-task capture.
+- The webhook no longer seeds test-only in-memory processing state. Tests must inject in-memory stores and explicit priming when they want to exercise the handler without Postgres.
+- The webhook now attempts outbound Telegram follow-up delivery for planner outcomes, retries once inline on transport failure, and records outgoing transport events in `bot_events`.
+- The app now clarifies instead of applying unsafe planner outputs for:
+  - `clarify` mixed with mutating actions
+  - unsupported mixes of move and create actions
+  - unresolved symbolic aliases
+  - duplicate schedule actions for the same existing task
 
 ## Inspect AI Guardrails
 

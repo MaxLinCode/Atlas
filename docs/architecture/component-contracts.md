@@ -73,7 +73,8 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 - Validated requests to core, integration, and repository layers
 - HTTP responses and operational outcomes for transport boundaries
-- App-layer orchestration for both conversation mode and mutation mode
+- App-layer orchestration for inbox processing over persisted Atlas state
+- App-layer orchestration for both conversation mode and mutation mode over persisted Atlas state
 
 ### May read
 
@@ -91,6 +92,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Authentication and authorization boundaries
 - Idempotency handling
 - Orchestration order across components
+- Which persisted context to load before asking core to classify or schedule an inbox item
 - Whether a turn stays in conversation mode or enters mutation mode
 - Which context to load for the current mode before asking core or the model to reason about the turn
 
@@ -104,6 +106,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
+`packages/core` owns product types, validation schemas, planning-action schemas, symbolic reference rules, and deterministic scheduling helpers for the MVP.
 `packages/core` owns product types, mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
 
 ### Accepts
@@ -114,6 +117,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Produces
 
+- Structured planning-action schemas, symbolic reference rules, scheduling proposals, and ambiguity outcomes
 - Structured mutation-action schemas, symbolic reference rules, scheduling proposals, follow-up outcomes, and ambiguity outcomes
 - App-owned validation results and explainable decisions
 
@@ -128,10 +132,12 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Allowed decisions
 
+- Validation of model-produced planning output through app-owned schemas
 - Validation of model-produced mutation output through app-owned schemas
 - Scheduling heuristics that are deterministic and explainable
 - Follow-up and accountability rules captured in product docs
 - Replanning behavior within the product rules captured in docs
+- Deterministic application of validated planning actions once the app resolves symbolic references to persisted records
 - Deterministic application of validated mutation actions once the app resolves symbolic references to persisted records
 
 ### Forbidden decisions
@@ -144,6 +150,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
+OpenAI interprets messy user text and returns structured planning output.
 The model layer interprets messy user text and supports both conversational planning and structured mutation proposals.
 
 ### Accepts
@@ -153,6 +160,8 @@ The model layer interprets messy user text and supports both conversational plan
 
 ### Produces
 
+- Structured planning actions such as create task, create schedule block, move schedule block, or clarify
+- Optional planning metadata such as confidence, ambiguity markers, and scheduling constraint hints
 - Conversational planning responses, suggestions, and clarifications in conversation mode
 - Structured mutation proposals such as create task, schedule task, move scheduled time, complete task, archive task, or clarify in mutation mode
 - Optional metadata such as confidence, ambiguity markers, and scheduling constraint hints
@@ -168,6 +177,8 @@ The model layer interprets messy user text and supports both conversational plan
 
 ### Allowed decisions
 
+- Text interpretation within the provided planning task
+- Proposing planning actions and symbolic references from the provided context
 - Text interpretation within the provided planning or mutation task
 - Conversational reasoning over recent transcript plus relevant state when the app selects conversation mode
 - Proposing mutation actions and symbolic references from the provided context when the app selects mutation mode
@@ -178,6 +189,7 @@ The model layer interprets messy user text and supports both conversational plan
 - Persisting records
 - Triggering side effects directly
 - Acting as the final validator of structured output
+- Making autonomous scheduling or reminder mutations in the MVP
 - Acting as canonical conversational memory
 - Making autonomous task, schedule, or reminder mutations in the MVP
 
@@ -219,6 +231,12 @@ Neon Postgres is the canonical persistence layer for Atlas.
 
 ## Shared contract rules
 
+- An inbound Telegram message must be persisted as an inbox item before extraction can create or mutate downstream task state.
+- OpenAI output must be validated against app-owned schemas before any record is created from it.
+- OpenAI may reference existing tasks or schedule blocks only through app-provided symbolic aliases, never raw persistence ids.
+- Conversational scheduling changes must resolve from persisted Atlas state, not from broad recent Telegram history.
+- Scheduling state must be reconstructed from the database, not from Telegram history or model memory.
+- Reminder dispatch must operate from persisted reminder or schedule state, not ad hoc prompt context.
 - An inbound Telegram message must be persisted as an inbox item before Atlas mutates downstream task state.
 - Conversation mode may use recent transcript plus relevant state, but transcript is not canonical state for mutations.
 - Mutation mode output must be validated against app-owned schemas before any record is created or updated from it.

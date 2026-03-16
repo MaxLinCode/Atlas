@@ -7,6 +7,9 @@ import {
   listTasksForTests,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
+  listOutgoingBotEventsForTests,
+  recordOutgoingTelegramMessageIfNew,
+  updateOutgoingTelegramMessage,
   recordIncomingTelegramMessageIfNew,
   seedInboxItemForProcessingTests,
   getDefaultInboxProcessingStore,
@@ -82,6 +85,89 @@ describe("db package", () => {
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
+  });
+
+  it("records a first-seen outgoing Telegram message event", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    const result = await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:inbox-item:inbox-1",
+      payload: {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist."
+      },
+      retryState: "sending"
+    });
+
+    expect(result.status).toBe("reserved");
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(listOutgoingBotEventsForTests()[0]?.retryState).toBe("sending");
+  });
+
+  it("deduplicates repeated outgoing Telegram message events", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:inbox-item:inbox-1",
+      payload: {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist."
+      },
+      retryState: "sending"
+    });
+
+    const duplicate = await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:inbox-item:inbox-1",
+      payload: {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist."
+      },
+      retryState: "sent"
+    });
+
+    expect(duplicate).toEqual({
+      status: "duplicate"
+    });
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+  });
+
+  it("updates a reserved outgoing Telegram message event after delivery", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:inbox-item:inbox-1",
+      payload: {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist.",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:inbox-item:inbox-1",
+      payload: {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist.",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+
+    expect(listOutgoingBotEventsForTests()[0]).toMatchObject({
+      retryState: "sent",
+      payload: {
+        attempts: 1
+      }
+    });
   });
 
   it("keeps distinct Telegram update ids as separate ingress events", async () => {

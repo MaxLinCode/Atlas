@@ -7,6 +7,7 @@ import {
   buildInboxPlanningContext,
   buildScheduleAdjustment,
   buildScheduleProposal,
+  buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   getConfig,
   inboxPlanningOutputSchema,
@@ -55,6 +56,12 @@ describe("core package", () => {
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
       TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
     });
+  });
+
+  it("builds a stable Telegram follow-up idempotency key", () => {
+    expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
+      "telegram:followup:inbox-item:inbox-1"
+    );
   });
 
   it("builds the default captured task shape in core", () => {
@@ -169,7 +176,6 @@ describe("core package", () => {
     expect(context.tasks[0]?.alias).toBe("existing_task_1");
     expect(context.scheduleBlocks[0]?.alias).toBe("schedule_block_1");
   });
-
   it("resolves symbolic task and schedule block aliases", () => {
     const context = buildInboxPlanningContext({
       inboxItem: {

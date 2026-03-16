@@ -1,8 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildDefaultUserProfile } from "@atlas/core";
+import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
-import { planInboxItemWithResponses, plannedCalendarAdapter } from "./index";
+import { planInboxItemWithResponses, plannedCalendarAdapter, sendTelegramMessage } from "./index";
+
+const ORIGINAL_ENV = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET
+};
+
+function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
+  const value = ORIGINAL_ENV[name];
+
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
+
+beforeEach(() => {
+  process.env.DATABASE_URL = "postgres://atlas:atlas@localhost:5432/atlas";
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
+  process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+});
+
+afterEach(() => {
+  restoreEnv("DATABASE_URL");
+  restoreEnv("OPENAI_API_KEY");
+  restoreEnv("TELEGRAM_BOT_TOKEN");
+  restoreEnv("TELEGRAM_WEBHOOK_SECRET");
+});
 
 describe("integrations", () => {
   it("keeps calendar support as a planned boundary", () => {
@@ -95,5 +127,79 @@ describe("integrations", () => {
         }
       )
     ).rejects.toThrow();
+  });
+
+  it("sends a Telegram follow-up message through sendMessage", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            message_id: 88,
+            date: 1_700_000_000,
+            chat: {
+              id: "999",
+              type: "private"
+            },
+            text: "Captured and scheduled Review launch checklist."
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const result = await sendTelegramMessage(
+      {
+        chatId: "999",
+        text: "Captured and scheduled Review launch checklist."
+      },
+      fetchMock
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.telegram.org/bottest-telegram-token/sendMessage",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+    expect(result.result.message_id).toBe(88);
+  });
+
+  it("builds a stable Telegram follow-up idempotency key", () => {
+    expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
+      "telegram:followup:inbox-item:inbox-1"
+    );
+  });
+
+  it("includes Telegram error descriptions when sendMessage fails", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: false,
+          description: "Bad Request: chat not found"
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      sendTelegramMessage(
+        {
+          chatId: "999",
+          text: "Captured and scheduled Review launch checklist."
+        },
+        fetchMock
+      )
+    ).rejects.toThrow("Telegram sendMessage failed with status 400: Bad Request: chat not found.");
   });
 });
