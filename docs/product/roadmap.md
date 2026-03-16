@@ -4,10 +4,10 @@
 
 ### MVP
 
-- Telegram inbox
-- Task extraction
-- Simple scheduling
-- Simple nag reminders
+- Conversational planning assistant
+- Task and plan extraction when useful
+- Schedule-forward scheduling
+- Simple reminders and follow-through
 
 ## Next candidate versions
 
@@ -15,7 +15,7 @@
 
 - Adaptive task breakdown
 - Smart scheduling
-- Rescheduling of overdue or missed items
-- "What's next" guidance
+- Richer rescheduling of overdue or missed items
+- Stronger "what should I do next?" guidance
 
 Roadmap sequencing should be updated only when product priorities are intentionally changed.
