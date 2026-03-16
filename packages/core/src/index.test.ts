@@ -103,7 +103,6 @@ describe("core package", () => {
     expect(context.tasks[0]?.alias).toBe("existing_task_1");
     expect(context.scheduleBlocks[0]?.alias).toBe("schedule_block_1");
   });
-
   it("resolves symbolic task and schedule block aliases", () => {
     const context = buildInboxPlanningContext({
       inboxItem: {
