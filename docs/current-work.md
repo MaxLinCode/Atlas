@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is pivoting toward a conversation-first, schedule-forward product definition.
-Current implementation focus: stabilize the architecture docs around that pivot before changing schema or runtime behavior. The next pass should separate conversation mode from mutation mode, define external-calendar-backed scheduling ownership, and simplify state loading for the common conversational path.
+Current implementation focus: move the task row to the canonical live-state model while keeping the rest of the schedule-block-backed runtime working. The next pass should define the separate commitment/history model and continue separating conversation mode from mutation mode.
 
 ## Near-term milestones
 
@@ -19,11 +19,13 @@ Current implementation focus: stabilize the architecture docs around that pivot 
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
 - Every Atlas task should seek scheduled time immediately; unscheduled backlog should not be the default operating model.
 - Every scheduled task should receive follow-up after the scheduled block ends, and `awaiting_followup` is now a key lifecycle concept.
+- `awaiting_followup` should begin only after the scheduled block has ended and Atlas has issued a follow-up nudge for that task. The runtime path that detects block end and sends that nudge is still intentionally pending design.
 - Webhook ingress is idempotent and persists canonical `inbox_items` before any planner mutation.
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
 - Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
 - The current `schedule_blocks` model is part of the existing implementation, but the architecture is moving toward task-centric current commitment plus external-calendar-backed scheduling. `task_actions` remain deferred and should not become the active scheduling unit.
+- The task row now owns lifecycle state, current-commitment linkage, task-level `reschedule_count`, and inbox provenance directly. `schedule_blocks` remain a transitional backing record for the live commitment until the next data-model pass.
 - `planner_runs` should remain an operational audit trail, but they do not need to become the main product memory layer.
 - Symbolic aliases are still important for existing-item mutations, but they are likely unnecessary overhead for simple new-task capture.
 

@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   integer,
   jsonb,
   pgTable,
@@ -6,6 +7,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  type AnyPgColumn,
   uuid,
   varchar
 } from "drizzle-orm/pg-core";
@@ -28,16 +30,46 @@ export const inboxItems = pgTable("inbox_items", {
   })
 );
 
-export const tasks = pgTable("tasks", {
+export const scheduleBlocks = pgTable("schedule_blocks", {
   id: uuid("id").primaryKey(),
   userId: text("user_id").notNull(),
-  sourceInboxItemId: uuid("source_inbox_item_id").notNull(),
-  title: text("title").notNull(),
-  status: varchar("status", { length: 32 }).notNull(),
-  priority: varchar("priority", { length: 16 }).notNull(),
-  urgency: varchar("urgency", { length: 16 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  taskId: uuid("task_id").notNull().references((): AnyPgColumn => tasks.id),
+  actionId: uuid("action_id"),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+  confidence: real("confidence").notNull(),
+  reason: text("reason").notNull(),
+  rescheduleCount: integer("reschedule_count").notNull().default(0),
+  externalCalendarId: text("external_calendar_id")
 });
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    sourceInboxItemId: uuid("source_inbox_item_id").notNull(),
+    lastInboxItemId: uuid("last_inbox_item_id").notNull(),
+    title: text("title").notNull(),
+    lifecycleState: varchar("lifecycle_state", { length: 32 }).notNull(),
+    // Transitional until a dedicated commitments table lands.
+    currentCommitmentId: uuid("current_commitment_id"),
+    rescheduleCount: integer("reschedule_count").notNull().default(0),
+    lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    priority: varchar("priority", { length: 16 }).notNull(),
+    urgency: varchar("urgency", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    currentCommitmentFk: foreignKey({
+      name: "tasks_current_commitment_id_schedule_blocks_id_fk",
+      columns: [table.currentCommitmentId],
+      foreignColumns: [scheduleBlocks.id]
+    }).onDelete("set null")
+  })
+);
 
 export const taskActions = pgTable("task_actions", {
   id: uuid("id").primaryKey(),
@@ -47,19 +79,6 @@ export const taskActions = pgTable("task_actions", {
   estimatedMinutes: integer("estimated_minutes").notNull(),
   breakdownLevel: integer("breakdown_level").notNull(),
   status: varchar("status", { length: 32 }).notNull()
-});
-
-export const scheduleBlocks = pgTable("schedule_blocks", {
-  id: uuid("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  taskId: uuid("task_id").notNull().references(() => tasks.id),
-  actionId: uuid("action_id"),
-  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
-  endAt: timestamp("end_at", { withTimezone: true }).notNull(),
-  confidence: real("confidence").notNull(),
-  reason: text("reason").notNull(),
-  rescheduleCount: integer("reschedule_count").notNull().default(0),
-  externalCalendarId: text("external_calendar_id")
 });
 
 export const userProfiles = pgTable("user_profiles", {
