@@ -1,6 +1,6 @@
 # AI Context Model
 
-This document defines how Atlas should provide context to AI systems for both conversation mode and mutation mode.
+This document defines how Atlas should provide context to AI systems for turn routing, conversation mode, and mutation mode.
 
 ## Goal
 
@@ -26,7 +26,7 @@ It should not depend on replaying large chat transcripts as the canonical source
    User preferences change infrequently. Task workflows are short-lived and should be modeled separately.
 
 3. Use recent conversation where it improves the assistant.
-   Recent transcript is valid context for conversation mode when it improves planning dialogue, prioritization, or meta-use.
+   Recent transcript is valid context for turn routing and conversation mode when it improves planning dialogue, prioritization, meta-use, or short-horizon confirmation recovery.
 
 4. Inject only relevant memory into prompts.
    Include only the minimum useful profile, task state, conversational context, and schedule context for the current operation.
@@ -107,6 +107,19 @@ Atlas should treat the external calendar as the canonical source of scheduled ti
 
 ## Mode-specific context
 
+### Turn router
+
+Turn routing should use:
+
+1. System instructions for app-owned routing modes
+2. User preferences only if relevant to disambiguating the turn
+3. Recent relevant conversation turns
+4. Active tasks and unresolved follow-up state relevant to the turn
+5. Minimal schedule context needed to understand whether the turn is conversational or mutating
+6. The user's latest message
+
+This mode is optimized for choosing between `conversation`, `mutation`, and `conversation_then_mutation`. It should stay lighter than a full conversational prompt, but it may use more recent transcript than mutation mode because v1 confirmation recovery is intentionally short-horizon and transcript-assisted.
+
 ### Conversation mode
 
 Conversation mode should use:
@@ -118,7 +131,7 @@ Conversation mode should use:
 5. Relevant recent or upcoming schedule information
 6. The user's latest message
 
-This mode is optimized for fluid planning conversation, prioritization help, reflective guidance, and schedule-forward proposals without forcing mutation.
+This mode is optimized for fluid planning conversation, prioritization help, reflective guidance, and schedule-forward proposals without forcing mutation. Conversation mode may use a broader recent transcript window than mutation mode because continuity and natural replies matter more here than minimum-context mutation safety.
 
 ### Mutation mode
 
@@ -131,12 +144,14 @@ Mutation mode should use only what is necessary to safely execute a confirmed or
 5. Relevant current schedule information
 6. The user's latest message
 
-This mode is optimized for validated task, scheduling, completion, archive, and reschedule writes.
+This mode is optimized for validated task, scheduling, completion, archive, and reschedule writes. Mutation mode should stay narrower than conversation mode and use transcript only as needed for clarity or short-horizon confirmation, not as canonical memory.
 
 ## Design implications
 
 - Prompt construction should be mode-dependent rather than forcing every turn through the same planning context.
+- Prompt construction should distinguish among router, conversation, and mutation prompts rather than treating all model calls as one planner task.
 - Prompt construction may read recent conversation in conversation mode, but should not treat transcript as canonical state.
+- Prompt construction may use recent transcript for turn routing and short-horizon confirmation recovery in v1, but persisted Atlas state remains the source of truth for mutations.
 - Prompt construction should provide model-readable references for existing tasks and current schedule-linked records so the app can safely resolve proposed mutations.
 - Structured mutation output must be validated at the application boundary before it can create or mutate product state.
 - Atlas should not try to reconstruct all conversational continuity from normalized database records alone.
@@ -145,7 +160,7 @@ This mode is optimized for validated task, scheduling, completion, archive, and 
 
 ## Relationship to Atlas architecture
 
-- `packages/core` should define the schemas and product rules for mode-aware context.
+- `packages/core` should define the schemas and product rules for router-aware and mode-aware context.
 - `packages/db` should persist durable user preferences, active task state, task state, and audit records.
 - `packages/integrations` should not own user memory semantics; it should only transport model or Telegram inputs and outputs.
-- `apps/web` should orchestrate retrieval of the relevant context for each turn without embedding product logic in route handlers.
+- `apps/web` should orchestrate retrieval of the relevant context for each turn, route the turn, and choose the correct model path without embedding product logic in route handlers.

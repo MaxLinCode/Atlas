@@ -3,16 +3,22 @@
 ## Active focus
 
 Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
-Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, and use the next pass to design the missing follow-up/runtime lifecycle around that lean task model.
+Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, and implement the locked follow-up/reschedule runtime on top of that lean task model.
 
 ## Near-term milestones
 
-- Finish stabilizing the architecture docs around conversation-first, schedule-forward behavior.
 - Tighten outbound Telegram delivery reliability and error observability.
 - Thread clarification handling through persisted inbox, planner-run, task, and schedule state so reply messages can resume processing safely.
 - Back the admin inbox, planner-runs, and schedule pages with real repository data.
 - Define the next data model around task-centric current commitment plus future task history.
-- Define runtime behavior for scheduling, follow-up, completion, archive, and reschedule loops.
+- Add the task-level schema and repository support needed for the locked follow-up runtime, including `followup_reminder_sent_at`.
+- Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
+- Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
+- Implement the first conversational bot slice by adding the app-owned `TurnRouter` that selects `conversation`, `mutation`, or `conversation_then_mutation`.
+- Implement conversational bot behavior in small slices rather than one broad thread:
+  - conversational response path
+  - mutation reply renderer
+  - mixed-turn confirmation handling
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
 - Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
@@ -70,6 +76,7 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - `pnpm --filter @atlas/integrations test`
   - `pnpm --filter @atlas/integration-tests test`
 - The core follow-up and reschedule runtime semantics are now locked in docs. Remaining implementation work should follow those contracts rather than reopening the model.
+- The conversational model behavior is now documented as a separate two-path architecture. Remaining work should implement that design incrementally instead of trying to ship a full conversational bot in one slice.
 
 ### Locked runtime semantics
 
