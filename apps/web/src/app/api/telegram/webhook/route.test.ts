@@ -11,6 +11,7 @@ import {
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests
 } from "@atlas/db";
+import { resetCalendarAdapterForTests } from "@atlas/integrations";
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
@@ -18,7 +19,12 @@ const { sendTelegramMessageMock } = vi.hoisted(() => ({
   sendTelegramMessageMock: vi.fn()
 }));
 
-vi.mock("@atlas/integrations", () => ({
+vi.mock("@atlas/integrations", async () => {
+  const actual = await vi.importActual<typeof import("@atlas/integrations")>("@atlas/integrations");
+
+  return {
+    ...actual,
+    getDefaultCalendarAdapter: () => actual.getDefaultCalendarAdapter(),
   planInboxItemWithResponses: async () => ({
     confidence: 0.9,
     summary: "Captured and scheduled Review launch checklist.",
@@ -47,8 +53,9 @@ vi.mock("@atlas/integrations", () => ({
       }
     ]
   }),
-  sendTelegramMessage: sendTelegramMessageMock
-}));
+    sendTelegramMessage: sendTelegramMessageMock
+  };
+});
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
 const ORIGINAL_ENV = {
@@ -92,6 +99,7 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+  resetCalendarAdapterForTests();
   sendTelegramMessageMock.mockReset();
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,

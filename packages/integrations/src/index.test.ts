@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
-import { planInboxItemWithResponses, plannedCalendarAdapter, sendTelegramMessage } from "./index";
+import {
+  getDefaultCalendarAdapter,
+  planInboxItemWithResponses,
+  resetCalendarAdapterForTests,
+  sendTelegramMessage
+} from "./index";
 
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -27,6 +32,7 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+  resetCalendarAdapterForTests();
 });
 
 afterEach(() => {
@@ -37,8 +43,24 @@ afterEach(() => {
 });
 
 describe("integrations", () => {
-  it("keeps calendar support as a planned boundary", () => {
-    expect(plannedCalendarAdapter.status).toBe("planned");
+  it("creates and updates task-backed calendar events through the adapter contract", async () => {
+    resetCalendarAdapterForTests();
+    const adapter = getDefaultCalendarAdapter();
+    const created = await adapter.createEvent({
+      title: "Review launch checklist",
+      startAt: "2026-03-17T17:00:00.000Z",
+      endAt: "2026-03-17T18:00:00.000Z"
+    });
+    const updated = await adapter.updateEvent({
+      externalCalendarEventId: created.externalCalendarEventId,
+      externalCalendarId: created.externalCalendarId,
+      title: "Review launch checklist",
+      startAt: "2026-03-18T17:00:00.000Z",
+      endAt: "2026-03-18T18:00:00.000Z"
+    });
+
+    expect(updated.externalCalendarEventId).toBe(created.externalCalendarEventId);
+    expect(updated.scheduledStartAt).toBe("2026-03-18T17:00:00.000Z");
   });
 
   it("parses structured inbox planning output from the Responses API client", async () => {

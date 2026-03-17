@@ -43,6 +43,13 @@
       "when": 1773701791096,
       "tag": "0005_task_centric_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773701791097,
+      "tag": "0006_external_calendar_task_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -35,32 +35,32 @@ Notes:
 
 - Classification: canonical record
 - Represents: the MVP normalized work item extracted from an inbox item
-- Source of truth for: current task state and current accountability state in the MVP
+- Source of truth for: current task state, current accountability state, and the current scheduled commitment snapshot in the MVP
 - Created by: planner or extraction flow after validation of app-owned schemas
-- Allowed mutations: lifecycle state, current commitment linkage, follow-up metadata, and other task-level metadata owned by the application
+- Allowed mutations: lifecycle state, current external-calendar commitment snapshot, follow-up metadata, and other task-level metadata owned by the application
 - Must not be confused with: the original inbox text, reminder deliveries, or future subtasks
 
 Notes:
 - In MVP, `tasks` are the active schedulable work abstraction.
 - The model may suggest task structure, but Atlas owns the persisted task record.
-- `tasks` should hold the live lifecycle field, source and last-touch inbox provenance, task-level `reschedule_count`, and the current commitment pointer.
-- In the current transitional implementation, `current_commitment_id` points to `schedule_blocks.id` and that foreign key is enforced in the database.
+- `tasks` should hold the live lifecycle field, source and last-touch inbox provenance, task-level `reschedule_count`, and the current external-calendar-backed commitment snapshot.
+- The current commitment snapshot on `tasks` is `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
 - `awaiting_followup` is not entered at scheduling time. It should be entered only after the scheduled block has ended and Atlas has requested follow-up from the user.
 - `tasks` are the default read model for active work. Basic product queries should not need to reconstruct current state from history.
 
 ### `schedule_blocks`
 
-- Classification: canonical record for the current implementation, transitional supporting record for the target task-centric model
-- Represents: the current implementation's scheduled-time record attached to a task
-- Source of truth for: current implementation schedule-block timing, while `tasks` hold the canonical current accountability state
-- Created by: scheduler logic using canonical tasks plus user profile settings
-- Allowed mutations: start/end time, confidence, and scheduler-owned lifecycle fields
+- Classification: deferred/transitional record
+- Represents: legacy internal schedule proposals and transitional planner-facing schedule aliases
+- Source of truth for: not active runtime truth
+- Created by: earlier scheduler logic and transitional migration paths
+- Allowed mutations: not relevant to the lean external-calendar-backed task model
 - Must not be confused with: Telegram reminders, calendar events, or a task itself
 
 Notes:
-- `schedule_blocks` currently back the task row's `current_commitment_id` until the separate commitment model lands.
-- External calendar ids are references, not primary schedule ownership.
-- `schedule_blocks` should attach directly to canonical `tasks`, not to deferred action-level entities.
+- `schedule_blocks` are no longer the active persisted scheduling record for runtime reads and writes.
+- External calendar ids on the task row are references to the canonical scheduled-time system; Atlas still owns task identity and accountability state.
+- `schedule_blocks` should not become the active scheduling unit again while the lean task-centric model is in place.
 
 ### `user_profiles`
 
@@ -100,7 +100,7 @@ Notes:
 - Must not be confused with: current task state, inbox truth, or current schedule truth
 
 Notes:
-- If planner output changes later, the current canonical state still lives in `tasks` and `schedule_blocks`, not in `planner_runs`.
+- If planner output changes later, the current canonical state still lives in `tasks`, not in `planner_runs`.
 - `planner_runs` may act as an operational anchor for conversational scheduling resolution, but they do not replace canonical task or schedule ownership.
 
 ## Deferred or non-canonical-for-MVP records
@@ -123,8 +123,8 @@ Notes:
 - `normalized_text` on `inbox_items` is derived from accepted user input and remains part of canonical inbox state once persisted.
 - `linked_task_ids` on `inbox_items` is derived linkage, not the task source of truth itself.
 - `confidence` fields are derived metadata and must not outrank canonical task state.
-- `external_calendar_id` on `schedule_blocks` is an external-reference field for future integrations and does not move schedule ownership out of Atlas.
-- `current_commitment_id` and task-level lifecycle timestamps on `tasks` are canonical task state, not derived convenience copies.
+- `external_calendar_event_id` and `external_calendar_id` on `tasks` are external-reference fields pointing at the canonical scheduled-time system.
+- `scheduled_start_at`, `scheduled_end_at`, and task-level lifecycle timestamps on `tasks` are canonical task state, not derived convenience copies.
 - Planner-selected intent type or ambiguity state is derived processing metadata, not the canonical meaning of a persisted task or block.
 
 ## Webhook-first rules
@@ -133,7 +133,7 @@ Notes:
 - Ingress should persist operational transport state in `bot_events`.
 - Ingress should persist canonical capture state in `inbox_items` before extraction creates or mutates downstream task state.
 - Planner output may create or update `tasks`, but it must not overwrite the meaning of the original `inbox_items`.
-- Scheduler output may create or update `schedule_blocks`, but the task row remains the canonical current-state record for Atlas-owned accountability.
+- Scheduler output and calendar sync should update the task row's current commitment snapshot directly.
 - Conversational schedule moves should resolve against persisted Atlas state instead of treating Telegram history as the scheduler's source of truth.
 
 ## Current schema vs MVP truth

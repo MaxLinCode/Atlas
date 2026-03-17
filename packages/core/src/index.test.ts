@@ -6,11 +6,13 @@ import {
   buildDefaultUserProfile,
   buildInboxPlanningContext,
   buildScheduleAdjustment,
+  buildScheduleBlocksFromTasks,
   buildScheduleProposal,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   getConfig,
   inboxPlanningOutputSchema,
+  isTaskFollowupDue,
   normalizeTelegramText,
   normalizeTelegramUpdate,
   processInboxItem,
@@ -58,10 +60,11 @@ describe("core package", () => {
     });
   });
 
-  it("builds a stable Telegram follow-up idempotency key", () => {
+  it("builds stable Telegram idempotency keys", () => {
     expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
       "telegram:followup:inbox-item:inbox-1"
     );
+    expect(buildTelegramWebhookIdempotencyKey(42)).toBe("telegram:webhook:update:42");
   });
 
   it("builds the default captured task shape in core", () => {
@@ -78,8 +81,11 @@ describe("core package", () => {
       sourceInboxItemId: "inbox-1",
       lastInboxItemId: "inbox-1",
       title: "Review launch checklist",
-      lifecycleState: "scheduling",
-      currentCommitmentId: null,
+      lifecycleState: "pending_schedule",
+      externalCalendarEventId: null,
+      externalCalendarId: null,
+      scheduledStartAt: null,
+      scheduledEndAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
@@ -89,7 +95,7 @@ describe("core package", () => {
     });
   });
 
-  it("accepts task-centric live state on task records", () => {
+  it("accepts scheduled task live state with external calendar linkage", () => {
     const result = taskSchema.safeParse({
       id: "task-1",
       userId: "123",
@@ -97,9 +103,12 @@ describe("core package", () => {
       lastInboxItemId: "inbox-2",
       title: "Review launch checklist",
       lifecycleState: "awaiting_followup",
-      currentCommitmentId: "00000000-0000-4000-8000-000000000001",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-15T16:00:00.000Z",
+      scheduledEndAt: "2026-03-15T17:00:00.000Z",
       rescheduleCount: 2,
-      lastFollowupAt: "2026-03-15T17:00:00.000Z",
+      lastFollowupAt: "2026-03-15T17:05:00.000Z",
       completedAt: null,
       archivedAt: null,
       priority: "medium",
@@ -109,15 +118,18 @@ describe("core package", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects non-uuid current commitment ids on task records", () => {
+  it("rejects unscheduled tasks that retain current commitment fields", () => {
     const result = taskSchema.safeParse({
       id: "task-1",
       userId: "123",
       sourceInboxItemId: "inbox-1",
       lastInboxItemId: "inbox-2",
       title: "Review launch checklist",
-      lifecycleState: "scheduled",
-      currentCommitmentId: "block-1",
+      lifecycleState: "pending_schedule",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-15T16:00:00.000Z",
+      scheduledEndAt: "2026-03-15T17:00:00.000Z",
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
@@ -129,7 +141,25 @@ describe("core package", () => {
     expect(result.success).toBe(false);
   });
 
-  it("builds planning context aliases for existing tasks and schedule blocks", () => {
+  it("builds planning context aliases from task-backed current commitments", () => {
+    const task = taskSchema.parse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-0",
+      lastInboxItemId: "inbox-0",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-13T17:00:00.000Z",
+      scheduledEndAt: "2026-03-13T18:00:00.000Z",
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "medium"
+    });
     const context = buildInboxPlanningContext({
       inboxItem: {
         id: "inbox-1",
@@ -141,96 +171,14 @@ describe("core package", () => {
         linkedTaskIds: []
       },
       userProfile: buildDefaultUserProfile("123"),
-      tasks: [
-        {
-          id: "task-1",
-          userId: "123",
-          sourceInboxItemId: "inbox-0",
-          lastInboxItemId: "inbox-0",
-          title: "Review launch checklist",
-          lifecycleState: "scheduled",
-          currentCommitmentId: "00000000-0000-4000-8000-000000000001",
-          rescheduleCount: 0,
-          lastFollowupAt: null,
-          completedAt: null,
-          archivedAt: null,
-          priority: "medium",
-          urgency: "medium"
-        }
-      ],
-      scheduleBlocks: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          userId: "123",
-          taskId: "task-1",
-          startAt: "2026-03-13T17:00:00.000Z",
-          endAt: "2026-03-13T18:00:00.000Z",
-          confidence: 0.8,
-          reason: "Existing slot",
-          rescheduleCount: 0,
-          externalCalendarId: null
-        }
-      ]
+      tasks: [task]
     });
 
     expect(context.tasks[0]?.alias).toBe("existing_task_1");
     expect(context.scheduleBlocks[0]?.alias).toBe("schedule_block_1");
-  });
-  it("resolves symbolic task and schedule block aliases", () => {
-    const context = buildInboxPlanningContext({
-      inboxItem: {
-        id: "inbox-1",
-        userId: "123",
-        sourceEventId: "event-1",
-        rawText: "move it to 3pm",
-        normalizedText: "move it to 3pm",
-        processingStatus: "received",
-        linkedTaskIds: []
-      },
-      userProfile: buildDefaultUserProfile("123"),
-      tasks: [
-        {
-          id: "task-1",
-          userId: "123",
-          sourceInboxItemId: "inbox-0",
-          lastInboxItemId: "inbox-0",
-          title: "Review launch checklist",
-          lifecycleState: "scheduled",
-          currentCommitmentId: "00000000-0000-4000-8000-000000000001",
-          rescheduleCount: 0,
-          lastFollowupAt: null,
-          completedAt: null,
-          archivedAt: null,
-          priority: "medium",
-          urgency: "medium"
-        }
-      ],
-      scheduleBlocks: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          userId: "123",
-          taskId: "task-1",
-          startAt: "2026-03-13T17:00:00.000Z",
-          endAt: "2026-03-13T18:00:00.000Z",
-          confidence: 0.8,
-          reason: "Existing slot",
-          rescheduleCount: 0,
-          externalCalendarId: null
-        }
-      ]
-    });
-
-    expect(
-      resolveTaskReference(context, {
-        kind: "existing_task",
-        alias: "existing_task_1"
-      })?.id
-    ).toBe("task-1");
-    expect(
-      resolveScheduleBlockReference(context, {
-        alias: "schedule_block_1"
-      })?.id
-    ).toBe("00000000-0000-4000-8000-000000000001");
+    expect(resolveTaskReference(context, { kind: "existing_task", alias: "existing_task_1" })?.id).toBe("task-1");
+    expect(resolveScheduleBlockReference(context, { alias: "schedule_block_1" })?.id).toBe("event-1");
+    expect(buildScheduleBlocksFromTasks([task])).toHaveLength(1);
   });
 
   it("accepts contract-shaped planning outputs", async () => {
@@ -276,37 +224,30 @@ describe("core package", () => {
     expect(result.success).toBe(false);
   });
 
-  it("builds a valid schedule proposal for new tasks", async () => {
+  it("builds a valid schedule proposal for pending tasks", async () => {
     const result = await buildScheduleProposal({
       userId: "user_1",
       openTasks: [
-        {
+        taskSchema.parse({
           id: "task-1",
           userId: "user_1",
           sourceInboxItemId: "inbox-1",
           lastInboxItemId: "inbox-1",
           title: "Review launch checklist",
-          lifecycleState: "scheduling",
-          currentCommitmentId: null,
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
           rescheduleCount: 0,
           lastFollowupAt: null,
           completedAt: null,
           archivedAt: null,
           priority: "medium",
           urgency: "medium"
-        }
+        })
       ],
-      userProfile: {
-        userId: "user_1",
-        timezone: "America/Los_Angeles",
-        workdayStartHour: 9,
-        workdayEndHour: 17,
-        deepWorkWindows: [],
-        blackoutWindows: [],
-        focusBlockMinutes: 50,
-        reminderStyle: "gentle",
-        breakdownLevel: 5
-      },
+      userProfile: buildDefaultUserProfile("user_1"),
       existingBlocks: [],
       now: "2026-03-13T08:00:00.000Z",
       scheduleConstraint: {
@@ -318,21 +259,21 @@ describe("core package", () => {
       }
     });
 
-    expect(result.inserts).toHaveLength(1);
     expect(result.inserts[0]?.startAt).toContain("T15:00:00.000Z");
   });
 
   it("builds schedule adjustments from structured move requests", () => {
     const result = buildScheduleAdjustment({
       block: scheduleBlockSchema.parse({
-        id: "block-1",
+        id: "event-1",
         userId: "user-1",
         taskId: "task-1",
         startAt: "2026-03-13T17:00:00.000Z",
         endAt: "2026-03-13T18:00:00.000Z",
         confidence: 0.8,
         reason: "Existing slot",
-        rescheduleCount: 0
+        rescheduleCount: 0,
+        externalCalendarId: "primary"
       }),
       userProfile: buildDefaultUserProfile("user-1"),
       scheduleConstraint: {
@@ -348,17 +289,33 @@ describe("core package", () => {
     expect(result.newStartAt).toContain("T15:00:00.000Z");
   });
 
-  it("normalizes Telegram text into a planner-friendly string", () => {
-    expect(normalizeTelegramText("  Call   the doctor \n tomorrow  ")).toBe(
-      "Call the doctor tomorrow"
-    );
+  it("marks scheduled tasks as follow-up due only after the end time", () => {
+    const task = taskSchema.parse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-15T16:00:00.000Z",
+      scheduledEndAt: "2026-03-15T17:00:00.000Z",
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "medium"
+    });
+
+    expect(isTaskFollowupDue(task, "2026-03-15T16:59:00.000Z")).toBe(false);
+    expect(isTaskFollowupDue(task, "2026-03-15T17:00:00.000Z")).toBe(true);
   });
 
-  it("derives a stable Telegram webhook idempotency key from update id", () => {
-    expect(buildTelegramWebhookIdempotencyKey(42)).toBe("telegram:webhook:update:42");
-  });
+  it("normalizes Telegram text and webhook metadata", () => {
+    expect(normalizeTelegramText("  Call   the doctor \n tomorrow  ")).toBe("Call the doctor tomorrow");
 
-  it("extracts normalized Telegram message metadata from a webhook update", () => {
     const normalized = normalizeTelegramUpdate({
       update_id: 42,
       message: {

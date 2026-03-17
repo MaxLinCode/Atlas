@@ -252,6 +252,9 @@ export class PostgresTelegramBotEventStore
   }
 }
 
+export class PostgresIncomingTelegramIngressStore extends PostgresTelegramBotEventStore {}
+export class PostgresOutgoingTelegramDeliveryStore extends PostgresTelegramBotEventStore {}
+
 const defaultInMemoryStore = new InMemoryTelegramBotEventStore();
 let postgresStore: PostgresTelegramBotEventStore | null = null;
 
