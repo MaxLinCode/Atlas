@@ -6,15 +6,20 @@ import {
   telegramUpdateSchema
 } from "@atlas/core";
 import {
+  listRecentConversationTurns,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
   updateOutgoingTelegramMessage,
+  type ConversationHistoryStore,
   type IncomingTelegramIngressStore,
   type OutgoingTelegramDeliveryStore,
   type PersistedInboxItem
 } from "@atlas/db";
 import {
+  summarizeConversationMemoryWithResponses,
   sendTelegramMessage,
+  type ConversationMemorySummaryInput,
+  type ConversationMemorySummaryOutput,
   type TelegramSendMessageResponse
 } from "@atlas/integrations";
 
@@ -42,9 +47,14 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   sender?: typeof sendTelegramMessage;
   turnRouter?: (input: TurnRouterInput) => Promise<TurnRouterResult>;
   conversationResponder?: (input: BuildConversationResponseInput) => Promise<BuildConversationResponseResult>;
+  conversationHistoryStore?: ConversationHistoryStore;
+  conversationMemorySummarizer?: (
+    input: ConversationMemorySummaryInput
+  ) => Promise<ConversationMemorySummaryOutput>;
 };
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
+const RECENT_CONVERSATION_TURN_LIMIT = 6;
 
 export async function handleTelegramWebhook(
   request: Request,
@@ -148,10 +158,23 @@ export async function handleTelegramWebhook(
       throw new Error("Turn router returned mutation while writes were disabled.");
     }
 
+    const recentTurns = await listRecentConversationTurns(
+      normalizedMessage.user.telegramUserId,
+      RECENT_CONVERSATION_TURN_LIMIT,
+      dependencies.conversationHistoryStore
+    );
+    const memorySummary = await (dependencies.conversationMemorySummarizer ??
+      summarizeConversationMemoryWithResponses)({
+      recentTurns
+    })
+      .then((summary) => summary.summary)
+      .catch(() => null);
     const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
       route: routing.route,
       rawText: normalizedMessage.rawText,
-      normalizedText: normalizedMessage.normalizedText
+      normalizedText: normalizedMessage.normalizedText,
+      recentTurns,
+      memorySummary
     });
 
     const outboundDelivery = await sendFollowUpMessage(

@@ -7,9 +7,12 @@ import {
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   listOutgoingBotEventsForTests,
+  recordIncomingTelegramMessageIfNew,
+  recordOutgoingTelegramMessageIfNew,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
-  seedInboxItemForProcessingTests
+  seedInboxItemForProcessingTests,
+  updateOutgoingTelegramMessage
 } from "@atlas/db";
 import { resetCalendarAdapterForTests } from "@atlas/integrations";
 
@@ -289,68 +292,266 @@ describe("telegram webhook route", () => {
 
   it("keeps conversation turns non-writing", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    vi.useFakeTimers();
 
-    const response = await handleTelegramWebhook(
-      buildRequest({
-        update_id: 47,
-        message: {
-          message_id: 12,
-          date: 1_700_000_005,
-          text: "How should I prioritize this week?",
-          chat: {
-            id: 999,
-            type: "private"
-          },
-          from: {
-            id: 123,
-            is_bot: false,
-            first_name: "Max",
-            last_name: "Lin"
-          }
-        }
-      }),
-      {
-        store: getDefaultInboxProcessingStore(),
-        primeProcessingStore: seedInboxItemForProcessingTests,
-        conversationResponder: async () => ({
-          reply: "Let's sort the week by deadline and energy first."
-        }),
-        turnRouter: async () => ({
-          route: "conversation",
-          reason: "Planning dialogue request.",
-          writesAllowed: false
-        })
-      }
-    );
+    const setNow = (value: string) => {
+      vi.setSystemTime(new Date(value));
+    };
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      accepted: true,
-      turnRoute: "conversation",
-      processing: {
-        outcome: "conversation_replied",
+    try {
+      setNow("2026-03-16T16:00:00.000Z");
+      await recordIncomingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:39",
+        payload: {
+          update_id: 39
+        },
+        rawText: "Earlier user one",
+        normalizedText: "Earlier user one"
+      });
+      setNow("2026-03-16T16:01:00.000Z");
+      await recordOutgoingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_followup_message",
+        idempotencyKey: "telegram:followup:route-1",
+        payload: {
+          chatId: "999",
+          text: "Earlier assistant one",
+          attempts: 0
+        },
+        retryState: "sending"
+      });
+      await updateOutgoingTelegramMessage({
+        idempotencyKey: "telegram:followup:route-1",
+        payload: {
+          chatId: "999",
+          text: "Earlier assistant one",
+          attempts: 1
+        },
+        retryState: "sent"
+      });
+      setNow("2026-03-16T16:02:00.000Z");
+      await recordIncomingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:40",
+        payload: {
+          update_id: 40
+        },
+        rawText: "Earlier user two",
+        normalizedText: "Earlier user two"
+      });
+      setNow("2026-03-16T16:03:00.000Z");
+      await recordOutgoingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_followup_message",
+        idempotencyKey: "telegram:followup:route-2",
+        payload: {
+          chatId: "999",
+          text: "Failed assistant turn",
+          attempts: 0
+        },
+        retryState: "sending"
+      });
+      await updateOutgoingTelegramMessage({
+        idempotencyKey: "telegram:followup:route-2",
+        payload: {
+          chatId: "999",
+          text: "Failed assistant turn",
+          attempts: 1
+        },
+        retryState: "failed"
+      });
+      setNow("2026-03-16T16:04:00.000Z");
+      await recordIncomingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:41",
+        payload: {
+          update_id: 41
+        },
+        rawText: "Earlier user three",
+        normalizedText: "Earlier user three"
+      });
+      setNow("2026-03-16T16:05:00.000Z");
+      await recordOutgoingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_followup_message",
+        idempotencyKey: "telegram:followup:route-3",
+        payload: {
+          chatId: "999",
+          text: "Earlier assistant two",
+          attempts: 0
+        },
+        retryState: "sending"
+      });
+      await updateOutgoingTelegramMessage({
+        idempotencyKey: "telegram:followup:route-3",
+        payload: {
+          chatId: "999",
+          text: "Earlier assistant two",
+          attempts: 1
+        },
+        retryState: "sent"
+      });
+      setNow("2026-03-16T16:06:00.000Z");
+      await recordIncomingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: "telegram:webhook:update:42",
+        payload: {
+          update_id: 42
+        },
+        rawText: "Earlier user four",
+        normalizedText: "Earlier user four"
+      });
+      const conversationMemorySummarizer = vi.fn(async () => ({
+        summary: "The user wants weekly prioritization help."
+      }));
+      const conversationResponder = vi.fn(async () => ({
         reply: "Let's sort the week by deadline and energy first."
-      },
-      outboundDelivery: {
-        status: "sent",
-        attempts: 1
-      }
-    });
-    expect(listIncomingBotEventsForTests()).toHaveLength(1);
-    expect(listInboxItemsForTests()).toHaveLength(1);
-    expect(listPlannerRunsForTests()).toHaveLength(0);
-    expect(listTasksForTests()).toHaveLength(0);
-    expect(listScheduleBlocksForTests()).toHaveLength(0);
-    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
-    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
-    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
-      chatId: "999",
-      text: "Let's sort the week by deadline and energy first."
-    });
+      }));
+
+      setNow("2026-03-16T16:07:00.000Z");
+      const response = await handleTelegramWebhook(
+        buildRequest({
+          update_id: 47,
+          message: {
+            message_id: 12,
+            date: 1_700_000_005,
+            text: "How should I prioritize this week?",
+            chat: {
+              id: 999,
+              type: "private"
+            },
+            from: {
+              id: 123,
+              is_bot: false,
+              first_name: "Max",
+              last_name: "Lin"
+            }
+          }
+        }),
+        {
+          store: getDefaultInboxProcessingStore(),
+          primeProcessingStore: seedInboxItemForProcessingTests,
+          conversationMemorySummarizer,
+          conversationResponder,
+          turnRouter: async () => ({
+            route: "conversation",
+            reason: "Planning dialogue request.",
+            writesAllowed: false
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        accepted: true,
+        turnRoute: "conversation",
+        processing: {
+          outcome: "conversation_replied",
+          reply: "Let's sort the week by deadline and energy first."
+        },
+        outboundDelivery: {
+          status: "sent",
+          attempts: 1
+        }
+      });
+      expect(listIncomingBotEventsForTests()).toHaveLength(5);
+      expect(listInboxItemsForTests()).toHaveLength(5);
+      expect(listPlannerRunsForTests()).toHaveLength(0);
+      expect(listTasksForTests()).toHaveLength(0);
+      expect(listScheduleBlocksForTests()).toHaveLength(0);
+      expect(listOutgoingBotEventsForTests()).toHaveLength(4);
+      expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+      expect(conversationMemorySummarizer).toHaveBeenCalledWith({
+        recentTurns: [
+          {
+            role: "assistant",
+            text: "Earlier assistant one",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user two",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user three",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "assistant",
+            text: "Earlier assistant two",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user four",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "How should I prioritize this week?",
+            createdAt: expect.any(String)
+          }
+        ]
+      });
+      expect(conversationResponder).toHaveBeenCalledWith({
+        route: "conversation",
+        rawText: "How should I prioritize this week?",
+        normalizedText: "How should I prioritize this week?",
+        recentTurns: [
+          {
+            role: "assistant",
+            text: "Earlier assistant one",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user two",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user three",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "assistant",
+            text: "Earlier assistant two",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "Earlier user four",
+            createdAt: expect.any(String)
+          },
+          {
+            role: "user",
+            text: "How should I prioritize this week?",
+            createdAt: expect.any(String)
+          }
+        ],
+        memorySummary: "The user wants weekly prioritization help."
+      });
+      expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+        chatId: "999",
+        text: "Let's sort the week by deadline and energy first."
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps conversation_then_mutation turns non-writing on the first slice", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const conversationResponder = vi.fn(async () => ({
+      reply: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+    }));
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -374,9 +575,10 @@ describe("telegram webhook route", () => {
       {
         store: getDefaultInboxProcessingStore(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        conversationResponder: async () => ({
-          reply: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+        conversationMemorySummarizer: async () => ({
+          summary: "The user is discussing a possible move to tomorrow morning."
         }),
+        conversationResponder,
         turnRouter: async () => ({
           route: "conversation_then_mutation",
           reason: "Mixed turn should discuss first.",
@@ -404,11 +606,136 @@ describe("telegram webhook route", () => {
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(conversationResponder).toHaveBeenCalledWith({
+      route: "conversation_then_mutation",
+      rawText: "Could we move it to tomorrow morning?",
+      normalizedText: "Could we move it to tomorrow morning?",
+      recentTurns: [
+        {
+          role: "user",
+          text: "Could we move it to tomorrow morning?",
+          createdAt: expect.any(String)
+        }
+      ],
+      memorySummary: "The user is discussing a possible move to tomorrow morning."
+    });
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
       text: "We can explore tomorrow morning options first, then I can make the change after you confirm."
     });
+  });
+
+  it("falls back to recent turns when summary generation fails", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const conversationResponder = vi.fn(async () => ({
+      reply: "From our recent exchange, it sounds like you want to keep talking through it first."
+    }));
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 49,
+        message: {
+          message_id: 14,
+          date: 1_700_000_007,
+          text: "Should we talk this through first?",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationMemorySummarizer: async () => {
+          throw new Error("summary unavailable");
+        },
+        conversationResponder,
+        turnRouter: async () => ({
+          route: "conversation",
+          reason: "Discussion turn.",
+          writesAllowed: false
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(conversationResponder).toHaveBeenCalledWith({
+      route: "conversation",
+      rawText: "Should we talk this through first?",
+      normalizedText: "Should we talk this through first?",
+      recentTurns: [
+        {
+          role: "user",
+          text: "Should we talk this through first?",
+          createdAt: expect.any(String)
+        }
+      ],
+      memorySummary: null
+    });
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
+  });
+
+  it("keeps write-adjacent conversation replies hedged instead of making hard system claims", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 50,
+        message: {
+          message_id: 15,
+          date: 1_700_000_008,
+          text: "Did you already create that?",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationMemorySummarizer: async () => ({
+          summary: "The recent exchange seems to be about a dentist reminder."
+        }),
+        conversationResponder: async () => ({
+          reply: "From our recent exchange, it sounds like you mean the dentist reminder, but I am not treating that as confirmed state."
+        }),
+        turnRouter: async () => ({
+          route: "conversation",
+          reason: "Write-adjacent question still needs cautious conversational handling.",
+          writesAllowed: false
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "conversation",
+      processing: {
+        outcome: "conversation_replied",
+        reply: "From our recent exchange, it sounds like you mean the dentist reminder, but I am not treating that as confirmed state."
+      }
+    });
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
   });
 
   it("retries once when Telegram follow-up delivery fails before succeeding", async () => {

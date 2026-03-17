@@ -6,6 +6,7 @@ import {
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   listOutgoingBotEventsForTests,
+  listRecentConversationTurns,
   listPlannerRunsForTests,
   listScheduleBlocksForTests,
   listTasksForTests,
@@ -117,6 +118,99 @@ describe("db package", () => {
         attempts: 1
       }
     });
+  });
+
+  it("lists recent conversation turns in ascending order and excludes unsent assistant messages", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordIncomingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_message",
+      idempotencyKey: "telegram:webhook:update:100",
+      payload: {
+        update_id: 100
+      },
+      rawText: "First user turn",
+      normalizedText: "First user turn"
+    });
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:1",
+      payload: {
+        chatId: "999",
+        text: "Reserved assistant turn",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:2",
+      payload: {
+        chatId: "999",
+        text: "Sent assistant turn",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:2",
+      payload: {
+        chatId: "999",
+        text: "Sent assistant turn",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+    await recordIncomingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_message",
+      idempotencyKey: "telegram:webhook:update:101",
+      payload: {
+        update_id: 101
+      },
+      rawText: "Second user turn",
+      normalizedText: "Second user turn"
+    });
+
+    const turns = await listRecentConversationTurns("123", 6);
+
+    expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
+      "user:First user turn",
+      "user:Second user turn",
+      "assistant:Sent assistant turn"
+    ]);
+  });
+
+  it("limits recent conversation turns to the last six items", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    for (let index = 0; index < 8; index += 1) {
+      await recordIncomingTelegramMessageIfNew({
+        userId: "123",
+        eventType: "telegram_message",
+        idempotencyKey: `telegram:webhook:update:${200 + index}`,
+        payload: {
+          update_id: 200 + index
+        },
+        rawText: `Turn ${index + 1}`,
+        normalizedText: `Turn ${index + 1}`
+      });
+    }
+
+    const turns = await listRecentConversationTurns("123", 6);
+
+    expect(turns).toHaveLength(6);
+    expect(turns.map((turn) => turn.text)).toEqual([
+      "Turn 3",
+      "Turn 4",
+      "Turn 5",
+      "Turn 6",
+      "Turn 7",
+      "Turn 8"
+    ]);
   });
 
   it("stores planner-backed scheduling on task rows and derives schedule blocks from them", async () => {

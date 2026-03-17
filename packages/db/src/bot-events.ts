@@ -17,6 +17,11 @@ type StoredBotEvent = {
   idempotencyKey: string;
   payload: unknown;
   retryState: BotEventRetryState;
+  createdAt: string;
+};
+
+type StoredInboxItem = PersistedInboxItem & {
+  createdAt: string;
 };
 
 export type IncomingTelegramMessage = {
@@ -46,6 +51,12 @@ export type PersistedInboxItem = {
   linkedTaskIds: string[];
 };
 
+export type ConversationTurn = {
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+};
+
 export type IncomingTelegramMessageRecordResult =
   | {
       status: "recorded";
@@ -68,7 +79,7 @@ export type OutgoingTelegramMessageRecordResult =
 export interface IncomingTelegramIngressStore {
   recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: PersistedInboxItem
+    inboxItem: StoredInboxItem
   ): Promise<IncomingTelegramMessageRecordResult>;
 }
 
@@ -77,15 +88,19 @@ export interface OutgoingTelegramDeliveryStore {
   updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void>;
 }
 
+export interface ConversationHistoryStore {
+  listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]>;
+}
+
 class InMemoryTelegramBotEventStore
-  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore
+  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore, ConversationHistoryStore
 {
   private readonly eventsByKey = new Map<string, StoredBotEvent>();
-  private readonly inboxItemsById = new Map<string, PersistedInboxItem>();
+  private readonly inboxItemsById = new Map<string, StoredInboxItem>();
 
   async recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: PersistedInboxItem
+    inboxItem: StoredInboxItem
   ): Promise<IncomingTelegramMessageRecordResult> {
     if (this.eventsByKey.has(event.idempotencyKey)) {
       return {
@@ -132,6 +147,14 @@ class InMemoryTelegramBotEventStore
     });
   }
 
+  async listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]> {
+    return buildRecentConversationTurns({
+      inboxItems: Array.from(this.inboxItemsById.values()).filter((item) => item.userId === userId),
+      events: Array.from(this.eventsByKey.values()).filter((event) => event.userId === userId),
+      limit
+    });
+  }
+
   reset() {
     this.eventsByKey.clear();
     this.inboxItemsById.clear();
@@ -147,7 +170,7 @@ class InMemoryTelegramBotEventStore
 }
 
 export class PostgresTelegramBotEventStore
-  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore
+  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore, ConversationHistoryStore
 {
   private readonly client;
   private readonly db;
@@ -161,7 +184,7 @@ export class PostgresTelegramBotEventStore
 
   async recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: PersistedInboxItem
+    inboxItem: StoredInboxItem
   ): Promise<IncomingTelegramMessageRecordResult> {
     return this.db.transaction(async (tx) => {
       const insertedEvent = await tx
@@ -247,6 +270,44 @@ export class PostgresTelegramBotEventStore
       .where(sql`${botEvents.idempotencyKey} = ${event.idempotencyKey} and ${botEvents.direction} = 'outgoing'`);
   }
 
+  async listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]> {
+    const [inboxItemRows, eventRows] = await Promise.all([
+      this.db
+        .select({
+          rawText: inboxItems.rawText,
+          createdAt: inboxItems.createdAt
+        })
+        .from(inboxItems)
+        .where(sql`${inboxItems.userId} = ${userId}`)
+        .orderBy(sql`${inboxItems.createdAt} desc`)
+        .limit(limit),
+      this.db
+        .select({
+          payload: botEvents.payload,
+          createdAt: botEvents.createdAt
+        })
+        .from(botEvents)
+        .where(
+          sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`
+        )
+        .orderBy(sql`${botEvents.createdAt} desc`)
+        .limit(limit)
+    ]);
+
+    return buildRecentConversationTurns({
+      inboxItems: inboxItemRows.reverse().map((row) => ({
+        rawText: row.rawText,
+        createdAt: row.createdAt.toISOString()
+      })),
+      events: eventRows.reverse().map((row) => ({
+        payload: row.payload,
+        createdAt: row.createdAt.toISOString(),
+        retryState: "sent" as const
+      })),
+      limit
+    });
+  }
+
   async close() {
     await this.client.end();
   }
@@ -273,7 +334,8 @@ export async function recordIncomingTelegramMessageIfNew(
       eventType: input.eventType,
       idempotencyKey: input.idempotencyKey,
       payload: input.payload,
-      retryState: "received"
+      retryState: "received",
+      createdAt: new Date().toISOString()
     },
     {
       id: inboxItemId,
@@ -282,7 +344,8 @@ export async function recordIncomingTelegramMessageIfNew(
       rawText: input.rawText,
       normalizedText: input.normalizedText,
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: new Date().toISOString()
     }
   );
 }
@@ -298,8 +361,17 @@ export async function recordOutgoingTelegramMessageIfNew(
     eventType: input.eventType,
     idempotencyKey: input.idempotencyKey,
     payload: input.payload,
-    retryState: input.retryState
+    retryState: input.retryState,
+    createdAt: new Date().toISOString()
   });
+}
+
+export async function listRecentConversationTurns(
+  userId: string,
+  limit: number,
+  store: ConversationHistoryStore = getDefaultStore()
+) {
+  return store.listRecentConversationTurns(userId, limit);
 }
 
 export async function updateOutgoingTelegramMessage(
@@ -335,6 +407,59 @@ function getDefaultStore(): InMemoryTelegramBotEventStore | PostgresTelegramBotE
   }
 
   return postgresStore;
+}
+
+function buildRecentConversationTurns(input: {
+  inboxItems: Array<{
+    rawText: string;
+    createdAt: string;
+  }>;
+  events: Array<{
+    payload: unknown;
+    createdAt: string;
+    retryState?: BotEventRetryState;
+  }>;
+  limit: number;
+}) {
+  const turns = [
+    ...input.inboxItems.map<ConversationTurn>((item) => ({
+      role: "user",
+      text: item.rawText,
+      createdAt: item.createdAt
+    })),
+    ...input.events.flatMap<ConversationTurn>((event) => {
+      if (event.retryState && event.retryState !== "sent") {
+        return [];
+      }
+
+      const text = readOutgoingText(event.payload);
+
+      if (!text) {
+        return [];
+      }
+
+      return [
+        {
+          role: "assistant",
+          text,
+          createdAt: event.createdAt
+        }
+      ];
+    })
+  ];
+
+  return turns
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+    .slice(-input.limit);
+}
+
+function readOutgoingText(payload: unknown) {
+  if (!payload || typeof payload !== "object" || !("text" in payload)) {
+    return null;
+  }
+
+  const { text } = payload;
+  return typeof text === "string" && text.trim() ? text : null;
 }
 
 function isTestEnvironment() {

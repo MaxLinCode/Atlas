@@ -7,6 +7,7 @@ import {
   getDefaultCalendarAdapter,
   planInboxItemWithResponses,
   routeTurnWithResponses,
+  summarizeConversationMemoryWithResponses,
   resetCalendarAdapterForTests,
   sendTelegramMessage
 } from "./index";
@@ -202,7 +203,15 @@ describe("integrations", () => {
       {
         route: "conversation",
         rawText: "How should I plan tomorrow?",
-        normalizedText: "How should I plan tomorrow?"
+        normalizedText: "How should I plan tomorrow?",
+        recentTurns: [
+          {
+            role: "user",
+            text: "I am overloaded this week.",
+            createdAt: "2026-03-16T16:00:00.000Z"
+          }
+        ],
+        memorySummary: "The user wants help prioritizing tomorrow."
       },
       {
         responses: {
@@ -224,13 +233,76 @@ describe("integrations", () => {
         {
           route: "conversation_then_mutation",
           rawText: "Could we move it to Friday?",
-          normalizedText: "Could we move it to Friday?"
+          normalizedText: "Could we move it to Friday?",
+          recentTurns: [
+            {
+              role: "assistant",
+              text: "It sounds like you mean the dentist reminder.",
+              createdAt: "2026-03-16T16:01:00.000Z"
+            }
+          ],
+          memorySummary: "The recent exchange is about a dentist reminder."
         },
         {
           responses: {
             parse: async () => ({
               output_parsed: {
                 reply: ""
+              }
+            })
+          }
+        }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("parses structured conversation memory summary output from the Responses API client", async () => {
+    const result = await summarizeConversationMemoryWithResponses(
+      {
+        recentTurns: [
+          {
+            role: "user",
+            text: "Can we move the dentist thing to Friday?",
+            createdAt: "2026-03-16T16:00:00.000Z"
+          },
+          {
+            role: "assistant",
+            text: "If you mean the dentist reminder, Friday could work.",
+            createdAt: "2026-03-16T16:01:00.000Z"
+          }
+        ]
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              summary: "Recent exchange likely refers to the dentist reminder and a possible Friday move."
+            }
+          })
+        }
+      }
+    );
+
+    expect(result.summary).toContain("dentist reminder");
+  });
+
+  it("rejects malformed conversation memory summary output", async () => {
+    await expect(
+      summarizeConversationMemoryWithResponses(
+        {
+          recentTurns: [
+            {
+              role: "user",
+              text: "Did you already create that?",
+              createdAt: "2026-03-16T16:00:00.000Z"
+            }
+          ]
+        },
+        {
+          responses: {
+            parse: async () => ({
+              output_parsed: {
+                summary: 42
               }
             })
           }

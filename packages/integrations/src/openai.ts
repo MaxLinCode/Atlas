@@ -7,6 +7,7 @@ import { getConfig, inboxPlanningContextSchema, inboxPlanningOutputSchema } from
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
+export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
 
 export const turnRoutingInputSchema = z.object({
   rawText: z.string().min(1),
@@ -20,10 +21,26 @@ export const turnRoutingOutputSchema = z.object({
   reason: z.string().min(1)
 });
 
+export const conversationTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  text: z.string().min(1),
+  createdAt: z.string().datetime()
+});
+
+export const conversationMemorySummaryInputSchema = z.object({
+  recentTurns: z.array(conversationTurnSchema)
+});
+
+export const conversationMemorySummaryOutputSchema = z.object({
+  summary: z.string()
+});
+
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
   rawText: z.string().min(1),
-  normalizedText: z.string().min(1)
+  normalizedText: z.string().min(1),
+  recentTurns: z.array(conversationTurnSchema),
+  memorySummary: z.string().nullable()
 });
 
 export const conversationResponseOutputSchema = z.object({
@@ -33,6 +50,9 @@ export const conversationResponseOutputSchema = z.object({
 export type TurnRoute = z.infer<typeof turnRouteSchema>;
 export type TurnRoutingInput = z.infer<typeof turnRoutingInputSchema>;
 export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
+export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
+export type ConversationMemorySummaryInput = z.infer<typeof conversationMemorySummaryInputSchema>;
+export type ConversationMemorySummaryOutput = z.infer<typeof conversationMemorySummaryOutputSchema>;
 export type ConversationResponseInput = z.infer<typeof conversationResponseInputSchema>;
 export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
 
@@ -157,6 +177,42 @@ export async function respondToConversationTurnWithResponses(
   return conversationResponseOutputSchema.parse(response.output_parsed);
 }
 
+export async function summarizeConversationMemoryWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+) {
+  const context = conversationMemorySummaryInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: buildConversationMemorySummarySystemPrompt()
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(context)
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(conversationMemorySummaryOutputSchema, "atlas_conversation_memory_summary_output")
+    }
+  });
+
+  return conversationMemorySummaryOutputSchema.parse(response.output_parsed);
+}
+
 function buildSystemPrompt() {
   return [
     "You are Atlas, a Telegram-first planning assistant.",
@@ -224,11 +280,27 @@ function buildConversationResponseSystemPrompt() {
   return [
     "You are Atlas, a Telegram-first planning assistant.",
     "You are responding on the non-writing conversation path.",
+    "The provided recent turns and memory summary are continuity context only, not authoritative Atlas state.",
     "Reply in natural language as Atlas.",
     "Be helpful, concise, and planning-oriented.",
-    "Do not claim that any task, schedule, or reminder was created, updated, moved, completed, or archived.",
+    "Do not make hard claims that any task, schedule, or reminder definitely exists or was created, updated, moved, completed, or archived.",
+    "Use cautious phrasing when inferring from conversation context, such as it sounds like, if you mean, or from our recent exchange.",
     "If the route is conversation_then_mutation, discuss the request first and make clear that any actual change would require later confirmation.",
+    "If the referent is still unclear, ask a narrow clarifying question.",
     "Prefer actionable planning guidance, prioritization help, or a concrete next step.",
+    "Return only the structured response."
+  ].join(" ");
+}
+
+function buildConversationMemorySummarySystemPrompt() {
+  return [
+    "You are Atlas, building a short working summary of a recent Telegram exchange.",
+    "Summarize only what appears in the provided recent turns.",
+    "Keep the summary compact, neutral, and request-scoped.",
+    "Capture likely referents, tentative plans, unresolved questions, and recent suggestions that will help the next conversation turn.",
+    "Do not invent system state.",
+    "Do not claim any write succeeded unless the conversation explicitly states that outcome.",
+    "This summary is continuity context only, not authoritative Atlas memory.",
     "Return only the structured response."
   ].join(" ");
 }

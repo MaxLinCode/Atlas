@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "eval:conversation-context": "vitest run --config vitest.manual.config.ts src/manual/conversation-context.eval.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json",
     "eval:turn-router": "vitest run --config vitest.manual.config.ts src/manual/turn-router.eval.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

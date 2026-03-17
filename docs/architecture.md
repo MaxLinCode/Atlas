@@ -15,7 +15,7 @@ Atlas should support two complementary modes:
 
 1. Telegram sends a webhook event to `apps/web`.
 2. The webhook route validates the event, derives an idempotency key from Telegram `update_id`, records the incoming bot event once, skips duplicate deliveries, and stores an inbox item only for first-seen events.
-3. An app-layer service loads only the context needed for the current turn, which may be lightweight conversational context, user preferences, relevant recent schedule information, or the full persisted task-and-schedule graph for a mutation.
+3. An app-layer service loads only the context needed for the current turn, which may be a bounded recent-turn window plus a request-scoped working summary for conversational continuity, relevant user preferences or schedule information, or the full persisted task-and-schedule graph for a mutation.
 4. The model returns a conversational response, optional planning suggestions, and optionally a decision that the turn should enter mutation mode.
 
 ## Mutation mode flow
@@ -38,6 +38,7 @@ Atlas should support two complementary modes:
 ## Design principles
 
 - Accept input fast, then process it against persisted Atlas state instead of relying on chat transcripts.
+- Use bounded recent transcript context only for conversational continuity; it is not canonical Atlas memory.
 - Prefer schedule-forward task handling in MVP so extracted work gets placed onto time, not left as open-ended backlog by default.
 - Keep every scheduling decision explainable and traceable to a planner run plus validated model output.
 - Keep conversational scheduling anchored to persisted tasks and schedule blocks, not broad recent-message inference.
