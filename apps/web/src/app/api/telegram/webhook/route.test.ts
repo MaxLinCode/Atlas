@@ -15,8 +15,9 @@ import { resetCalendarAdapterForTests } from "@atlas/integrations";
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
-const { sendTelegramMessageMock } = vi.hoisted(() => ({
-  sendTelegramMessageMock: vi.fn()
+const { sendTelegramMessageMock, routeTurnWithResponsesMock } = vi.hoisted(() => ({
+  sendTelegramMessageMock: vi.fn(),
+  routeTurnWithResponsesMock: vi.fn()
 }));
 
 vi.mock("@atlas/integrations", async () => {
@@ -25,34 +26,35 @@ vi.mock("@atlas/integrations", async () => {
   return {
     ...actual,
     getDefaultCalendarAdapter: () => actual.getDefaultCalendarAdapter(),
-  planInboxItemWithResponses: async () => ({
-    confidence: 0.9,
-    summary: "Captured and scheduled Review launch checklist.",
-    actions: [
-      {
-        type: "create_task",
-        alias: "new_task_1",
-        title: "Review launch checklist",
-        priority: "medium",
-        urgency: "medium"
-      },
-      {
-        type: "create_schedule_block",
-        taskRef: {
-          kind: "created_task",
-          alias: "new_task_1"
+    planInboxItemWithResponses: async () => ({
+      confidence: 0.9,
+      summary: "Captured and scheduled Review launch checklist.",
+      actions: [
+        {
+          type: "create_task",
+          alias: "new_task_1",
+          title: "Review launch checklist",
+          priority: "medium",
+          urgency: "medium"
         },
-        scheduleConstraint: {
-          dayOffset: 0,
-          explicitHour: 9,
-          minute: 0,
-          preferredWindow: null,
-          sourceText: "default next slot"
-        },
-        reason: "Schedule the new task in the next slot."
-      }
-    ]
-  }),
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "created_task",
+            alias: "new_task_1"
+          },
+          scheduleConstraint: {
+            dayOffset: 0,
+            explicitHour: 9,
+            minute: 0,
+            preferredWindow: null,
+            sourceText: "default next slot"
+          },
+          reason: "Schedule the new task in the next slot."
+        }
+      ]
+    }),
+    routeTurnWithResponses: routeTurnWithResponsesMock,
     sendTelegramMessage: sendTelegramMessageMock
   };
 });
@@ -101,6 +103,11 @@ beforeEach(() => {
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
   resetCalendarAdapterForTests();
   sendTelegramMessageMock.mockReset();
+  routeTurnWithResponsesMock.mockReset();
+  routeTurnWithResponsesMock.mockResolvedValue({
+    route: "mutation",
+    reason: "Direct scheduling request."
+  });
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,
     result: {
@@ -226,6 +233,181 @@ describe("telegram webhook route", () => {
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
       text: "Captured and scheduled Review launch checklist."
+    });
+  });
+
+  it("preserves mutation behavior when the turn router explicitly returns mutation", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 46,
+        message: {
+          message_id: 11,
+          date: 1_700_000_004,
+          text: " Review   launch checklist ",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        turnRouter: async () => ({
+          route: "mutation",
+          reason: "Direct scheduling request.",
+          writesAllowed: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "mutation",
+      processing: {
+        outcome: "planned"
+      },
+      outboundDelivery: {
+        status: "sent",
+        attempts: 1
+      }
+    });
+    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listTasksForTests()).toHaveLength(1);
+    expect(listScheduleBlocksForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps conversation turns non-writing", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 47,
+        message: {
+          message_id: 12,
+          date: 1_700_000_005,
+          text: "How should I prioritize this week?",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder: async () => ({
+          reply: "Let's sort the week by deadline and energy first."
+        }),
+        turnRouter: async () => ({
+          route: "conversation",
+          reason: "Planning dialogue request.",
+          writesAllowed: false
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "conversation",
+      processing: {
+        outcome: "conversation_replied",
+        reply: "Let's sort the week by deadline and energy first."
+      },
+      outboundDelivery: {
+        status: "sent",
+        attempts: 1
+      }
+    });
+    expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(1);
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Let's sort the week by deadline and energy first."
+    });
+  });
+
+  it("keeps conversation_then_mutation turns non-writing on the first slice", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 48,
+        message: {
+          message_id: 13,
+          date: 1_700_000_006,
+          text: "Could we move it to tomorrow morning?",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder: async () => ({
+          reply: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+        }),
+        turnRouter: async () => ({
+          route: "conversation_then_mutation",
+          reason: "Mixed turn should discuss first.",
+          writesAllowed: false
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "conversation_then_mutation",
+      processing: {
+        outcome: "conversation_replied",
+        reply: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+      },
+      outboundDelivery: {
+        status: "sent",
+        attempts: 1
+      }
+    });
+    expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(1);
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "We can explore tomorrow morning options first, then I can make the change after you confirm."
     });
   });
 

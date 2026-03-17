@@ -1,25 +1,44 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
+import { z } from "zod";
 
 import { getConfig, inboxPlanningContextSchema, inboxPlanningOutputSchema } from "@atlas/core";
 
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
+export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
+export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
+
+export const turnRoutingInputSchema = z.object({
+  rawText: z.string().min(1),
+  normalizedText: z.string().min(1)
+});
+
+export const turnRouteSchema = z.enum(["conversation", "mutation", "conversation_then_mutation"]);
+
+export const turnRoutingOutputSchema = z.object({
+  route: turnRouteSchema,
+  reason: z.string().min(1)
+});
+
+export const conversationResponseInputSchema = z.object({
+  route: z.enum(["conversation", "conversation_then_mutation"]),
+  rawText: z.string().min(1),
+  normalizedText: z.string().min(1)
+});
+
+export const conversationResponseOutputSchema = z.object({
+  reply: z.string().min(1)
+});
+
+export type TurnRoute = z.infer<typeof turnRouteSchema>;
+export type TurnRoutingInput = z.infer<typeof turnRoutingInputSchema>;
+export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
+export type ConversationResponseInput = z.infer<typeof conversationResponseInputSchema>;
+export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
 
 export type OpenAIResponsesClient = {
   responses: {
-    parse: (input: {
-      model: string;
-      input: Array<{
-        role: "system" | "user";
-        content: Array<{
-          type: "input_text";
-          text: string;
-        }>;
-      }>;
-      text: {
-        format: ReturnType<typeof zodTextFormat<typeof inboxPlanningOutputSchema>>;
-      };
-    }) => Promise<{
+    parse: (input: any) => Promise<{
       output_parsed: unknown;
     }>;
   };
@@ -66,6 +85,78 @@ export async function planInboxItemWithResponses(
   return inboxPlanningOutputSchema.parse(response.output_parsed);
 }
 
+export async function routeTurnWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+) {
+  const context = turnRoutingInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_TURN_ROUTER_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: buildTurnRouterSystemPrompt()
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(context)
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(turnRoutingOutputSchema, "atlas_turn_routing_output")
+    }
+  });
+
+  return turnRoutingOutputSchema.parse(response.output_parsed);
+}
+
+export async function respondToConversationTurnWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+) {
+  const context = conversationResponseInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_CONVERSATION_RESPONSE_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: buildConversationResponseSystemPrompt()
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(context)
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(conversationResponseOutputSchema, "atlas_conversation_response_output")
+    }
+  });
+
+  return conversationResponseOutputSchema.parse(response.output_parsed);
+}
+
 function buildSystemPrompt() {
   return [
     "You are Atlas, a Telegram-first planning assistant.",
@@ -104,5 +195,33 @@ function buildSystemPrompt() {
     "Do not overconfidently use existing aliases when the message also introduces new tasks.",
     "Do not emit multiple conflicting schedule actions for the same item.",
     "Return only valid structured actions that the application can safely validate and apply."
+  ].join(" ");
+}
+
+function buildTurnRouterSystemPrompt() {
+  return [
+    "You are Atlas's turn router for Telegram.",
+    "Select exactly one route for the current turn: conversation, mutation, or conversation_then_mutation.",
+    "Definitions:",
+    "conversation: reflective discussion, prioritization, advice, planning dialogue, meta questions, or broad proposals without immediate writes.",
+    "mutation: clear direct request to capture, schedule, reschedule, or update Atlas task/schedule state now.",
+    "conversation_then_mutation: mixed turn that includes both discussion and a possible write, where Atlas should converse first and defer any mutation to a later confirming turn.",
+    "Safety rules:",
+    "When uncertain between mutation and conversation_then_mutation for mixed turns, choose conversation_then_mutation.",
+    "Do not assume writes happened in conversation routes.",
+    "Return only the structured routing output."
+  ].join(" ");
+}
+
+function buildConversationResponseSystemPrompt() {
+  return [
+    "You are Atlas, a Telegram-first planning assistant.",
+    "You are responding on the non-writing conversation path.",
+    "Reply in natural language as Atlas.",
+    "Be helpful, concise, and planning-oriented.",
+    "Do not claim that any task, schedule, or reminder was created, updated, moved, completed, or archived.",
+    "If the route is conversation_then_mutation, discuss the request first and make clear that any actual change would require later confirmation.",
+    "Prefer actionable planning guidance, prioritization help, or a concrete next step.",
+    "Return only the structured response."
   ].join(" ");
 }
