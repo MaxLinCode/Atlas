@@ -19,6 +19,16 @@ import {
 } from "@atlas/integrations";
 
 import { processInboxItem, type ProcessInboxItemDependencies } from "./process-inbox-item";
+import {
+  buildConversationResponse,
+  type BuildConversationResponseInput,
+  type BuildConversationResponseResult
+} from "./conversation-response";
+import {
+  routeTelegramTurn,
+  type TurnRouterInput,
+  type TurnRouterResult
+} from "./turn-router";
 
 type WebhookResult = {
   status: number;
@@ -30,6 +40,8 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   deliveryStore?: OutgoingTelegramDeliveryStore;
   primeProcessingStore?: (inboxItem: PersistedInboxItem) => void | Promise<void>;
   sender?: typeof sendTelegramMessage;
+  turnRouter?: (input: TurnRouterInput) => Promise<TurnRouterResult>;
+  conversationResponder?: (input: BuildConversationResponseInput) => Promise<BuildConversationResponseResult>;
 };
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -126,6 +138,53 @@ export async function handleTelegramWebhook(
     };
   }
 
+  const routing = await (dependencies.turnRouter ?? routeTelegramTurn)({
+    rawText: normalizedMessage.rawText,
+    normalizedText: normalizedMessage.normalizedText,
+  });
+
+  if (!routing.writesAllowed) {
+    if (routing.route === "mutation") {
+      throw new Error("Turn router returned mutation while writes were disabled.");
+    }
+
+    const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
+      route: routing.route,
+      rawText: normalizedMessage.rawText,
+      normalizedText: normalizedMessage.normalizedText
+    });
+
+    const outboundDelivery = await sendFollowUpMessage(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        chatId: normalizedMessage.chatId,
+        inboxItemId: ingress.inboxItem.id,
+        text: conversationResponse.reply
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
+      }
+    );
+
+    return {
+      status: 200,
+      body: {
+        accepted: true,
+        idempotencyKey,
+        ingestion: normalizedMessage,
+        inboxItem: ingress.inboxItem,
+        turnRoute: routing.route,
+        routing,
+        processing: {
+          outcome: "conversation_replied",
+          reply: conversationResponse.reply
+        },
+        outboundDelivery
+      }
+    };
+  }
+
   await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
   const processing = await processInboxItem(
@@ -157,6 +216,8 @@ export async function handleTelegramWebhook(
       idempotencyKey,
       ingestion: normalizedMessage,
       inboxItem: ingress.inboxItem,
+      turnRoute: routing.route,
+      routing,
       processing,
       outboundDelivery
     }

@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
 import {
+  respondToConversationTurnWithResponses,
   getDefaultCalendarAdapter,
   planInboxItemWithResponses,
+  routeTurnWithResponses,
   resetCalendarAdapterForTests,
   sendTelegramMessage
 } from "./index";
@@ -143,6 +145,92 @@ describe("integrations", () => {
                 confidence: 2,
                 summary: "Bad output",
                 actions: []
+              }
+            })
+          }
+        }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("parses structured turn routing output from the Responses API client", async () => {
+    const result = await routeTurnWithResponses(
+      {
+        rawText: "Can you help me plan tomorrow first?",
+        normalizedText: "Can you help me plan tomorrow first?"
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              route: "conversation_then_mutation",
+              reason: "This is a mixed discussion and scheduling turn."
+            }
+          })
+        }
+      }
+    );
+
+    expect(result).toMatchObject({
+      route: "conversation_then_mutation"
+    });
+  });
+
+  it("rejects malformed structured turn routing output", async () => {
+    await expect(
+      routeTurnWithResponses(
+        {
+          rawText: "schedule this",
+          normalizedText: "schedule this"
+        },
+        {
+          responses: {
+            parse: async () => ({
+              output_parsed: {
+                route: "write_now",
+                reason: ""
+              }
+            })
+          }
+        }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("parses structured conversation response output from the Responses API client", async () => {
+    const result = await respondToConversationTurnWithResponses(
+      {
+        route: "conversation",
+        rawText: "How should I plan tomorrow?",
+        normalizedText: "How should I plan tomorrow?"
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              reply: "Start by picking the one thing that must happen tomorrow, then give it the first focus block."
+            }
+          })
+        }
+      }
+    );
+
+    expect(result.reply).toContain("first focus block");
+  });
+
+  it("rejects malformed structured conversation response output", async () => {
+    await expect(
+      respondToConversationTurnWithResponses(
+        {
+          route: "conversation_then_mutation",
+          rawText: "Could we move it to Friday?",
+          normalizedText: "Could we move it to Friday?"
+        },
+        {
+          responses: {
+            parse: async () => ({
+              output_parsed: {
+                reply: ""
               }
             })
           }

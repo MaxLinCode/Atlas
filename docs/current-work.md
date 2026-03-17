@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
-Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and start the first conversational bot slice with the app-owned `TurnRouter`.
+Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and continue the conversational bot rollout now that the routed conversation response path is in place.
 
 ## Near-term milestones
 
@@ -14,9 +14,7 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - Add the task-level schema and repository support needed for the locked follow-up runtime, including `followup_reminder_sent_at`.
 - Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
 - Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
-- Implement the first conversational bot slice by adding the app-owned `TurnRouter` that selects `conversation`, `mutation`, or `conversation_then_mutation`.
 - Implement conversational bot behavior in small slices rather than one broad thread:
-  - conversational response path
   - mutation reply renderer
   - mixed-turn confirmation handling
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
@@ -77,6 +75,46 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - `pnpm --filter @atlas/integration-tests test`
 - The core follow-up and reschedule runtime semantics are now locked in docs. Remaining implementation work should follow those contracts rather than reopening the model.
 - The conversational model behavior is now documented as a separate two-path architecture. Remaining work should implement that design incrementally instead of trying to ship a full conversational bot in one slice.
+- The first `TurnRouter` slice is now landed:
+  - routing is app-owned in `apps/web`
+  - the router is model-assisted through `packages/integrations`
+  - inbound Telegram turns are classified as `conversation`, `mutation`, or `conversation_then_mutation`
+  - ingress is still persisted canonically before route selection
+  - only `mutation` enters the existing planner/write path
+  - `conversation` and `conversation_then_mutation` are explicitly non-writing in this slice
+- `primeProcessingStore` is now effectively mutation-only webhook plumbing. Conversational turns should not seed mutation-processing state.
+- The first conversation-response slice is now landed:
+  - non-writing routed turns now go through an app-owned `conversation-response` service
+  - the conversation service is model-assisted through `packages/integrations`
+  - `conversation` now returns a natural-language planning reply instead of temporary fallback copy
+  - `conversation_then_mutation` now returns a natural-language discuss-first reply instead of temporary fallback copy
+  - the conversation path still does not write task or schedule state
+  - the conversation path must not claim that side effects happened
+- The conversation response path should continue to stay app-owned and should use explicit Atlas state rather than broad transcript recall when conversation touches real tasks or scheduling.
+- The next task after the conversation response path is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
+- Mixed-turn confirmation handling is still deferred after those two slices. `conversation_then_mutation` should remain conversation-first until explicit confirmation flow is implemented.
+- Verification completed on this branch:
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm --filter @atlas/integration-tests test`
+
+## Next Handoff
+
+- Next implementation task: build mutation reply rendering as its own app-owned slice.
+- The current mutation path still sends the planner summary directly as the outbound Telegram message.
+- Add a dedicated mutation reply renderer owned by `apps/web` so mutation outcomes and conversation outcomes stop sharing the same simple webhook reply handling shape.
+- Keep the scope narrow:
+  - preserve the existing mutation planner and persistence behavior
+  - map mutation outcomes into clearer user-facing replies
+  - keep writes in the mutation path only
+  - do not fold mutation rendering into the conversation service
+- Reuse the existing outbound Telegram delivery path and ingress persistence.
+- Keep router behavior unchanged while landing the mutation reply renderer.
+- Add tests that prove:
+  - mutation turns now render through the dedicated mutation reply service
+  - planner outcomes still persist exactly as before
+  - no task or schedule writes happen outside the mutation branch
+  - conversational turns still use the non-writing conversation response path
 
 ### Locked runtime semantics
 
