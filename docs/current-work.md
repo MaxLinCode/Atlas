@@ -24,7 +24,12 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
 - Every Atlas task should seek scheduled time immediately; unscheduled backlog should not be the default operating model.
 - Every scheduled task should receive follow-up after the scheduled block ends, and `awaiting_followup` is now a key lifecycle concept.
-- `awaiting_followup` should begin only after the scheduled block has ended and Atlas has issued a follow-up nudge for that task. The runtime path that detects block end and sends that nudge is still intentionally pending design.
+- `awaiting_followup` should begin only after the scheduled block has ended and Atlas has issued a follow-up nudge for that task.
+- The first follow-up should go out immediately after block end unless Atlas is in the middle of an active conversational turn, in which case it should wait for the turn boundary.
+- If the first follow-up goes unanswered, Atlas should send one additional reminder 2 hours later, then leave the task unresolved in `awaiting_followup`.
+- If multiple tasks are overdue, Atlas should surface them one by one, oldest unresolved first.
+- If an unresolved follow-up exists and the user sends a brand-new request, Atlas should handle the new request first, then circle back to the oldest unresolved follow-up.
+- If the user says they did not complete the task, Atlas should not allow passive skipping; it should steer toward rescheduling or archiving.
 - The current branch landed the lean external-calendar-backed task model:
   - live scheduled commitment is now stored directly on `tasks`
   - `schedule_blocks` are no longer the active persisted runtime schedule record
@@ -34,6 +39,9 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
 - Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
 - The current runtime now stores live scheduled commitment fields directly on `tasks`: `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
+- The lean follow-up seam should stay on the task row, not in transport history:
+  - `last_followup_at`: the most recent outbound accountability follow-up Atlas successfully sent for the task
+  - `followup_reminder_sent_at`: the timestamp when Atlas sent the one extra reminder for the current unresolved follow-up episode
 - `schedule_blocks` no longer act as the active persisted scheduling record for runtime reads and writes. They remain a transitional artifact in the repo and planner vocabulary while the dedicated commitment/history design is still deferred.
 - The task row now owns lifecycle state, current commitment snapshot, task-level `reschedule_count`, follow-up timestamps, and inbox provenance directly.
 - `0006_external_calendar_task_fields.sql` now backfills scheduled tasks from the old `current_commitment_id -> schedule_blocks` linkage before dropping the transitional column.
@@ -61,10 +69,38 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - `pnpm --filter @atlas/web test`
   - `pnpm --filter @atlas/integrations test`
   - `pnpm --filter @atlas/integration-tests test`
-- Best next topics after this branch:
-  - design the runtime that moves `scheduled -> awaiting_followup` after block end plus follow-up nudge
-  - design follow-up outcome handling for `done`, `rescheduled`, `archived`, and still waiting
-  - design the dedicated commitment/history model that replaces transitional `schedule_block` planner references
+- The core follow-up and reschedule runtime semantics are now locked in docs. Remaining implementation work should follow those contracts rather than reopening the model.
+
+### Locked runtime semantics
+
+- `last_followup_at` is task-scoped, not scheduled-occurrence-scoped. It records the most recent outbound follow-up-style message Atlas successfully sent for the task, including the first post-block follow-up and the one extra reminder.
+- `followup_reminder_sent_at` is scoped to the current unresolved follow-up episode. It remains `null` until Atlas sends the one extra reminder, is set exactly once for that unresolved episode, and is cleared when the unresolved episode ends through completion, archive, or reschedule to a new future scheduled block.
+- A follow-up episode begins when Atlas sends the first post-block follow-up for a task and moves it into `awaiting_followup`.
+- First-follow-up eligibility is controlled by lifecycle state, not by `last_followup_at`. A task is eligible when `lifecycle_state = scheduled` and `scheduled_end_at <= now`.
+- On successful first follow-up send, Atlas transitions the task to `awaiting_followup` and sets `last_followup_at = sent_at`.
+- Reminder eligibility is: `lifecycle_state = awaiting_followup`, `followup_reminder_sent_at IS NULL`, `last_followup_at IS NOT NULL`, and `now >= last_followup_at + 2 hours`.
+- On successful reminder send, Atlas updates `last_followup_at = sent_at` and `followup_reminder_sent_at = sent_at`.
+- Late replies resolve against the oldest unresolved `awaiting_followup` task unless the user clearly names or describes a different task.
+- Clear completion marks the task `done`.
+- Clear cancel / no-longer-needed intent marks the task `archived`.
+- Clear not-done plus a usable future scheduling signal enters reschedule flow.
+- If the user provides a concrete future time that resolves to one deterministic slot, Atlas may apply that reschedule directly.
+- If the user provides a non-concrete but schedulable future preference such as a daypart or broad scheduling window, Atlas should inspect availability and propose the earliest fitting concrete slot instead of asking a generic clarification question.
+- Atlas should keep a narrow deterministic reschedule path for automatic or directly-applicable mutations.
+- That deterministic path may place the target task into the earliest valid slot and may single-step push later Atlas-managed tasks forward, but it may not perform richer rearrangements such as swaps, pull-earlier moves, or broader schedule rewrites.
+- Atlas may still generate smarter schedule rearrangement proposals conversationally, but those richer proposals require explicit user confirmation before any mutation is applied.
+- The deterministic reschedule proposal should preserve the task's current scheduled duration, search from `max(now, next 15-minute boundary)` in the user's timezone, respect explicit user constraints first, respect configured availability and external calendar busy time, and choose the earliest valid slot within a 7-day horizon.
+- Daypart requests should be treated as non-concrete but schedulable preferences using fixed windows: morning `09:00-12:00`, afternoon `12:00-17:00`, evening `17:00-21:00` in the user's timezone.
+- If a requested daypart or broad scheduling window cannot fit the task, Atlas should not silently spill into another window. It should explicitly propose the next available concrete slot instead.
+- Clear not-done without a usable future scheduling signal keeps the task unresolved and Atlas must steer toward rescheduling or archiving.
+- If no fitting slot can be found for a non-concrete but schedulable preference within the search horizon, Atlas should ask for a narrower scheduling constraint.
+- Partial progress never counts as completion.
+- If the message contains a clearly unrelated new planning request, Atlas should handle the new request first and then circle back to the unresolved follow-up.
+- Runtime ownership is split as follows: `apps/web` owns cron and webhook orchestration, `packages/core` owns pure follow-up selectors and deterministic reschedule logic, `packages/db` owns task queries, transactional updates, and per-user locking, and `packages/integrations` owns Telegram and calendar IO.
+- Follow-up detection and reminder sending should run in a background cron path that evaluates persisted task state, sends outbound messages, and updates task state only after successful delivery.
+- Turn-boundary handling should run once at the end of inbound webhook processing so Atlas can wait until the active conversational turn finishes before sending a newly due follow-up or reminder.
+- Follow-up dispatch, inbound webhook processing, and turn-boundary drain must all use the same per-user lock so only one runtime actor evaluates and mutates follow-up state for a given user at a time.
+- While holding that per-user lock, the runtime should select the oldest unresolved follow-up candidate for the user, attempt any needed send, and apply the resulting task-state transition before releasing the lock.
 
 ## Inspect AI Guardrails
 
