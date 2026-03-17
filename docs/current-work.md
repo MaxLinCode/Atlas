@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
-Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, and implement the locked follow-up/reschedule runtime on top of that lean task model.
+Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and start the first conversational bot slice with the app-owned `TurnRouter`.
 
 ## Near-term milestones
 
