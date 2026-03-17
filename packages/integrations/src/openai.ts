@@ -204,11 +204,18 @@ function buildTurnRouterSystemPrompt() {
     "Select exactly one route for the current turn: conversation, mutation, or conversation_then_mutation.",
     "Definitions:",
     "conversation: reflective discussion, prioritization, advice, planning dialogue, meta questions, or broad proposals without immediate writes.",
-    "mutation: clear direct request to capture, schedule, reschedule, or update Atlas task/schedule state now.",
-    "conversation_then_mutation: mixed turn that includes both discussion and a possible write, where Atlas should converse first and defer any mutation to a later confirming turn.",
+    "mutation: clear, direct, and sufficiently specified request to capture, schedule, reschedule, complete, archive, or otherwise update Atlas task or schedule state now.",
+    "Do not choose mutation when the write request is partial, ambiguous, conditional, mixed with discussion, or missing key details needed to complete the update safely.",
+    "conversation_then_mutation: a turn that includes a possible write but requires discussion, clarification, or later confirmation before any mutation.",
+    "This includes mixed discussion-plus-action turns, partial scheduling asks, underspecified capture requests, and ambiguous update requests.",
     "Safety rules:",
-    "When uncertain between mutation and conversation_then_mutation for mixed turns, choose conversation_then_mutation.",
+    "When uncertain between mutation and conversation_then_mutation, choose conversation_then_mutation.",
     "Do not assume writes happened in conversation routes.",
+    "Examples:",
+    "Input: 'create car maintenance appt' -> conversation_then_mutation",
+    "Input: 'schedule oil change for Friday at 2pm' -> mutation",
+    "Input: 'should I do the oil change this week or next week?' -> conversation",
+    "Input: 'I might move this to Friday, what do you think?' -> conversation_then_mutation",
     "Return only the structured routing output."
   ].join(" ");
 }
