@@ -46,6 +46,9 @@ Notes:
 - `tasks` should hold the live lifecycle field, source and last-touch inbox provenance, task-level `reschedule_count`, and the current external-calendar-backed commitment snapshot.
 - The current commitment snapshot on `tasks` is `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
 - `awaiting_followup` is not entered at scheduling time. It should be entered only after the scheduled block has ended and Atlas has requested follow-up from the user.
+- `last_followup_at` and `followup_reminder_sent_at` belong to task-level product state, not to transport history.
+- `last_followup_at` is task-scoped. It records the most recent outbound accountability follow-up Atlas successfully sent for the task and is not cleared on reschedule.
+- `followup_reminder_sent_at` tracks whether Atlas has already spent the one extra reminder for the current unresolved follow-up episode. It should reset when that unresolved episode ends through completion, archive, or reschedule to a new future scheduled block.
 - `tasks` are the default read model for active work. Basic product queries should not need to reconstruct current state from history.
 
 ### `schedule_blocks`
@@ -89,6 +92,7 @@ Notes:
 Notes:
 - `bot_events` support transport reliability.
 - They are not the user-facing product memory.
+- They should not be the source of truth for whether the one follow-up reminder has already been sent.
 
 ### `planner_runs`
 

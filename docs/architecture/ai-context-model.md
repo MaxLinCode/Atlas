@@ -11,8 +11,6 @@ The system should derive assistant continuity from a hybrid of recent conversati
 - structured user preferences
 - recent relevant conversation turns
 - explicit active task state
-- schedule data retrieved from the database
-- planner and inbox-processing audit state when conversational scheduling needs a safe anchor
 - current task state and accountability state
 - relevant recent or upcoming schedule information
 - planner and inbox-processing audit state when mutation or follow-up needs a safe anchor
@@ -90,10 +88,8 @@ Example:
 
 This layer prevents the assistant from losing track of the current workflow without treating the full chat as durable state.
 
-For schedule-forward MVP inbox processing, this layer should be reconstructed from persisted task, schedule block, and planner-run state rather than from loosely replayed Telegram messages.
-When prompting the model, existing tasks and schedule blocks should be represented with app-generated symbolic aliases rather than raw database ids.
 For the conversation-first MVP, this layer may be informed by recent conversation plus persisted task and audit state.
-For schedule-forward mutation work and follow-up handling, it should be reconstructed from persisted task, schedule block, and planner-run state rather than loosely replayed Telegram messages.
+For mutation work and follow-up handling, it should be reconstructed from persisted task state, current commitment linkage, and planner/audit state rather than loosely replayed Telegram messages.
 When prompting the model for mutation mode, existing tasks or schedule-linked records should still be represented with app-generated symbolic aliases or explicit application references rather than raw database ids.
 
 ### Schedule state
@@ -139,12 +135,6 @@ This mode is optimized for validated task, scheduling, completion, archive, and 
 
 ## Design implications
 
-- Prompt construction should read structured state from repositories or application services, not from raw chat logs.
-- Prompt construction should provide model-readable symbolic references for existing tasks and schedule blocks so the app can safely resolve proposed actions.
-- Structured model output must be validated at the application boundary before it can create or mutate product state.
-- Telegram history should not be treated as canonical memory.
-- Scheduling and reminder decisions should be explainable from stored preferences and schedule state.
-- Conversational schedule adjustments should only be attempted when persisted Atlas state provides one safe target or explicit linkage.
 - Prompt construction should be mode-dependent rather than forcing every turn through the same planning context.
 - Prompt construction may read recent conversation in conversation mode, but should not treat transcript as canonical state.
 - Prompt construction should provide model-readable references for existing tasks and current schedule-linked records so the app can safely resolve proposed mutations.
