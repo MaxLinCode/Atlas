@@ -18,6 +18,7 @@ Atlas now operates in two complementary modes:
 
 - conversation mode: planning dialogue, reflection, prioritization, meta-use, and schedule proposals without required side effects
 - mutation mode: validated task, scheduling, completion, archive, and reschedule writes
+- turn routing mode: app-owned routing that selects whether a turn stays conversational, enters mutation, or uses a conversation-first path before later mutation
 
 Every turn begins in conversation mode. Mutation mode runs only on clear user intent or after Atlas proposes a concrete change and the user confirms it.
 
@@ -74,6 +75,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Validated requests to core, integration, and repository layers
 - HTTP responses and operational outcomes for transport boundaries
 - App-layer orchestration for both conversation mode and mutation mode over persisted Atlas state
+- App-layer turn routing over persisted Atlas state before the app chooses the model path for the turn
 
 ### May read
 
@@ -91,6 +93,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Authentication and authorization boundaries
 - Idempotency handling
 - Orchestration order across components
+- Turn routing across `conversation`, `mutation`, and `conversation_then_mutation`
 - Which persisted context to load before asking core to classify or schedule an inbox item
 - Whether a turn stays in conversation mode or enters mutation mode
 - Which context to load for the current mode before asking core or the model to reason about the turn
@@ -105,7 +108,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-`packages/core` owns product types, mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
+`packages/core` owns product types, turn-routing and mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
 
 ### Accepts
 
@@ -115,7 +118,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Produces
 
-- Structured mutation-action schemas, symbolic reference rules, scheduling proposals, follow-up outcomes, and ambiguity outcomes
+- Turn-routing schemas, structured mutation-action schemas, symbolic reference rules, scheduling proposals, follow-up outcomes, and ambiguity outcomes
 - App-owned validation results and explainable decisions
 
 ### May read
@@ -129,6 +132,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Allowed decisions
 
+- Validation of model-produced turn-routing output through app-owned schemas
 - Validation of model-produced mutation output through app-owned schemas
 - Scheduling heuristics that are deterministic and explainable
 - Follow-up and accountability rules captured in product docs
@@ -145,7 +149,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-The model layer interprets messy user text and supports both conversational planning and structured mutation proposals.
+The model layer interprets messy user text for three app-selected responsibilities: turn routing, conversational planning, and structured mutation proposals.
 
 ### Accepts
 
@@ -154,6 +158,7 @@ The model layer interprets messy user text and supports both conversational plan
 
 ### Produces
 
+- Turn-routing classifications such as `conversation`, `mutation`, or `conversation_then_mutation`
 - Conversational planning responses, suggestions, and clarifications in conversation mode
 - Structured mutation proposals such as create task, schedule task, move scheduled time, complete task, archive task, or clarify in mutation mode
 - Optional metadata such as confidence, ambiguity markers, and scheduling constraint hints
@@ -169,7 +174,8 @@ The model layer interprets messy user text and supports both conversational plan
 
 ### Allowed decisions
 
-- Text interpretation within the provided planning or mutation task
+- Text interpretation within the provided routing, planning, or mutation task
+- Classifying a turn into the app-owned routing modes from the provided context
 - Conversational reasoning over recent transcript plus relevant state when the app selects conversation mode
 - Proposing mutation actions and symbolic references from the provided context when the app selects mutation mode
 - Limited inference where the text is messy but still reasonably recoverable
@@ -222,7 +228,9 @@ Neon Postgres is the canonical persistence layer for Atlas.
 
 - An inbound Telegram message must be persisted as an inbox item before Atlas mutates downstream task state.
 - Conversation mode may use recent transcript plus relevant state, but transcript is not canonical state for mutations.
+- The app should own `TurnRouter` and select `ConversationPath` or `MutationPath` explicitly rather than relying on one catch-all model prompt.
 - Mutation mode output must be validated against app-owned schemas before any record is created or updated from it.
+- Only the mutation path may write or trigger product-state changes.
 - Existing-item mutations must resolve against persisted Atlas state and explicit references, not broad recent-chat inference.
 - Atlas owns task and accountability state even if an external calendar becomes the canonical source of scheduled time.
 - Reminder and follow-up dispatch must operate from persisted Atlas state plus relevant external schedule linkage, not ad hoc prompt context.
