@@ -49,22 +49,17 @@ export const inboxItemSchema = z.object({
   linkedTaskIds: z.array(z.string()).default([])
 });
 
-export const taskSchema = z.object({
+const baseTaskSchema = z.object({
   id: z.string(),
   userId: z.string(),
   title: z.string(),
   sourceInboxItemId: z.string(),
   lastInboxItemId: z.string(),
-  lifecycleState: z.enum([
-    "captured",
-    "scheduling",
-    "scheduled",
-    "awaiting_followup",
-    "completed",
-    "archived"
-  ]),
-  // Transitional until the dedicated commitment model replaces schedule_blocks.
-  currentCommitmentId: z.string().uuid().nullable().default(null),
+  lifecycleState: z.enum(["pending_schedule", "scheduled", "awaiting_followup", "done", "archived"]),
+  externalCalendarEventId: z.string().nullable().default(null),
+  externalCalendarId: z.string().nullable().default(null),
+  scheduledStartAt: z.string().datetime().nullable().default(null),
+  scheduledEndAt: z.string().datetime().nullable().default(null),
   rescheduleCount: z.number().int().nonnegative(),
   lastFollowupAt: z.string().datetime().nullable().default(null),
   completedAt: z.string().datetime().nullable().default(null),
@@ -73,6 +68,61 @@ export const taskSchema = z.object({
   urgency: z.enum(["low", "medium", "high"]),
   energyTag: z.enum(["low", "medium", "high"]).optional(),
   createdAt: z.string().datetime().optional()
+});
+
+export const taskSchema = baseTaskSchema.superRefine((task, ctx) => {
+  const hasCurrentCommitment =
+    task.externalCalendarEventId !== null ||
+    task.externalCalendarId !== null ||
+    task.scheduledStartAt !== null ||
+    task.scheduledEndAt !== null;
+  const hasCompleteCurrentCommitment =
+    task.externalCalendarEventId !== null &&
+    task.externalCalendarId !== null &&
+    task.scheduledStartAt !== null &&
+    task.scheduledEndAt !== null;
+
+  if (task.lifecycleState === "scheduled" || task.lifecycleState === "awaiting_followup") {
+    if (!hasCompleteCurrentCommitment) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Scheduled tasks must include a complete current calendar commitment."
+      });
+    }
+  } else if (hasCurrentCommitment) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Only scheduled or awaiting_followup tasks may retain current calendar commitment fields."
+    });
+  }
+
+  if (task.lifecycleState === "done" && task.completedAt === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Done tasks must record completedAt."
+    });
+  }
+
+  if (task.lifecycleState !== "done" && task.completedAt !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Only done tasks may record completedAt."
+    });
+  }
+
+  if (task.lifecycleState === "archived" && task.archivedAt === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Archived tasks must record archivedAt."
+    });
+  }
+
+  if (task.lifecycleState !== "archived" && task.archivedAt !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Only archived tasks may record archivedAt."
+    });
+  }
 });
 
 export const taskActionSchema = z.object({
@@ -273,7 +323,7 @@ export function buildDefaultUserProfile(userId: string): UserProfile {
 }
 
 export function buildCapturedTask(input: CapturedTaskInput): Omit<Task, "id" | "createdAt"> {
-  return taskSchema.omit({
+  return baseTaskSchema.omit({
     id: true,
     createdAt: true
   }).parse({
@@ -281,8 +331,11 @@ export function buildCapturedTask(input: CapturedTaskInput): Omit<Task, "id" | "
     sourceInboxItemId: input.inboxItemId,
     lastInboxItemId: input.inboxItemId,
     title: input.title,
-    lifecycleState: "scheduling",
-    currentCommitmentId: null,
+    lifecycleState: "pending_schedule",
+    externalCalendarEventId: null,
+    externalCalendarId: null,
+    scheduledStartAt: null,
+    scheduledEndAt: null,
     rescheduleCount: 0,
     lastFollowupAt: null,
     completedAt: null,
@@ -296,9 +349,11 @@ export function buildInboxPlanningContext(input: {
   inboxItem: InboxItem;
   userProfile: UserProfile;
   tasks: Task[];
-  scheduleBlocks: ScheduleBlock[];
+  scheduleBlocks?: ScheduleBlock[];
   now?: string;
 }): InboxPlanningContext {
+  const scheduleBlocks = input.scheduleBlocks ?? buildScheduleBlocksFromTasks(input.tasks);
+
   return inboxPlanningContextSchema.parse({
     inboxItem: input.inboxItem,
     userProfile: input.userProfile,
@@ -306,7 +361,7 @@ export function buildInboxPlanningContext(input: {
       alias: `existing_task_${index + 1}`,
       task
     })),
-    scheduleBlocks: input.scheduleBlocks.map((scheduleBlock, index) => ({
+    scheduleBlocks: scheduleBlocks.map((scheduleBlock, index) => ({
       alias: `schedule_block_${index + 1}`,
       scheduleBlock,
       taskTitle: input.tasks.find((task) => task.id === scheduleBlock.taskId)?.title ?? "Scheduled task"
@@ -477,4 +532,42 @@ export async function replanTask(input: unknown) {
     input,
     message: "Replanning logic is not implemented yet."
   };
+}
+
+export function buildScheduleBlocksFromTasks(tasks: Task[]): ScheduleBlock[] {
+  return tasks.flatMap((task) => {
+    const block = buildScheduleBlockFromTask(task);
+    return block ? [block] : [];
+  });
+}
+
+export function buildScheduleBlockFromTask(task: Task): ScheduleBlock | null {
+  if (
+    task.externalCalendarEventId === null ||
+    task.externalCalendarId === null ||
+    task.scheduledStartAt === null ||
+    task.scheduledEndAt === null
+  ) {
+    return null;
+  }
+
+  return scheduleBlockSchema.parse({
+    id: task.externalCalendarEventId,
+    userId: task.userId,
+    taskId: task.id,
+    startAt: task.scheduledStartAt,
+    endAt: task.scheduledEndAt,
+    confidence: 1,
+    reason: "Current external-calendar-backed commitment.",
+    rescheduleCount: task.rescheduleCount,
+    externalCalendarId: task.externalCalendarId
+  });
+}
+
+export function isTaskFollowupDue(task: Task, now = new Date().toISOString()) {
+  return (
+    task.lifecycleState === "scheduled" &&
+    task.scheduledEndAt !== null &&
+    Date.parse(task.scheduledEndAt) <= Date.parse(now)
+  );
 }

@@ -6,6 +6,15 @@ ALTER TABLE "tasks" ADD COLUMN "scheduled_start_at" timestamp with time zone;
 --> statement-breakpoint
 ALTER TABLE "tasks" ADD COLUMN "scheduled_end_at" timestamp with time zone;
 --> statement-breakpoint
+UPDATE "tasks" AS t
+SET
+  "external_calendar_event_id" = sc."id"::text,
+  "external_calendar_id" = sc."external_calendar_id",
+  "scheduled_start_at" = sc."start_at",
+  "scheduled_end_at" = sc."end_at"
+FROM "schedule_blocks" AS sc
+WHERE t."current_commitment_id" = sc."id";
+--> statement-breakpoint
 DO $$
 BEGIN
   IF EXISTS (

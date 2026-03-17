@@ -10,6 +10,7 @@ import {
   PostgresIncomingTelegramIngressStore,
   recordIncomingTelegramMessageIfNew
 } from "@atlas/db";
+import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
 
 import { processInboxItem } from "../../apps/web/src/lib/server/process-inbox-item";
 
@@ -35,6 +36,7 @@ if (!databaseUrl) {
       await sql.unsafe("drop schema if exists public cascade;");
       await sql.unsafe("create schema if not exists public;");
       await applyMigrations(sql);
+      resetCalendarAdapterForTests();
     });
 
     afterAll(async () => {
@@ -43,7 +45,7 @@ if (!databaseUrl) {
       await sql.end();
     });
 
-    it("creates a task, schedule block, and planner run for a first-seen inbox item", async () => {
+    it("creates a task, task-backed current commitment, and planner run for a first-seen inbox item", async () => {
       const ingress = await recordIncomingTelegramMessageIfNew(
         {
           userId: "123",
@@ -68,6 +70,7 @@ if (!databaseUrl) {
         },
         {
           store: processingStore,
+          calendar: getDefaultCalendarAdapter(),
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
@@ -101,13 +104,22 @@ if (!databaseUrl) {
 
       expect(result.outcome).toBe("planned");
 
-      const insertedTasks = await sql`select title from tasks`;
-      const insertedBlocks = await sql`select task_id from schedule_blocks`;
+      const insertedTasks = await sql`
+        select title, lifecycle_state, external_calendar_event_id, external_calendar_id, scheduled_start_at, scheduled_end_at
+        from tasks
+      `;
       const insertedPlannerRuns = await sql`select version from planner_runs`;
       const updatedInbox = await sql`select processing_status from inbox_items where id = ${ingress.inboxItem.id}`;
 
       expect(insertedTasks).toHaveLength(1);
-      expect(insertedBlocks).toHaveLength(1);
+      expect(insertedTasks[0]).toMatchObject({
+        title: "Review launch checklist",
+        lifecycle_state: "scheduled",
+        external_calendar_id: "primary"
+      });
+      expect(insertedTasks[0]?.external_calendar_event_id).toBeTruthy();
+      expect(insertedTasks[0]?.scheduled_start_at).toBeTruthy();
+      expect(insertedTasks[0]?.scheduled_end_at).toBeTruthy();
       expect(insertedPlannerRuns).toHaveLength(1);
       expect(updatedInbox[0]?.processing_status).toBe("planned");
     });
@@ -137,6 +149,7 @@ if (!databaseUrl) {
         },
         {
           store: processingStore,
+          calendar: getDefaultCalendarAdapter(),
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
@@ -192,6 +205,7 @@ if (!databaseUrl) {
         },
         {
           store: processingStore,
+          calendar: getDefaultCalendarAdapter(),
           planner: async () => ({
             confidence: 0.84,
             summary: "Moved it to 3pm.",
@@ -217,13 +231,28 @@ if (!databaseUrl) {
 
       expect(result.outcome).toBe("updated_schedule");
 
-      const updatedBlocks = await sql`select start_at, reschedule_count from schedule_blocks`;
-      expect(updatedBlocks[0]?.reschedule_count).toBe(1);
+      const updatedTasks = await sql`
+        select scheduled_start_at, reschedule_count, external_calendar_event_id
+        from tasks
+      `;
+      expect(updatedTasks[0]?.reschedule_count).toBe(1);
+      expect(updatedTasks[0]?.external_calendar_event_id).toBeTruthy();
+      expect(new Date(updatedTasks[0]?.scheduled_start_at as string | Date).toISOString()).toContain(
+        "T15:00:00.000Z"
+      );
     });
 
-    it("enforces the current commitment foreign key on tasks", async () => {
-      await expect(
-        sql`
+    it("backfills task-level current commitment fields during the 0006 migration", async () => {
+      const legacySql = postgres(databaseUrl, {
+        prepare: false
+      });
+
+      try {
+        await legacySql.unsafe("drop schema if exists public cascade;");
+        await legacySql.unsafe("create schema if not exists public;");
+        await applyMigrations(legacySql, "0005_task_centric_tasks.sql");
+
+        await legacySql`
           insert into tasks (
             id,
             user_id,
@@ -231,7 +260,6 @@ if (!databaseUrl) {
             last_inbox_item_id,
             title,
             lifecycle_state,
-            current_commitment_id,
             reschedule_count,
             priority,
             urgency
@@ -242,23 +270,84 @@ if (!databaseUrl) {
             '00000000-0000-4000-8000-000000000011',
             'Review launch checklist',
             'scheduled',
-            '00000000-0000-4000-8000-000000000099',
             0,
             'medium',
             'medium'
           )
-        `
-      ).rejects.toThrow();
+        `;
+        await legacySql`
+          insert into schedule_blocks (
+            id,
+            user_id,
+            task_id,
+            action_id,
+            start_at,
+            end_at,
+            confidence,
+            reason,
+            reschedule_count,
+            external_calendar_id
+          ) values (
+            '00000000-0000-4000-8000-000000000099',
+            '123',
+            '00000000-0000-4000-8000-000000000010',
+            null,
+            '2026-03-14T17:00:00.000Z',
+            '2026-03-14T18:00:00.000Z',
+            0.8,
+            'Legacy schedule block',
+            0,
+            'primary'
+          )
+        `;
+        await legacySql`
+          update tasks
+          set current_commitment_id = '00000000-0000-4000-8000-000000000099'
+          where id = '00000000-0000-4000-8000-000000000010'
+        `;
+
+        const migrationContents = await readFile(
+          path.join(migrationsDir, "0006_external_calendar_task_fields.sql"),
+          "utf8"
+        );
+        const statements = migrationContents
+          .split("--> statement-breakpoint")
+          .map((statement) => statement.trim())
+          .filter(Boolean);
+
+        for (const statement of statements) {
+          await legacySql.unsafe(statement);
+        }
+
+        const migratedTasks = await legacySql`
+          select external_calendar_event_id, external_calendar_id, scheduled_start_at, scheduled_end_at
+          from tasks
+          where id = '00000000-0000-4000-8000-000000000010'
+        `;
+
+        expect(migratedTasks[0]).toMatchObject({
+          external_calendar_event_id: "00000000-0000-4000-8000-000000000099",
+          external_calendar_id: "primary"
+        });
+        expect(migratedTasks[0]?.scheduled_start_at).toBeTruthy();
+        expect(migratedTasks[0]?.scheduled_end_at).toBeTruthy();
+      } finally {
+        await legacySql.end();
+      }
     });
   });
 }
 
-async function applyMigrations(sql: ReturnType<typeof postgres>) {
+async function applyMigrations(sql: ReturnType<typeof postgres>, throughFile?: string) {
   const migrationFiles = (await readdir(migrationsDir))
     .filter((file) => file.endsWith(".sql"))
     .sort();
 
   for (const file of migrationFiles) {
+    if (throughFile && file > throughFile) {
+      break;
+    }
+
     const contents = await readFile(path.join(migrationsDir, file), "utf8");
     const statements = contents
       .split("--> statement-breakpoint")

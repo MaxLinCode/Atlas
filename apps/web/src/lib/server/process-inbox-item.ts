@@ -17,7 +17,12 @@ import {
   type InboxProcessingStore,
   type ProcessedInboxResult
 } from "@atlas/db";
-import { planInboxItemWithResponses } from "@atlas/integrations";
+import {
+  getDefaultCalendarAdapter,
+  planInboxItemWithResponses,
+  type CalendarEventSnapshot,
+  type ExternalCalendarAdapter
+} from "@atlas/integrations";
 
 export type ProcessInboxItemRequest = {
   inboxItemId: string;
@@ -26,6 +31,7 @@ export type ProcessInboxItemRequest = {
 export type ProcessInboxItemDependencies = {
   store?: InboxProcessingStore;
   planner?: typeof planInboxItemWithResponses;
+  calendar?: ExternalCalendarAdapter;
 };
 
 export async function processInboxItem(
@@ -35,6 +41,7 @@ export async function processInboxItem(
   const parsed = parseProcessInboxItemRequest(input);
   const store = dependencies.store ?? getDefaultInboxProcessingStore();
   const planner = dependencies.planner ?? planInboxItemWithResponses;
+  const calendar = dependencies.calendar ?? getDefaultCalendarAdapter();
   const context = await store.loadContext(parsed.inboxItemId);
 
   if (!context) {
@@ -66,13 +73,25 @@ export async function processInboxItem(
 
   const plannerRun = buildPlannerRun(context, planningContext, planning);
 
-  return applyPlanningResult({
-    context,
-    planningContext,
-    planning,
-    plannerRun,
-    store
-  });
+  try {
+    return await applyPlanningResult({
+      context,
+      planningContext,
+      planning,
+      plannerRun,
+      store,
+      calendar
+    });
+  } catch (error) {
+    await store.saveFailedPlannerRun({
+      inboxItemId: context.inboxItem.id,
+      plannerRun: buildPlannerRun(context, planningContext, {
+        ...planning,
+        failure: buildErrorEnvelope(error)
+      })
+    });
+    throw error;
+  }
 }
 
 type ApplyPlanningResultInput = {
@@ -90,6 +109,7 @@ type ApplyPlanningResultInput = {
     confidence: number;
   };
   store: InboxProcessingStore;
+  calendar: ExternalCalendarAdapter;
 };
 
 async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<ProcessedInboxResult> {
@@ -188,7 +208,8 @@ async function applyCreatedTaskActions(
   const scheduleBlocks = await buildScheduleBlocksForCreatedTasks(
     input.context,
     scheduleActionsForCreatedTasks,
-    taskAliasToDraftTask
+    taskAliasToDraftTask,
+    input.calendar
   );
 
   if ("reason" in scheduleBlocks) {
@@ -248,11 +269,17 @@ async function applyExistingTaskScheduleActions(
       return saveClarification(input, `Could not build a schedule block for task alias ${action.taskRef.alias}.`);
     }
 
-    scheduleBlocks.push({
-      ...scheduledBlock,
-      reason: action.reason
+    const persistedSchedule = await scheduleTaskWithCalendar({
+      calendar: input.calendar,
+      task,
+      proposedBlock: {
+        ...scheduledBlock,
+        reason: action.reason
+      }
     });
-    existingBlocks = [...existingBlocks, scheduledBlock];
+
+    scheduleBlocks.push(persistedSchedule);
+    existingBlocks = [...existingBlocks, persistedSchedule];
   }
 
   return input.store.saveScheduleRequestResult({
@@ -282,13 +309,36 @@ async function applyMoveAction(
     existingBlocks: input.context.scheduleBlocks
   });
 
+  const task = input.context.tasks.find((candidate) => candidate.id === block.taskId);
+
+  if (!task || task.externalCalendarId === null) {
+    return saveClarification(input, `Could not resolve current scheduled task for alias ${action.blockRef.alias}.`);
+  }
+
+  const liveEvent = await input.calendar.getEvent({
+    externalCalendarEventId: block.id,
+    externalCalendarId: task.externalCalendarId
+  });
+
+  if (!liveEvent) {
+    return saveClarification(input, `Could not resolve schedule block alias ${action.blockRef.alias}.`);
+  }
+
+  const updatedEvent = await input.calendar.updateEvent({
+    externalCalendarEventId: liveEvent.externalCalendarEventId,
+    externalCalendarId: liveEvent.externalCalendarId,
+    title: task.title,
+    startAt: adjustment.newStartAt,
+    endAt: adjustment.newEndAt
+  });
+
   return input.store.saveScheduleAdjustmentResult({
     inboxItemId: input.context.inboxItem.id,
     confidence: input.planning.confidence,
     plannerRun: input.plannerRun,
-    blockId: adjustment.blockId,
-    newStartAt: adjustment.newStartAt,
-    newEndAt: adjustment.newEndAt,
+    blockId: updatedEvent.externalCalendarEventId,
+    newStartAt: updatedEvent.scheduledStartAt,
+    newEndAt: updatedEvent.scheduledEndAt,
     reason: action.reason,
     followUpMessage: input.planning.summary
   });
@@ -297,7 +347,8 @@ async function applyMoveAction(
 async function buildScheduleBlocksForCreatedTasks(
   context: ApplyPlanningResultInput["context"],
   createScheduleActions: Extract<PlanningAction, { type: "create_schedule_block" }>[],
-  createdTaskAliases: Map<string, Task>
+  createdTaskAliases: Map<string, Task>,
+  calendar: ExternalCalendarAdapter
 ) {
   const blocks: ScheduleBlock[] = [];
   let existingBlocks = [...context.scheduleBlocks];
@@ -332,16 +383,86 @@ async function buildScheduleBlocksForCreatedTasks(
       };
     }
 
-    blocks.push({
-      ...scheduledBlock,
-      taskId: action.taskRef.alias,
-      reason: action.reason
+    const persistedSchedule = await scheduleTaskWithCalendar({
+      calendar,
+      task,
+      proposedBlock: {
+        ...scheduledBlock,
+        taskId: action.taskRef.alias,
+        reason: action.reason
+      }
     });
-    existingBlocks = [...existingBlocks, scheduledBlock];
+
+    blocks.push(persistedSchedule);
+    existingBlocks = [...existingBlocks, persistedSchedule];
   }
 
   return {
     blocks
+  };
+}
+
+async function scheduleTaskWithCalendar(input: {
+  calendar: ExternalCalendarAdapter;
+  task: Task;
+  proposedBlock: ScheduleBlock;
+}): Promise<ScheduleBlock> {
+  const currentEvent = await getCurrentCalendarEvent(input.calendar, input.task);
+
+  const calendarEvent = currentEvent
+    ? await input.calendar.updateEvent({
+        externalCalendarEventId: currentEvent.externalCalendarEventId,
+        externalCalendarId: currentEvent.externalCalendarId,
+        title: input.task.title,
+        startAt: input.proposedBlock.startAt,
+        endAt: input.proposedBlock.endAt
+      })
+    : await input.calendar.createEvent({
+        title: input.task.title,
+        startAt: input.proposedBlock.startAt,
+        endAt: input.proposedBlock.endAt,
+        externalCalendarId: input.task.externalCalendarId
+      });
+
+  return buildScheduleBlockFromCalendarEvent({
+    taskId: input.proposedBlock.taskId,
+    userId: input.task.userId,
+    reason: input.proposedBlock.reason,
+    rescheduleCount: input.proposedBlock.rescheduleCount,
+    confidence: input.proposedBlock.confidence,
+    calendarEvent
+  });
+}
+
+async function getCurrentCalendarEvent(calendar: ExternalCalendarAdapter, task: Task) {
+  if (task.externalCalendarEventId === null || task.externalCalendarId === null) {
+    return null;
+  }
+
+  return calendar.getEvent({
+    externalCalendarEventId: task.externalCalendarEventId,
+    externalCalendarId: task.externalCalendarId
+  });
+}
+
+function buildScheduleBlockFromCalendarEvent(input: {
+  taskId: string;
+  userId: string;
+  reason: string;
+  rescheduleCount: number;
+  confidence: number;
+  calendarEvent: CalendarEventSnapshot;
+}): ScheduleBlock {
+  return {
+    id: input.calendarEvent.externalCalendarEventId,
+    userId: input.userId,
+    taskId: input.taskId,
+    startAt: input.calendarEvent.scheduledStartAt,
+    endAt: input.calendarEvent.scheduledEndAt,
+    confidence: input.confidence,
+    reason: input.reason,
+    rescheduleCount: input.rescheduleCount,
+    externalCalendarId: input.calendarEvent.externalCalendarId
   };
 }
 

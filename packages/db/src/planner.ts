@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import type { InboxItem, ScheduleBlock, Task, UserProfile } from "@atlas/core";
-import { buildDefaultUserProfile } from "@atlas/core";
+import { buildDefaultUserProfile, buildScheduleBlocksFromTasks } from "@atlas/core";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { inboxItems, plannerRuns, scheduleBlocks, tasks, userProfiles } from "./schema";
+import { inboxItems, plannerRuns, tasks, userProfiles } from "./schema";
 
 export type PersistedPlannerRun = {
   id: string;
@@ -113,14 +113,11 @@ type StoredTask = Omit<Task, "createdAt"> & {
   createdAt?: string | undefined;
 };
 
-type StoredScheduleBlock = ScheduleBlock;
-
 type StoredUserProfile = UserProfile;
 
 class InMemoryInboxProcessingStore implements InboxProcessingStore {
   private readonly inboxItemsById = new Map<string, StoredInboxItem>();
   private readonly tasksById = new Map<string, StoredTask>();
-  private readonly scheduleBlocksById = new Map<string, StoredScheduleBlock>();
   private readonly plannerRunsById = new Map<string, PersistedPlannerRun>();
   private readonly userProfilesById = new Map<string, StoredUserProfile>();
 
@@ -133,7 +130,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
   }
 
   listScheduleBlocks() {
-    return Array.from(this.scheduleBlocksById.values());
+    return buildScheduleBlocksFromTasks(this.listTasks());
   }
 
   listPlannerRuns() {
@@ -143,7 +140,6 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
   reset() {
     this.inboxItemsById.clear();
     this.tasksById.clear();
-    this.scheduleBlocksById.clear();
     this.plannerRunsById.clear();
     this.userProfilesById.clear();
   }
@@ -158,8 +154,8 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     return {
       inboxItem,
       tasks: Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId),
-      scheduleBlocks: Array.from(this.scheduleBlocksById.values()).filter(
-        (block) => block.userId === inboxItem.userId
+      scheduleBlocks: buildScheduleBlocksFromTasks(
+        Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId)
       ),
       userProfile: this.userProfilesById.get(inboxItem.userId) ?? buildDefaultUserProfile(inboxItem.userId)
     };
@@ -208,15 +204,14 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       const persistedTask: StoredTask = {
         ...task,
         lifecycleState: currentBlock ? "scheduled" : task.lifecycleState,
-        currentCommitmentId: currentBlock?.id ?? null
+        externalCalendarEventId: currentBlock?.id ?? null,
+        externalCalendarId: currentBlock?.externalCalendarId ?? null,
+        scheduledStartAt: currentBlock?.startAt ?? null,
+        scheduledEndAt: currentBlock?.endAt ?? null
       };
       this.tasksById.set(task.id, persistedTask);
       return persistedTask;
     });
-
-    for (const block of remappedBlocks) {
-      this.scheduleBlocksById.set(block.id, block);
-    }
 
     const plannerRun = this.insertPlannerRun(input.plannerRun);
     const updatedInbox = {
@@ -247,30 +242,17 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     followUpMessage: string;
   }): Promise<ProcessedInboxResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
-    const block = this.scheduleBlocksById.get(input.blockId);
-
-    if (!block) {
-      throw new Error(`Schedule block ${input.blockId} not found.`);
-    }
-
-    const updatedBlock = {
-      ...block,
-      startAt: input.newStartAt,
-      endAt: input.newEndAt,
-      reason: input.reason,
-      rescheduleCount: block.rescheduleCount + 1,
-      confidence: input.confidence
-    };
-    this.scheduleBlocksById.set(updatedBlock.id, updatedBlock);
-
-    const task = this.tasksById.get(updatedBlock.taskId);
+    const task = Array.from(this.tasksById.values()).find((candidate) => candidate.externalCalendarEventId === input.blockId);
 
     if (task) {
       const updatedTask: StoredTask = {
         ...task,
         lastInboxItemId: input.inboxItemId,
         lifecycleState: "scheduled",
-        currentCommitmentId: updatedBlock.id,
+        externalCalendarEventId: input.blockId,
+        externalCalendarId: task.externalCalendarId,
+        scheduledStartAt: input.newStartAt,
+        scheduledEndAt: input.newEndAt,
         rescheduleCount: task.rescheduleCount + 1
       };
       this.tasksById.set(task.id, updatedTask);
@@ -287,7 +269,17 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       outcome: "updated_schedule",
       inboxItem: updatedInbox,
       plannerRun,
-      updatedBlock,
+      updatedBlock: {
+        id: input.blockId,
+        userId: task?.userId ?? inboxItem.userId,
+        taskId: task?.id ?? "",
+        startAt: input.newStartAt,
+        endAt: input.newEndAt,
+        confidence: input.confidence,
+        reason: input.reason,
+        rescheduleCount: (task?.rescheduleCount ?? 0) + 1,
+        externalCalendarId: task?.externalCalendarId ?? null
+      },
       followUpMessage: input.followUpMessage
     };
   }
@@ -303,21 +295,33 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const scheduledTasks: Task[] = [];
 
+    const scheduledBlocks: ScheduleBlock[] = [];
+
     for (const block of input.scheduleBlocks) {
-      this.scheduleBlocksById.set(block.id, block);
       const task = this.tasksById.get(block.taskId);
 
       if (task) {
-        const isReschedule = task.currentCommitmentId !== null;
+        const isReschedule =
+          task.externalCalendarEventId !== null &&
+          task.externalCalendarEventId === block.id &&
+          task.scheduledStartAt !== null &&
+          task.scheduledEndAt !== null;
         const updatedTask: StoredTask = {
           ...task,
           lastInboxItemId: input.inboxItemId,
           lifecycleState: "scheduled",
-          currentCommitmentId: block.id,
+          externalCalendarEventId: block.id,
+          externalCalendarId: block.externalCalendarId,
+          scheduledStartAt: block.startAt,
+          scheduledEndAt: block.endAt,
           rescheduleCount: isReschedule ? task.rescheduleCount + 1 : task.rescheduleCount
         };
         this.tasksById.set(task.id, updatedTask);
         scheduledTasks.push(updatedTask);
+        scheduledBlocks.push({
+          ...block,
+          taskId: updatedTask.id
+        });
       }
     }
 
@@ -334,7 +338,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       inboxItem: updatedInbox,
       plannerRun,
       scheduledTasks,
-      scheduleBlocks: input.scheduleBlocks,
+      scheduleBlocks: scheduledBlocks,
       followUpMessage: input.followUpMessage
     };
   }
@@ -428,11 +432,30 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
       return null;
     }
 
-    const [taskRows, blockRows, profileRows] = await Promise.all([
+    const [taskRows, profileRows] = await Promise.all([
       this.db.select().from(tasks).where(eq(tasks.userId, inboxItem.userId)),
-      this.db.select().from(scheduleBlocks).where(eq(scheduleBlocks.userId, inboxItem.userId)),
       this.db.select().from(userProfiles).where(eq(userProfiles.userId, inboxItem.userId)).limit(1)
     ]);
+
+    const parsedTasks = taskRows.map((task) => ({
+      id: task.id,
+      userId: task.userId,
+      sourceInboxItemId: task.sourceInboxItemId,
+      lastInboxItemId: task.lastInboxItemId,
+      title: task.title,
+      lifecycleState: task.lifecycleState as Task["lifecycleState"],
+      externalCalendarEventId: task.externalCalendarEventId,
+      externalCalendarId: task.externalCalendarId,
+      scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
+      scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
+      rescheduleCount: task.rescheduleCount,
+      lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+      completedAt: task.completedAt?.toISOString() ?? null,
+      archivedAt: task.archivedAt?.toISOString() ?? null,
+      priority: task.priority as Task["priority"],
+      urgency: task.urgency as Task["urgency"],
+      createdAt: task.createdAt.toISOString()
+    }));
 
     return {
       inboxItem: {
@@ -444,33 +467,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         processingStatus: inboxItem.processingStatus as InboxItem["processingStatus"],
         linkedTaskIds: inboxItem.linkedTaskIds
       },
-      tasks: taskRows.map((task) => ({
-        id: task.id,
-        userId: task.userId,
-        sourceInboxItemId: task.sourceInboxItemId,
-        lastInboxItemId: task.lastInboxItemId,
-        title: task.title,
-        lifecycleState: task.lifecycleState as Task["lifecycleState"],
-        currentCommitmentId: task.currentCommitmentId,
-        rescheduleCount: task.rescheduleCount,
-        lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-        completedAt: task.completedAt?.toISOString() ?? null,
-        archivedAt: task.archivedAt?.toISOString() ?? null,
-        priority: task.priority as Task["priority"],
-        urgency: task.urgency as Task["urgency"],
-        createdAt: task.createdAt.toISOString()
-      })),
-      scheduleBlocks: blockRows.map((block) => ({
-        id: block.id,
-        userId: block.userId,
-        taskId: block.taskId,
-        startAt: block.startAt.toISOString(),
-        endAt: block.endAt.toISOString(),
-        confidence: block.confidence,
-        reason: block.reason,
-        rescheduleCount: block.rescheduleCount,
-        externalCalendarId: block.externalCalendarId
-      })),
+      tasks: parsedTasks,
+      scheduleBlocks: buildScheduleBlocksFromTasks(parsedTasks),
       userProfile: profileRows[0]
         ? {
             userId: profileRows[0].userId,
@@ -517,7 +515,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             lastInboxItemId: task.lastInboxItemId,
             title: task.title,
             lifecycleState: task.lifecycleState,
-            currentCommitmentId: task.currentCommitmentId,
+            externalCalendarEventId: task.externalCalendarEventId,
+            externalCalendarId: task.externalCalendarId,
+            scheduledStartAt: task.scheduledStartAt ? new Date(task.scheduledStartAt) : null,
+            scheduledEndAt: task.scheduledEndAt ? new Date(task.scheduledEndAt) : null,
             rescheduleCount: task.rescheduleCount,
             lastFollowupAt: task.lastFollowupAt ? new Date(task.lastFollowupAt) : null,
             completedAt: task.completedAt ? new Date(task.completedAt) : null,
@@ -540,21 +541,6 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId
       }));
 
-      await tx.insert(scheduleBlocks).values(
-        remappedBlocks.map((block) => ({
-          id: block.id,
-          userId: block.userId,
-          taskId: block.taskId,
-          actionId: null,
-          startAt: new Date(block.startAt),
-          endAt: new Date(block.endAt),
-          confidence: block.confidence,
-          reason: block.reason,
-          rescheduleCount: block.rescheduleCount,
-          externalCalendarId: block.externalCalendarId
-        }))
-      );
-
       for (const createdTask of createdTasks) {
         const currentBlock = remappedBlocks.find((block) => block.taskId === createdTask.id) ?? null;
 
@@ -562,7 +548,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           .update(tasks)
           .set({
             lifecycleState: currentBlock ? "scheduled" : createdTask.lifecycleState,
-            currentCommitmentId: currentBlock?.id ?? null
+            externalCalendarEventId: currentBlock?.id ?? null,
+            externalCalendarId: currentBlock?.externalCalendarId ?? null,
+            scheduledStartAt: currentBlock?.startAt ? new Date(currentBlock.startAt) : null,
+            scheduledEndAt: currentBlock?.endAt ? new Date(currentBlock.endAt) : null
           })
           .where(eq(tasks.id, createdTask.id));
       }
@@ -595,8 +584,18 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           lifecycleState: remappedBlocks.some((block) => block.taskId === task.id)
             ? "scheduled"
             : (task.lifecycleState as Task["lifecycleState"]),
-          currentCommitmentId:
-            remappedBlocks.find((block) => block.taskId === task.id)?.id ?? task.currentCommitmentId,
+          externalCalendarEventId:
+            remappedBlocks.find((block) => block.taskId === task.id)?.id ?? task.externalCalendarEventId,
+          externalCalendarId:
+            remappedBlocks.find((block) => block.taskId === task.id)?.externalCalendarId ?? task.externalCalendarId,
+          scheduledStartAt:
+            remappedBlocks.find((block) => block.taskId === task.id)?.startAt ??
+            task.scheduledStartAt?.toISOString() ??
+            null,
+          scheduledEndAt:
+            remappedBlocks.find((block) => block.taskId === task.id)?.endAt ??
+            task.scheduledEndAt?.toISOString() ??
+            null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
@@ -623,28 +622,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
   }): Promise<ProcessedInboxResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
-      const [existingBlock] = await tx
+      const [existingTask] = await tx
         .select()
-        .from(scheduleBlocks)
-        .where(eq(scheduleBlocks.id, input.blockId))
+        .from(tasks)
+        .where(eq(tasks.externalCalendarEventId, input.blockId))
         .limit(1);
-
-      if (!existingBlock) {
-        throw new Error(`Schedule block ${input.blockId} not found.`);
-      }
-
-      await tx
-        .update(scheduleBlocks)
-        .set({
-          startAt: new Date(input.newStartAt),
-          endAt: new Date(input.newEndAt),
-          reason: input.reason,
-          confidence: input.confidence,
-          rescheduleCount: existingBlock.rescheduleCount + 1
-        })
-        .where(eq(scheduleBlocks.id, input.blockId));
-
-      const [existingTask] = await tx.select().from(tasks).where(eq(tasks.id, existingBlock.taskId)).limit(1);
 
       if (existingTask) {
         await tx
@@ -652,10 +634,15 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           .set({
             lastInboxItemId: input.inboxItemId,
             lifecycleState: "scheduled",
-            currentCommitmentId: existingBlock.id,
+            externalCalendarEventId: input.blockId,
+            externalCalendarId: existingTask.externalCalendarId,
+            scheduledStartAt: new Date(input.newStartAt),
+            scheduledEndAt: new Date(input.newEndAt),
             rescheduleCount: existingTask.rescheduleCount + 1
           })
           .where(eq(tasks.id, existingTask.id));
+      } else {
+        throw new Error(`Schedule block ${input.blockId} not found.`);
       }
 
       const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
@@ -675,15 +662,15 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         },
         plannerRun,
         updatedBlock: {
-          id: existingBlock.id,
-          userId: existingBlock.userId,
-          taskId: existingBlock.taskId,
+          id: input.blockId,
+          userId: existingTask.userId,
+          taskId: existingTask.id,
           startAt: input.newStartAt,
           endAt: input.newEndAt,
           confidence: input.confidence,
           reason: input.reason,
-          rescheduleCount: existingBlock.rescheduleCount + 1,
-          externalCalendarId: existingBlock.externalCalendarId
+          rescheduleCount: existingTask.rescheduleCount + 1,
+          externalCalendarId: existingTask.externalCalendarId
         },
         followUpMessage: input.followUpMessage
       };
@@ -705,30 +692,23 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         : [];
       const existingTasksById = new Map(existingTasksRows.map((task) => [task.id, task]));
 
-      await tx.insert(scheduleBlocks).values(
-        input.scheduleBlocks.map((block) => ({
-          id: block.id,
-          userId: block.userId,
-          taskId: block.taskId,
-          actionId: null,
-          startAt: new Date(block.startAt),
-          endAt: new Date(block.endAt),
-          confidence: block.confidence,
-          reason: block.reason,
-          rescheduleCount: block.rescheduleCount,
-          externalCalendarId: block.externalCalendarId
-        }))
-      );
-
       for (const block of input.scheduleBlocks) {
         const existingTask = existingTasksById.get(block.taskId);
-        const isReschedule = existingTask?.currentCommitmentId !== null;
+        const isReschedule =
+          existingTask !== undefined &&
+          existingTask.externalCalendarEventId !== null &&
+          existingTask.externalCalendarEventId === block.id &&
+          existingTask.scheduledStartAt !== null &&
+          existingTask.scheduledEndAt !== null;
         await tx
           .update(tasks)
           .set({
             lastInboxItemId: input.inboxItemId,
             lifecycleState: "scheduled",
-            currentCommitmentId: block.id,
+            externalCalendarEventId: block.id,
+            externalCalendarId: block.externalCalendarId,
+            scheduledStartAt: new Date(block.startAt),
+            scheduledEndAt: new Date(block.endAt),
             rescheduleCount: isReschedule
               ? (existingTask?.rescheduleCount ?? 0) + 1
               : (existingTask?.rescheduleCount ?? 0)
@@ -748,7 +728,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           lastInboxItemId: task.lastInboxItemId,
           title: task.title,
           lifecycleState: task.lifecycleState as Task["lifecycleState"],
-          currentCommitmentId: task.currentCommitmentId,
+          externalCalendarEventId: task.externalCalendarEventId,
+          externalCalendarId: task.externalCalendarId,
+          scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
+          scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,

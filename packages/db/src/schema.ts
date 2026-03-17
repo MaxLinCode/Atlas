@@ -1,5 +1,4 @@
 import {
-  foreignKey,
   integer,
   jsonb,
   pgTable,
@@ -52,8 +51,10 @@ export const tasks = pgTable(
     lastInboxItemId: uuid("last_inbox_item_id").notNull(),
     title: text("title").notNull(),
     lifecycleState: varchar("lifecycle_state", { length: 32 }).notNull(),
-    // Transitional until a dedicated commitments table lands.
-    currentCommitmentId: uuid("current_commitment_id"),
+    externalCalendarEventId: text("external_calendar_event_id"),
+    externalCalendarId: text("external_calendar_id"),
+    scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+    scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
     rescheduleCount: integer("reschedule_count").notNull().default(0),
     lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -61,14 +62,7 @@ export const tasks = pgTable(
     priority: varchar("priority", { length: 16 }).notNull(),
     urgency: varchar("urgency", { length: 16 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-  },
-  (table) => ({
-    currentCommitmentFk: foreignKey({
-      name: "tasks_current_commitment_id_schedule_blocks_id_fk",
-      columns: [table.currentCommitmentId],
-      foreignColumns: [scheduleBlocks.id]
-    }).onDelete("set null")
-  })
+  }
 );
 
 export const taskActions = pgTable("task_actions", {
