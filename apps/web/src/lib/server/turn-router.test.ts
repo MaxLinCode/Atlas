@@ -7,7 +7,8 @@ describe("turn router", () => {
     const result = await routeTelegramTurn(
       {
         rawText: "Schedule review tomorrow at 9",
-        normalizedText: "Schedule review tomorrow at 9"
+        normalizedText: "Schedule review tomorrow at 9",
+        recentTurns: [],
       },
       {
         classifyTurn: async () => ({
@@ -27,7 +28,8 @@ describe("turn router", () => {
     const result = await routeTelegramTurn(
       {
         rawText: "Can you help me prioritize this week?",
-        normalizedText: "Can you help me prioritize this week?"
+        normalizedText: "Can you help me prioritize this week?",
+        recentTurns: [],
       },
       {
         classifyTurn: async () => ({
@@ -47,7 +49,8 @@ describe("turn router", () => {
     const result = await routeTelegramTurn(
       {
         rawText: "I might move this to Friday, what do you think?",
-        normalizedText: "I might move this to Friday, what do you think?"
+        normalizedText: "I might move this to Friday, what do you think?",
+        recentTurns: [],
       },
       {
         classifyTurn: async () => ({
@@ -60,6 +63,38 @@ describe("turn router", () => {
     expect(result).toMatchObject({
       route: "conversation_then_mutation",
       writesAllowed: false
+    });
+  });
+
+  it("routes confirmed mutation turns as write-capable", async () => {
+    const result = await routeTelegramTurn(
+      {
+        rawText: "Yes",
+        normalizedText: "Yes",
+        recentTurns: [
+          {
+            role: "assistant",
+            text: "Would you like me to schedule it at 3pm?",
+            createdAt: "2026-03-17T16:00:00.000Z"
+          },
+          {
+            role: "user",
+            text: "Yes",
+            createdAt: "2026-03-17T16:01:00.000Z"
+          }
+        ],
+      },
+      {
+        classifyTurn: async () => ({
+          route: "confirmed_mutation",
+          reason: "The user is confirming a recent concrete scheduling proposal."
+        })
+      }
+    );
+
+    expect(result).toMatchObject({
+      route: "confirmed_mutation",
+      writesAllowed: true
     });
   });
 });

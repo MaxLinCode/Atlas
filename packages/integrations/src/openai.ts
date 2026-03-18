@@ -8,13 +8,19 @@ export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
+export const DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL = "gpt-4o-mini";
 
 export const turnRoutingInputSchema = z.object({
   rawText: z.string().min(1),
-  normalizedText: z.string().min(1)
+  normalizedText: z.string().min(1),
+  recentTurns: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    text: z.string().min(1),
+    createdAt: z.string().datetime()
+  }))
 });
 
-export const turnRouteSchema = z.enum(["conversation", "mutation", "conversation_then_mutation"]);
+export const turnRouteSchema = z.enum(["conversation", "mutation", "conversation_then_mutation", "confirmed_mutation"]);
 
 export const turnRoutingOutputSchema = z.object({
   route: turnRouteSchema,
@@ -35,6 +41,26 @@ export const conversationMemorySummaryOutputSchema = z.object({
   summary: z.string()
 });
 
+export const confirmedMutationRecoveryInputSchema = z.object({
+  rawText: z.string().min(1),
+  normalizedText: z.string().min(1),
+  recentTurns: z.array(conversationTurnSchema),
+  memorySummary: z.string().nullable()
+});
+
+export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("recovered"),
+    recoveredRawText: z.string().min(1),
+    recoveredNormalizedText: z.string().min(1),
+    reason: z.string().min(1)
+  }),
+  z.object({
+    outcome: z.literal("needs_clarification"),
+    reason: z.string().min(1)
+  })
+]);
+
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
   rawText: z.string().min(1),
@@ -53,6 +79,8 @@ export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
 export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
 export type ConversationMemorySummaryInput = z.infer<typeof conversationMemorySummaryInputSchema>;
 export type ConversationMemorySummaryOutput = z.infer<typeof conversationMemorySummaryOutputSchema>;
+export type ConfirmedMutationRecoveryInput = z.infer<typeof confirmedMutationRecoveryInputSchema>;
+export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type ConversationResponseInput = z.infer<typeof conversationResponseInputSchema>;
 export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
 
@@ -139,6 +167,42 @@ export async function routeTurnWithResponses(
   });
 
   return turnRoutingOutputSchema.parse(response.output_parsed);
+}
+
+export async function recoverConfirmedMutationWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+) {
+  const context = confirmedMutationRecoveryInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: buildConfirmedMutationRecoverySystemPrompt()
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(context)
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(confirmedMutationRecoveryOutputSchema, "atlas_confirmed_mutation_recovery_output")
+    }
+  });
+
+  return confirmedMutationRecoveryOutputSchema.parse(response.output_parsed);
 }
 
 export async function respondToConversationTurnWithResponses(
@@ -257,14 +321,19 @@ function buildSystemPrompt() {
 function buildTurnRouterSystemPrompt() {
   return [
     "You are Atlas's turn router for Telegram.",
-    "Select exactly one route for the current turn: conversation, mutation, or conversation_then_mutation.",
+    "Select exactly one route for the current turn: conversation, mutation, conversation_then_mutation, or confirmed_mutation.",
     "Definitions:",
     "conversation: reflective discussion, prioritization, advice, planning dialogue, meta questions, or broad proposals without immediate writes.",
     "mutation: clear, direct, and sufficiently specified request to capture, schedule, reschedule, complete, archive, or otherwise update Atlas task or schedule state now.",
     "Do not choose mutation when the write request is partial, ambiguous, conditional, mixed with discussion, or missing key details needed to complete the update safely.",
     "conversation_then_mutation: a turn that includes a possible write but requires discussion, clarification, or later confirmation before any mutation.",
     "This includes mixed discussion-plus-action turns, partial scheduling asks, underspecified capture requests, and ambiguous update requests.",
+    "confirmed_mutation: the current turn confirms or concretely refines one recent proposed write strongly enough that Atlas may enter the structured mutation path now.",
+    "Use recent turns as short-horizon confirmation context only.",
+    "Choose confirmed_mutation only when recent context contains one concrete recoverable proposal and the latest turn clearly confirms or refines it, such as yes, sure, do it, 3pm is fine, Friday works, or push it 1 hour later.",
+    "Do not choose confirmed_mutation when there are multiple plausible proposals, the prior proposal was still vague, or the latest turn adds ambiguity.",
     "Safety rules:",
+    "When uncertain between confirmed_mutation and conversation_then_mutation, choose conversation_then_mutation.",
     "When uncertain between mutation and conversation_then_mutation, choose conversation_then_mutation.",
     "Do not assume writes happened in conversation routes.",
     "Examples:",
@@ -272,6 +341,9 @@ function buildTurnRouterSystemPrompt() {
     "Input: 'schedule oil change for Friday at 2pm' -> mutation",
     "Input: 'should I do the oil change this week or next week?' -> conversation",
     "Input: 'I might move this to Friday, what do you think?' -> conversation_then_mutation",
+    "Recent assistant proposal: 'Would you like me to schedule it at 3pm?' Current input: 'Yes' -> confirmed_mutation",
+    "Recent proposal: 'I can move it to Friday at 3pm.' Current input: 'Friday works' -> confirmed_mutation",
+    "Recent assistant proposal: 'I could do 3pm or 4pm.' Current input: 'Yes' -> conversation_then_mutation",
     "Return only the structured routing output."
   ].join(" ");
 }
@@ -301,6 +373,20 @@ function buildConversationMemorySummarySystemPrompt() {
     "Do not invent system state.",
     "Do not claim any write succeeded unless the conversation explicitly states that outcome.",
     "This summary is continuity context only, not authoritative Atlas memory.",
+    "Return only the structured response."
+  ].join(" ");
+}
+
+function buildConfirmedMutationRecoverySystemPrompt() {
+  return [
+    "You are Atlas, reconstructing a concrete write-ready mutation request from short-horizon confirmation context.",
+    "The latest user turn may be a confirmation or refinement of one recent proposed write.",
+    "Use only the provided latest turn, recent turns, and any optional working summary.",
+    "Return outcome recovered only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
+    "The recovered text should be a concise natural-language request that restates the intended write directly.",
+    "If the latest turn only confirms a vague or multi-option proposal, or if there are multiple plausible proposals, return needs_clarification.",
+    "Do not invent task identity or scheduling details that are not supported by the provided context.",
+    "Transcript is short-horizon confirmation context only, not canonical state.",
     "Return only the structured response."
   ].join(" ");
 }

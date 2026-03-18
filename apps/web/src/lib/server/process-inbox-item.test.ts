@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InboxPlanningOutput } from "@atlas/core";
 import {
   getDefaultInboxProcessingStore,
   listPlannerRunsForTests,
@@ -126,6 +127,70 @@ describe("process inbox item service", () => {
 
     expect(result.outcome).toBe("planned");
     expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toContain("T15:00:00.000Z");
+  });
+
+  it("allows an app-owned planning text override for confirmed mutation recovery", async () => {
+    const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
+      confidence: 0.9,
+      summary: "Scheduled the dentist reminder for 3pm.",
+      actions: [
+        {
+          type: "create_task",
+          alias: "new_task_1",
+          title: "Dentist reminder",
+          priority: "medium",
+          urgency: "medium"
+        },
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "created_task",
+            alias: "new_task_1"
+          },
+          scheduleConstraint: {
+            dayOffset: 0,
+            explicitHour: 15,
+            minute: 0,
+            preferredWindow: null,
+            sourceText: "at 3pm"
+          },
+          reason: "The user confirmed the 3pm proposal."
+        }
+      ]
+    }));
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-confirm",
+      userId: "123",
+      sourceEventId: "event-confirm",
+      rawText: "Yes",
+      normalizedText: "Yes",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-confirm",
+        planningInboxTextOverride: {
+          rawText: "Schedule the dentist reminder at 3pm.",
+          normalizedText: "Schedule the dentist reminder at 3pm."
+        }
+      },
+      {
+        planner
+      }
+    );
+
+    expect(result.outcome).toBe("planned");
+    expect(planner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inboxItem: expect.objectContaining({
+          rawText: "Schedule the dentist reminder at 3pm.",
+          normalizedText: "Schedule the dentist reminder at 3pm."
+        })
+      })
+    );
   });
 
   it("moves an existing scheduled task by updating the same calendar event", async () => {

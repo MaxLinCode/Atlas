@@ -80,6 +80,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 ### May read
 
 - Persisted product state through repositories or application services
+- The bounded recent-turn window for the current user, loaded before routing and distilled only when adding value so summaries remain opt-in rather than default inputs
 - Runtime configuration and environment settings
 
 ### May write
@@ -93,10 +94,10 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Authentication and authorization boundaries
 - Idempotency handling
 - Orchestration order across components
-- Turn routing across `conversation`, `mutation`, and `conversation_then_mutation`
+- Turn routing across `conversation`, `mutation`, `conversation_then_mutation`, and `confirmed_mutation`
 - Which persisted context to load before asking core to classify or schedule an inbox item
 - Whether a turn stays in conversation mode or enters mutation mode
-- Which context to load for the current mode before asking core or the model to reason about the turn
+- Which context to load for the current mode before asking core or the model to reason about the turn, including whether a summary is needed or if recent turns alone suffice
 
 ### Forbidden decisions
 
@@ -158,7 +159,7 @@ The model layer interprets messy user text for three app-selected responsibiliti
 
 ### Produces
 
-- Turn-routing classifications such as `conversation`, `mutation`, or `conversation_then_mutation`
+- Turn-routing classifications such as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
 - Conversational planning responses, suggestions, and clarifications in conversation mode
 - Structured mutation proposals such as create task, schedule task, move scheduled time, complete task, archive task, or clarify in mutation mode
 - Optional metadata such as confidence, ambiguity markers, and scheduling constraint hints

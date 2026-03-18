@@ -6,6 +6,7 @@
     "dev": "pnpm --filter @atlas/web dev",
     "build": "pnpm -r build",
     "eval:conversation-context": "pnpm --filter @atlas/integrations eval:conversation-context",
+    "eval:router-confirmation": "pnpm --filter @atlas/integrations eval:router-confirmation",
     "eval:turn-router": "pnpm --filter @atlas/integrations eval:turn-router",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InboxPlanningOutput } from "@atlas/core";
 import {
   getDefaultInboxProcessingStore,
   listPlannerRunsForTests,
@@ -288,6 +289,306 @@ describe("telegram webhook route", () => {
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats confirmed mutation turns as write-capable when recovery finds one concrete proposal", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:proposal-confirmed",
+      payload: {
+        chatId: "999",
+        text: "Would you like me to schedule it at 3pm?",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:proposal-confirmed",
+      payload: {
+        chatId: "999",
+        text: "Would you like me to schedule it at 3pm?",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+    const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
+      confidence: 0.9,
+      summary: "Scheduled the dentist reminder for 3pm.",
+      actions: [
+        {
+          type: "create_task",
+          alias: "new_task_1",
+          title: "Dentist reminder",
+          priority: "medium",
+          urgency: "medium"
+        },
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "created_task",
+            alias: "new_task_1"
+          },
+          scheduleConstraint: {
+            dayOffset: 0,
+            explicitHour: 15,
+            minute: 0,
+            preferredWindow: null,
+            sourceText: "at 3pm"
+          },
+          reason: "The user confirmed the proposed 3pm slot."
+        }
+      ]
+    }));
+    const confirmedMutationRecoverer = vi.fn(async () => ({
+      outcome: "recovered" as const,
+      recoveredRawText: "Schedule the dentist reminder at 3pm.",
+      recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
+      reason: "The user confirmed the concrete 3pm proposal."
+    }));
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 52,
+        message: {
+          message_id: 17,
+          date: 1_700_000_010,
+          text: "Yes",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        planner,
+        conversationMemorySummarizer: async () => ({
+          summary: "The assistant proposed a concrete 3pm schedule and the user is now confirming it."
+        }),
+        confirmedMutationRecoverer,
+        turnRouter: async () => ({
+          route: "confirmed_mutation",
+          reason: "The user is confirming a recent concrete proposal.",
+          writesAllowed: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "confirmed_mutation",
+      processing: {
+        outcome: "planned"
+      }
+    });
+    expect(confirmedMutationRecoverer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawText: "Yes",
+        recentTurns: expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            text: "Would you like me to schedule it at 3pm?"
+          }),
+          expect.objectContaining({
+            role: "user",
+            text: "Yes"
+          })
+        ])
+      })
+    );
+    expect(planner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inboxItem: expect.objectContaining({
+          rawText: "Schedule the dentist reminder at 3pm.",
+          normalizedText: "Schedule the dentist reminder at 3pm."
+        })
+      })
+    );
+    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listTasksForTests()).toHaveLength(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports broader follow-up refinements in confirmed mutation turns", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
+      confidence: 0.88,
+      summary: "Moved the scheduled review block one hour later.",
+      actions: [
+        {
+          type: "move_schedule_block",
+          blockRef: {
+            alias: "schedule_block_1"
+          },
+          scheduleConstraint: {
+            dayOffset: 0,
+            explicitHour: 16,
+            minute: 0,
+            preferredWindow: null,
+            sourceText: "1 hour later"
+          },
+          reason: "The user asked to push it 1 hour later."
+        }
+      ]
+    }));
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-existing",
+      userId: "123",
+      sourceEventId: "event-existing",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+    await handleTelegramWebhook(
+      buildRequest({
+        update_id: 53,
+        message: {
+          message_id: 18,
+          date: 1_700_000_011,
+          text: "Review launch checklist",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+    sendTelegramMessageMock.mockClear();
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 54,
+        message: {
+          message_id: 19,
+          date: 1_700_000_012,
+          text: "push it 1 hour later",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        planner,
+        conversationMemorySummarizer: async () => ({
+          summary: "The recent exchange includes one concrete proposal to move the existing review block one hour later."
+        }),
+        confirmedMutationRecoverer: async () => ({
+          outcome: "recovered",
+          recoveredRawText: "Move the scheduled review block 1 hour later.",
+          recoveredNormalizedText: "Move the scheduled review block 1 hour later.",
+          reason: "The user refined the recent concrete proposal."
+        }),
+        turnRouter: async () => ({
+          route: "confirmed_mutation",
+          reason: "The user is refining a recent concrete proposal.",
+          writesAllowed: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "confirmed_mutation",
+      processing: {
+        outcome: "updated_schedule"
+      }
+    });
+    expect(planner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inboxItem: expect.objectContaining({
+          rawText: "Move the scheduled review block 1 hour later."
+        })
+      })
+    );
+  });
+
+  it("falls back to clarification when confirmed mutation recovery is ambiguous", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const planner = vi.fn();
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 55,
+        message: {
+          message_id: 20,
+          date: 1_700_000_013,
+          text: "Yes",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        planner,
+        conversationMemorySummarizer: async () => ({
+          summary: "There were multiple possible recent proposals."
+        }),
+        confirmedMutationRecoverer: async () => ({
+          outcome: "needs_clarification",
+          reason: "I have two recent proposals in view. Which one do you want me to apply?"
+        }),
+        turnRouter: async () => ({
+          route: "confirmed_mutation",
+          reason: "This looks like a confirmation but the target is ambiguous.",
+          writesAllowed: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "confirmed_mutation",
+      processing: {
+        outcome: "conversation_replied",
+        reply: "I have two recent proposals in view. Which one do you want me to apply?"
+      }
+    });
+    expect(planner).not.toHaveBeenCalled();
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
   });
 
   it("keeps conversation turns non-writing", async () => {

@@ -32,7 +32,7 @@ export async function routeTelegramTurn(
 }
 
 function allowsWrites(route: TurnRoute) {
-  return route === "mutation";
+  return route === "mutation" || route === "confirmed_mutation";
 }
 
 function parseTurnRouterInput(input: TurnRouterInput): TurnRouterInput {
