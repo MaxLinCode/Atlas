@@ -175,7 +175,6 @@ export async function handleTelegramWebhook(
     const memorySummary = await buildConversationMemorySummary(recentTurns, dependencies);
     const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
       route: routedWithContext.route,
-      rawText: normalizedMessage.rawText,
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
       memorySummary

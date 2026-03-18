@@ -33,7 +33,6 @@ export const conversationMemorySummaryOutputSchema = z.object({
 
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
-  rawText: z.string().min(1),
   normalizedText: z.string().min(1),
   recentTurns: z.array(conversationTurnSchema),
   memorySummary: z.string().nullable()

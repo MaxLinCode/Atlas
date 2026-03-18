@@ -301,7 +301,6 @@ describe("integrations", () => {
     const result = await respondToConversationTurnWithResponses(
       {
         route: "conversation",
-        rawText: "How should I plan tomorrow?",
         normalizedText: "How should I plan tomorrow?",
         recentTurns: [
           {

@@ -22,8 +22,8 @@ export async function buildConversationResponse(
 }
 
 function parseConversationResponseInput(input: BuildConversationResponseInput): BuildConversationResponseInput {
-  if (!input.rawText.trim() || !input.normalizedText.trim()) {
-    throw new Error("Conversation response input must include non-empty rawText and normalizedText.");
+  if (!input.normalizedText.trim()) {
+    throw new Error("Conversation response input must include non-empty normalizedText.");
   }
 
   return input;
