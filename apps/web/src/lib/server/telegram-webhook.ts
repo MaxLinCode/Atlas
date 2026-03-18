@@ -253,8 +253,8 @@ export async function handleTelegramWebhook(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
-          rawText: recoveredMutation.recoveredRawText,
-          normalizedText: recoveredMutation.recoveredNormalizedText
+          rawText: recoveredMutation.recoveredRawText!,
+          normalizedText: recoveredMutation.recoveredNormalizedText!
         }
       },
       {
