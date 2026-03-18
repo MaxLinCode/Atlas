@@ -347,14 +347,13 @@ function buildConfirmedMutationRecoverySystemPrompt() {
     "You are Atlas, reconstructing a concrete write-ready mutation request from short-horizon confirmation context.",
     "The latest user turn may be a confirmation or refinement of one recent proposed write.",
     "Use only the provided latest turn, recent turns, and any optional working summary.",
-    "Return outcome recovered only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
+    "Return 'recovered' only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
     "The recovered text should be a concise natural-language request that restates the intended write directly.",
     "If the latest turn only confirms a vague or multi-option proposal, or if there are multiple plausible proposals, return needs_clarification.",
     "Do not invent task identity or scheduling details that are not supported by the provided context.",
     "Transcript is short-horizon confirmation context only, not canonical state.",
-    "User-facing replies:",
-    "For 'recovered', set userReplyMessage to a brief natural response confirming what you're about to do.",
-    "For 'needs_clarification', set userReplyMessage to a helpful clarifying question for the user, not an internal note.",
+    "If outcome is 'recovered', set recoveredText to the concrete write-ready request and userReplyMessage to a brief natural confirmation of the action.",
+    "If outcome is 'needs_clarification', set recoveredText to null and userReplyMessage to a helpful clarifying question for the user.",
     "Return only the structured response."
   ].join(" ");
 }

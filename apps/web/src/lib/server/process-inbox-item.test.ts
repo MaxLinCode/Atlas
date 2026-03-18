@@ -176,8 +176,7 @@ describe("process inbox item service", () => {
       {
         inboxItemId: "inbox-confirm",
         planningInboxTextOverride: {
-          rawText: "Schedule the dentist reminder at 3pm.",
-          normalizedText: "Schedule the dentist reminder at 3pm."
+          text: "Schedule the dentist reminder at 3pm."
         }
       },
       {

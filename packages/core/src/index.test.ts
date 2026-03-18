@@ -234,8 +234,7 @@ describe("core package", () => {
     });
     const recoveryResult = confirmedMutationRecoveryOutputSchema.safeParse({
       outcome: "recovered",
-      recoveredRawText: "Schedule the dentist reminder at 3pm.",
-      recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
+      recoveredText: "Schedule the dentist reminder at 3pm.",
       reason: "The user confirmed the recent concrete proposal.",
       userReplyMessage: "Got it - I've added the dentist reminder to your schedule for today at 3pm."
     });
@@ -247,11 +246,12 @@ describe("core package", () => {
   it("accepts needs_clarification recovery outputs", () => {
     const clarificationResult = confirmedMutationRecoveryOutputSchema.safeParse({
       outcome: "needs_clarification",
+      recoveredText: null,
       reason: "I found two recent proposals for the user. User request is ambiguous.",
       userReplyMessage: "I found two recent proposals. Which one do you want me to apply?"
-  });
+    });
 
-  expect(clarificationResult.success).toBe(true);
+    expect(clarificationResult.success).toBe(true);
   });
 
   it("builds a valid schedule proposal for pending tasks", async () => {

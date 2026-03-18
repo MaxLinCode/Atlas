@@ -250,15 +250,14 @@ export async function handleTelegramWebhook(
     await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
     if (!isConfirmedMutationRecovered(recoveredMutation)) {
-      throw new Error("Expected recovered mutation to have recoveredRawText and recoveredNormalizedText");
+      throw new Error("Expected recovered mutation to include recoveredText");
     }
 
     const processing = await processInboxItem(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
-          rawText: recoveredMutation.recoveredRawText,
-          normalizedText: recoveredMutation.recoveredNormalizedText
+          text: recoveredMutation.recoveredText
         }
       },
       {

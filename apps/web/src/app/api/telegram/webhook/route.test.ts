@@ -345,8 +345,7 @@ describe("telegram webhook route", () => {
     }));
     const confirmedMutationRecoverer = vi.fn(async () => ({
       outcome: "recovered" as const,
-      recoveredRawText: "Schedule the dentist reminder at 3pm.",
-      recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
+      recoveredText: "Schedule the dentist reminder at 3pm.",
       reason: "The user confirmed the concrete 3pm proposal.",
       userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
     }));
@@ -509,8 +508,7 @@ describe("telegram webhook route", () => {
         }),
         confirmedMutationRecoverer: async () => ({
           outcome: "recovered",
-          recoveredRawText: "Move the scheduled review block 1 hour later.",
-          recoveredNormalizedText: "Move the scheduled review block 1 hour later.",
+          recoveredText: "Move the scheduled review block 1 hour later.",
           reason: "The user refined the recent concrete proposal.",
           userReplyMessage: "Done - I've moved it to 4pm."
         }),
@@ -571,6 +569,7 @@ describe("telegram webhook route", () => {
         }),
         confirmedMutationRecoverer: async () => ({
           outcome: "needs_clarification",
+          recoveredText: null,
           reason: "I have two recent proposals in view. Which one do you want me to apply?",
           userReplyMessage: "I have two recent proposals in view. Which one do you want me to apply?"
         }),
