@@ -1,6 +1,7 @@
 import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
+  getAppBaseUrl,
   getTelegramAllowedUserIds,
   isConfirmedMutationRecovered,
   isTelegramUserAllowed,
@@ -41,6 +42,10 @@ import {
   type TurnRouterInput,
   type TurnRouterResult
 } from "./turn-router";
+import {
+  createGoogleCalendarConnectLink,
+  hasActiveGoogleCalendarConnection
+} from "./google-calendar";
 
 type WebhookResult = {
   status: number;
@@ -61,6 +66,12 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   confirmedMutationRecoverer?: (
     input: ConfirmedMutationRecoveryInput
   ) => Promise<ConfirmedMutationRecoveryOutput>;
+  googleCalendarConnectionChecker?: (userId: string) => Promise<boolean>;
+  googleCalendarConnectLinkBuilder?: (input: {
+    baseUrl: string;
+    userId: string;
+    redirectPath?: string | null;
+  }) => Promise<string>;
 };
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -145,6 +156,39 @@ export async function handleTelegramWebhook(
         error: "telegram_user_not_allowed"
       }
     };
+  }
+
+  const hasActiveGoogleCalendar =
+    (await (dependencies.googleCalendarConnectionChecker ?? hasActiveGoogleCalendarConnection)(
+      normalizedMessage.user.telegramUserId
+    )) ?? false;
+
+  if (!hasActiveGoogleCalendar) {
+    const connectLink = await (dependencies.googleCalendarConnectLinkBuilder ??
+      createGoogleCalendarConnectLink)({
+      baseUrl: getAppBaseUrl(config),
+      userId: normalizedMessage.user.telegramUserId
+    });
+    const connectReply = buildGoogleCalendarConnectReply(connectLink);
+
+    return replyWithText(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        chatId: normalizedMessage.chatId,
+        idempotencyKey: buildLazyLinkReplyIdempotencyKey(parsedUpdate.data.update_id),
+        text: connectReply,
+        persistedText: redactTokenizedUrls(connectReply)
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        body: {
+          accepted: true,
+          lazyLinkRequired: true,
+          idempotencyKey
+        }
+      }
+    );
   }
 
   const ingress = await recordIncomingTelegramMessageIfNew(
@@ -276,7 +320,8 @@ export async function handleTelegramWebhook(
       },
       {
         ...(dependencies.store ? { store: dependencies.store } : {}),
-        ...(dependencies.planner ? { planner: dependencies.planner } : {})
+        ...(dependencies.planner ? { planner: dependencies.planner } : {}),
+        ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
       }
     );
     const outboundDelivery = await sendFollowUpMessage(
@@ -315,7 +360,8 @@ export async function handleTelegramWebhook(
     },
     {
       ...(dependencies.store ? { store: dependencies.store } : {}),
-      ...(dependencies.planner ? { planner: dependencies.planner } : {})
+      ...(dependencies.planner ? { planner: dependencies.planner } : {}),
+      ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
     }
   );
   const outboundDelivery = await sendFollowUpMessage(
@@ -349,8 +395,10 @@ export async function handleTelegramWebhook(
 type SendFollowUpMessageInput = {
   userId: string;
   chatId: string;
-  inboxItemId: string;
+  inboxItemId?: string;
+  idempotencyKey?: string;
   text: string;
+  persistedText?: string;
 };
 
 type SendFollowUpMessageDependencies = {
@@ -382,7 +430,14 @@ async function sendFollowUpMessage(
   input: SendFollowUpMessageInput,
   dependencies: SendFollowUpMessageDependencies
 ) {
-  const idempotencyKey = buildTelegramFollowUpIdempotencyKey(input.inboxItemId);
+  const idempotencyKey =
+    input.idempotencyKey ??
+    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+
+  if (!idempotencyKey) {
+    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+  }
+
   const reservation = await recordOutgoingTelegramMessageIfNew(
     {
       userId: input.userId,
@@ -390,7 +445,7 @@ async function sendFollowUpMessage(
       idempotencyKey,
       payload: {
         chatId: input.chatId,
-        text: input.text,
+        text: input.persistedText ?? input.text,
         attempts: 0
       },
       retryState: "sending"
@@ -467,10 +522,25 @@ function buildOutgoingEventPayload(
 ) {
   return {
     chatId: input.chatId,
-    text: input.text,
+    text: input.persistedText ?? input.text,
     attempts,
     telegram: sentMessage
   };
+}
+
+function buildLazyLinkReplyIdempotencyKey(updateId: number) {
+  return `telegram:lazy-link:${updateId}`;
+}
+
+function buildGoogleCalendarConnectReply(connectLink: string) {
+  return `I can do that, but I need access to your Google Calendar first. Connect here: ${connectLink}. Once connected, send that again.`;
+}
+
+function redactTokenizedUrls(text: string) {
+  return text.replace(
+    /https?:\/\/\S*\/google-calendar\/connect\?token=[^\s.]+/g,
+    "[redacted Google Calendar connect link]"
+  );
 }
 
 async function buildConversationMemorySummary(

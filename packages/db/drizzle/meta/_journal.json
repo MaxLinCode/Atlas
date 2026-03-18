@@ -50,6 +50,20 @@
       "when": 1773701791097,
       "tag": "0006_external_calendar_task_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778820000000,
+      "tag": "0007_google_calendar_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778900000000,
+      "tag": "0008_google_calendar_security_hardening",
+      "breakpoints": true
     }
   ]
 }

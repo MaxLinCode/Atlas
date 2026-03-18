@@ -33,14 +33,15 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 ### Notes
 
 - Telegram is the planning conversation surface, not the product brain.
-- Telegram payloads should be normalized and persisted before deeper processing decisions are made.
+- For linked users, Telegram payloads should be normalized and persisted before deeper processing decisions are made.
+- For unlinked allowlisted users in v1, the app may short-circuit with a Google connect reply before ingress persistence.
 
 ## Vercel app and API layer
 
 ### Owns
 
 - Webhook entrypoints for Telegram
-- Cron or scheduled entrypoints for reminder dispatch
+- Protected cron or scheduled entrypoints
 - Request validation, authentication, and idempotency boundaries
 - Webhook hardening such as rate limiting, abuse protection, and failed-auth observability
 - Orchestration of core, repository, and integration calls
@@ -59,6 +60,8 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 - Vercel is the delivery and orchestration layer, not the domain logic layer.
 - Store webhook secrets only in environment-managed secret storage such as Vercel secrets.
 - Never log webhook secrets in route logs, error messages, or debugging output.
+- Keep public routes to the minimum required surface. Internal mutation or debug routes should be removed or disabled rather than left internet-reachable.
+- Google linking should use a one-time handoff plus a short-lived server-side link session before OAuth start; do not bind user identity to a bearer token on a public OAuth-start URL.
 - Because the Telegram webhook is publicly reachable, future hardening should include rate limiting or equivalent edge protections in addition to secret verification and idempotency.
 
 ## Core package
@@ -121,6 +124,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 - Atlas owns tasks and accountability state even when the external calendar owns scheduled time.
 - Calendar integration is a core execution dependency, not merely a future adapter.
+- External calendar credentials must be encrypted at rest and unavailable to normal admin/debug reads.
 
 ## Neon Postgres database
 
@@ -143,8 +147,8 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 ## Cross-component rules
 
-- Capture must succeed before deeper intelligence is attempted.
-- Telegram messages should become persisted inbox items before Atlas mutates task state.
+- Capture must succeed before deeper intelligence is attempted, except for the v1 unlinked-user Google connect gate which intentionally short-circuits before ingress persistence.
+- Telegram messages from linked users should become persisted inbox items before Atlas mutates task state.
 - Not every message should be forced through mutation logic; conversation mode is the default path.
 - Model-produced mutation output must be validated against app-owned schemas before it becomes a task or schedule mutation.
 - Scheduled time should come from the external calendar, not from broad recent-chat inference.

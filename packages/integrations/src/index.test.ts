@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
 import {
+  buildGoogleCalendarOAuthUrl,
+  createGoogleCalendarAdapter,
+  exchangeGoogleOAuthCode,
+  fetchGoogleCalendarIdentity,
+  refreshGoogleOAuthToken,
   recoverConfirmedMutationWithResponses,
   respondToConversationTurnWithResponses,
   getDefaultCalendarAdapter,
@@ -15,6 +20,7 @@ import {
 
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
+  APP_BASE_URL: process.env.APP_BASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
@@ -34,6 +40,7 @@ function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
 
 beforeEach(() => {
   process.env.DATABASE_URL = "postgres://atlas:atlas@localhost:5432/atlas";
+  process.env.APP_BASE_URL = "https://atlas.example.com";
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
@@ -43,6 +50,7 @@ beforeEach(() => {
 
 afterEach(() => {
   restoreEnv("DATABASE_URL");
+  restoreEnv("APP_BASE_URL");
   restoreEnv("OPENAI_API_KEY");
   restoreEnv("TELEGRAM_BOT_TOKEN");
   restoreEnv("TELEGRAM_WEBHOOK_SECRET");
@@ -68,6 +76,159 @@ describe("integrations", () => {
 
     expect(updated.externalCalendarEventId).toBe(created.externalCalendarEventId);
     expect(updated.scheduledStartAt).toBe("2026-03-18T17:00:00.000Z");
+    await expect(
+      adapter.listBusyPeriods({
+        startAt: "2026-03-18T16:00:00.000Z",
+        endAt: "2026-03-18T19:00:00.000Z",
+        externalCalendarId: created.externalCalendarId
+      })
+    ).resolves.toMatchObject([
+      {
+        startAt: "2026-03-18T17:00:00.000Z",
+        endAt: "2026-03-18T18:00:00.000Z"
+      }
+    ]);
+  });
+
+  it("builds a Google OAuth URL with offline calendar access", () => {
+    const url = new URL(
+      buildGoogleCalendarOAuthUrl({
+        clientId: "google-client-id",
+        redirectUri: "https://example.com/callback",
+        state: "state-1"
+      })
+    );
+
+    expect(url.searchParams.get("client_id")).toBe("google-client-id");
+    expect(url.searchParams.get("state")).toBe("state-1");
+    expect(url.searchParams.get("scope")).toContain("calendar");
+  });
+
+  it("parses Google OAuth exchange and identity responses", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+            scope: "scope-a scope-b"
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "google-user-1",
+            email: "max@example.com"
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "primary",
+                summary: "Primary",
+                primary: true,
+                accessRole: "owner"
+              }
+            ]
+          })
+        )
+      );
+
+    await expect(
+      exchangeGoogleOAuthCode({
+        clientId: "google-client-id",
+        clientSecret: "google-client-secret",
+        redirectUri: "https://example.com/callback",
+        code: "oauth-code",
+        fetch: fetchMock
+      })
+    ).resolves.toMatchObject({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    });
+
+    await expect(
+      fetchGoogleCalendarIdentity({
+        accessToken: "access-token",
+        fetch: fetchMock
+      })
+    ).resolves.toMatchObject({
+      providerAccountId: "google-user-1",
+      selectedCalendarId: "primary"
+    });
+  });
+
+  it("reads Google free busy periods through the real adapter contract", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            calendars: {
+              primary: {
+                busy: [
+                  {
+                    start: "2026-03-18T17:00:00.000Z",
+                    end: "2026-03-18T18:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          })
+        )
+      );
+    const adapter = createGoogleCalendarAdapter(
+      {
+        accessToken: "access-token",
+        selectedCalendarId: "primary"
+      },
+      {
+        fetch: fetchMock
+      }
+    );
+
+    await expect(
+      adapter.listBusyPeriods({
+        startAt: "2026-03-18T16:00:00.000Z",
+        endAt: "2026-03-18T19:00:00.000Z",
+        externalCalendarId: "primary"
+      })
+    ).resolves.toMatchObject([
+      {
+        startAt: "2026-03-18T17:00:00.000Z",
+        endAt: "2026-03-18T18:00:00.000Z",
+        externalCalendarId: "primary"
+      }
+    ]);
+  });
+
+  it("refreshes Google OAuth access tokens", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "fresh-token",
+          expires_in: 3600
+        })
+      )
+    );
+
+    await expect(
+      refreshGoogleOAuthToken({
+        clientId: "google-client-id",
+        clientSecret: "google-client-secret",
+        refreshToken: "refresh-token",
+        fetch: fetchMock
+      })
+    ).resolves.toMatchObject({
+      accessToken: "fresh-token",
+      refreshToken: "refresh-token"
+    });
   });
 
   it("parses structured inbox planning output from the Responses API client", async () => {

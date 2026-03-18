@@ -50,12 +50,27 @@ Copy `.env.example` into `apps/web/.env.local` for local development and provide
 For local-only test credentials, prefer `apps/web/.env.test.local`, which is gitignored and loaded by the Next app, Drizzle config, and integration test runner.
 
 - `DATABASE_URL`: Postgres connection string
+- `APP_BASE_URL`: canonical deployed app origin used when generating Google Calendar connect links
 - `OPENAI_API_KEY`: OpenAI API key
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token
 - `TELEGRAM_WEBHOOK_SECRET`: shared secret used to verify Telegram webhook deliveries
 - `TELEGRAM_ALLOWED_USER_IDS`: comma-separated Telegram user id allowlist for private-beta access; required in all environments
+- `GOOGLE_CLIENT_ID`: Google OAuth client id for Calendar linking
+- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret for Calendar linking
+- `GOOGLE_OAUTH_REDIRECT_URI`: OAuth callback URL for Google Calendar linking
+- `GOOGLE_LINK_TOKEN_SECRET`: secret used only for one-time Telegram-to-browser Google link handoff tokens
+- `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`: base64-encoded 32-byte key used to encrypt stored Google access and refresh tokens
+- `CRON_SECRET`: bearer token required for protected cron routes such as Google Calendar reconciliation
 
 To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
+
+Atlas no longer exposes public planner/debug mutation routes. The intended externally reachable surfaces are:
+
+- `POST /api/telegram/webhook`
+- `GET /google-calendar/connect`
+- `GET /api/google-calendar/oauth/start`
+- `GET /api/google-calendar/oauth/callback`
+- protected cron routes that require `Authorization: Bearer $CRON_SECRET`
 
 ## How We Work
 
@@ -69,8 +84,8 @@ This repo is designed for human-plus-agent collaboration.
 
 ## MVP flow
 
-1. Telegram webhook receives a freeform message and stores a raw inbox item.
-2. The app loads relevant task, schedule, and user-profile context and sends a structured planning request through the OpenAI Responses API.
-3. Validated planning actions create or update tasks and schedule blocks through the repository layer.
-4. Telegram sends reminders tied to scheduled tasks.
-5. More advanced guidance, breakdown, and replanning are deferred beyond MVP.
+1. Telegram webhook receives a freeform message.
+2. If the sender is allowlisted but does not have an active Google Calendar connection, the app replies with a signed Google connect link and stops before ingress persistence.
+3. Linked users enter the normal flow: the app persists the inbox item, loads relevant task, schedule, and user-profile context, and sends a structured planning request through the OpenAI Responses API.
+4. Validated planning actions create or update tasks and schedule blocks through the repository layer.
+5. Telegram sends reminders tied to scheduled tasks.

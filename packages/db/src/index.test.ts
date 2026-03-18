@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  decryptCalendarCredential,
+  encryptCalendarCredential,
+  getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
   getRepositoryHealth,
   listInboxItemsForTests,
@@ -13,12 +16,15 @@ import {
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
   resetInboxProcessingStoreForTests,
+  resetGoogleCalendarConnectionStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests,
   updateOutgoingTelegramMessage
 } from "./index";
 
 describe("db package", () => {
+  process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+
   it("reports repositories as unconfigured without a Postgres DATABASE_URL", () => {
     const originalDatabaseUrl = process.env.DATABASE_URL;
     delete process.env.DATABASE_URL;
@@ -251,6 +257,8 @@ describe("db package", () => {
             externalCalendarId: null,
             scheduledStartAt: null,
             scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
             completedAt: null,
@@ -284,6 +292,7 @@ describe("db package", () => {
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-13T17:00:00.000Z",
       scheduledEndAt: "2026-03-13T18:00:00.000Z",
+      calendarSyncStatus: "in_sync",
       rescheduleCount: 0
     });
     expect("scheduleBlocks" in result ? result.scheduleBlocks[0] : null).toMatchObject({
@@ -336,6 +345,8 @@ describe("db package", () => {
             externalCalendarId: null,
             scheduledStartAt: null,
             scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
             completedAt: null,
@@ -432,6 +443,8 @@ describe("db package", () => {
             externalCalendarId: null,
             scheduledStartAt: null,
             scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
             completedAt: null,
@@ -543,6 +556,8 @@ describe("db package", () => {
             externalCalendarId: null,
             scheduledStartAt: null,
             scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
             completedAt: null,
@@ -573,5 +588,43 @@ describe("db package", () => {
       confidence: 0.91,
       reason: "Planner-specific reason."
     });
+  });
+
+  it("round-trips one linked Google Calendar account per user through the repository layer", async () => {
+    resetGoogleCalendarConnectionStoreForTests();
+    const store = getDefaultGoogleCalendarConnectionStore();
+
+    await store.upsertConnection({
+      userId: "123",
+      providerAccountId: "google-user-1",
+      email: "max@example.com",
+      selectedCalendarId: "primary",
+      selectedCalendarName: "Primary",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      tokenExpiresAt: "2026-03-20T17:00:00.000Z",
+      scopes: ["calendar"],
+      syncCursor: null,
+      lastSyncedAt: null,
+      revokedAt: null
+    });
+
+    await expect(store.getConnection("123")).resolves.toMatchObject({
+      userId: "123",
+      email: "max@example.com",
+      selectedCalendarId: "primary"
+    });
+    await expect(store.getConnectionCredentials("123")).resolves.toMatchObject({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    });
+  });
+
+  it("encrypts and decrypts stored Google Calendar credentials with versioned ciphertext", () => {
+    const ciphertext = encryptCalendarCredential("access-token", Buffer.alloc(32, 9).toString("base64"));
+
+    expect(ciphertext.startsWith("v1:")).toBe(true);
+    expect(ciphertext).not.toContain("access-token");
+    expect(decryptCalendarCredential(ciphertext, Buffer.alloc(32, 9).toString("base64"))).toBe("access-token");
   });
 });

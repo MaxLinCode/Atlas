@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 
@@ -15,10 +16,17 @@ const postgresConnectionStringSchema = z.string().refine((value) => {
 
 const envSchema = z.object({
   DATABASE_URL: postgresConnectionStringSchema,
+  APP_BASE_URL: z.string().url(),
   OPENAI_API_KEY: z.string().min(1),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
-  TELEGRAM_ALLOWED_USER_IDS: z.string().optional()
+  TELEGRAM_ALLOWED_USER_IDS: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_LINK_TOKEN_SECRET: z.string().min(1).optional(),
+  GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+  CRON_SECRET: z.string().min(1).optional()
 }).superRefine((config, ctx) => {
   if (!config.TELEGRAM_ALLOWED_USER_IDS?.trim()) {
     ctx.addIssue({
@@ -31,15 +39,69 @@ const envSchema = z.object({
 
 export type AppConfig = z.infer<typeof envSchema>;
 
+export type GoogleCalendarOAuthConfig = {
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_OAUTH_REDIRECT_URI: string;
+};
+
+export type GoogleCalendarSecurityConfig = {
+  GOOGLE_LINK_TOKEN_SECRET: string;
+  GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: string;
+};
+
 export function getConfig(overrides: Partial<Record<keyof AppConfig, string>> = {}) {
   return envSchema.parse({
     DATABASE_URL: process.env.DATABASE_URL,
+    APP_BASE_URL: process.env.APP_BASE_URL,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
     TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+    GOOGLE_LINK_TOKEN_SECRET: process.env.GOOGLE_LINK_TOKEN_SECRET,
+    GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
     ...overrides
   });
+}
+
+export function getAppBaseUrl(config: Pick<AppConfig, "APP_BASE_URL"> = getConfig()) {
+  return config.APP_BASE_URL;
+}
+
+export function getGoogleCalendarOAuthConfig(
+  overrides: Partial<Record<keyof GoogleCalendarOAuthConfig, string>> = {}
+) {
+  return z
+    .object({
+      GOOGLE_CLIENT_ID: z.string().min(1),
+      GOOGLE_CLIENT_SECRET: z.string().min(1),
+      GOOGLE_OAUTH_REDIRECT_URI: z.string().url()
+    })
+    .parse({
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+      GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+      ...overrides
+    });
+}
+
+export function getGoogleCalendarSecurityConfig(
+  overrides: Partial<Record<keyof GoogleCalendarSecurityConfig, string>> = {}
+) {
+  return z
+    .object({
+      GOOGLE_LINK_TOKEN_SECRET: z.string().min(1),
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: z.string().min(1)
+    })
+    .parse({
+      GOOGLE_LINK_TOKEN_SECRET: process.env.GOOGLE_LINK_TOKEN_SECRET,
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY,
+      ...overrides
+    });
 }
 
 export function getTelegramAllowedUserIds(config: Pick<AppConfig, "TELEGRAM_ALLOWED_USER_IDS"> = getConfig()) {
@@ -55,6 +117,69 @@ export function getTelegramAllowedUserIds(config: Pick<AppConfig, "TELEGRAM_ALLO
       .map((value) => value.trim())
       .filter(Boolean)
   );
+}
+
+export function buildGoogleCalendarLinkToken(input: {
+  userId: string;
+  handoffId: string;
+  expiresAt: string;
+  secret: string;
+}) {
+  const payload = Buffer.from(JSON.stringify({
+    userId: input.userId,
+    handoffId: input.handoffId,
+    expiresAt: input.expiresAt
+  })).toString("base64url");
+  const signature = createHmac("sha256", input.secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+export function verifyGoogleCalendarLinkToken(input: {
+  token: string;
+  secret: string;
+  now?: string;
+}) {
+  const parts = input.token.split(".");
+
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [payload, signature] = parts;
+
+  if (!payload || !signature) {
+    return null;
+  }
+
+  const expected = createHmac("sha256", input.secret).update(payload).digest("base64url");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+
+  let decoded: { userId: string; handoffId: string; expiresAt: string };
+
+  try {
+    decoded = z.object({
+      userId: z.string().min(1),
+      handoffId: z.string().uuid(),
+      expiresAt: z.string().datetime()
+    }).parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+  } catch {
+    return null;
+  }
+
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer) ||
+    Date.parse(decoded.expiresAt) < Date.parse(input.now ?? new Date().toISOString())
+  ) {
+    return null;
+  }
+
+  return {
+    userId: decoded.userId,
+    handoffId: decoded.handoffId,
+    expiresAt: decoded.expiresAt
+  };
 }
 
 export function isTelegramUserAllowed(
@@ -96,6 +221,8 @@ const baseTaskSchema = z.object({
   externalCalendarId: z.string().nullable().default(null),
   scheduledStartAt: z.string().datetime().nullable().default(null),
   scheduledEndAt: z.string().datetime().nullable().default(null),
+  calendarSyncStatus: z.enum(["in_sync", "out_of_sync"]).default("in_sync"),
+  calendarSyncUpdatedAt: z.string().datetime().nullable().default(null),
   rescheduleCount: z.number().int().nonnegative(),
   lastFollowupAt: z.string().datetime().nullable().default(null),
   completedAt: z.string().datetime().nullable().default(null),
@@ -181,6 +308,21 @@ export const scheduleBlockSchema = z.object({
   reason: z.string(),
   rescheduleCount: z.number().int().nonnegative(),
   externalCalendarId: z.string().nullable().default(null)
+});
+
+export const calendarBusyPeriodSchema = z.object({
+  startAt: z.string().datetime(),
+  endAt: z.string().datetime(),
+  externalCalendarId: z.string().min(1)
+});
+
+export const taskCalendarDriftSchema = z.object({
+  taskId: z.string(),
+  reason: z.enum(["missing_event", "calendar_changed"]),
+  expectedStartAt: z.string().datetime().nullable(),
+  expectedEndAt: z.string().datetime().nullable(),
+  actualStartAt: z.string().datetime().nullable(),
+  actualEndAt: z.string().datetime().nullable()
 });
 
 export const userProfileSchema = z.object({
@@ -374,6 +516,8 @@ export type Task = z.infer<typeof taskSchema>;
 export type TaskAction = z.infer<typeof taskActionSchema>;
 export type TaskCandidate = z.infer<typeof taskCandidateSchema>;
 export type UserProfile = z.infer<typeof userProfileSchema>;
+export type CalendarBusyPeriod = z.infer<typeof calendarBusyPeriodSchema>;
+export type TaskCalendarDrift = z.infer<typeof taskCalendarDriftSchema>;
 export type PlanningAction = z.infer<typeof planningActionSchema>;
 export type InboxPlanningOutput = z.infer<typeof inboxPlanningOutputSchema>;
 export type TaskReference = z.infer<typeof taskReferenceSchema>;
@@ -437,6 +581,8 @@ export function buildCapturedTask(input: CapturedTaskInput): Omit<Task, "id" | "
     externalCalendarId: null,
     scheduledStartAt: null,
     scheduledEndAt: null,
+    calendarSyncStatus: "in_sync",
+    calendarSyncUpdatedAt: null,
     rescheduleCount: 0,
     lastFollowupAt: null,
     completedAt: null,
@@ -637,8 +783,77 @@ export async function replanTask(input: unknown) {
 
 export function buildScheduleBlocksFromTasks(tasks: Task[]): ScheduleBlock[] {
   return tasks.flatMap((task) => {
+    if (task.calendarSyncStatus === "out_of_sync") {
+      return [];
+    }
+
     const block = buildScheduleBlockFromTask(task);
     return block ? [block] : [];
+  });
+}
+
+export function buildBusyScheduleBlocks(input: {
+  userId: string;
+  periods: CalendarBusyPeriod[];
+}): ScheduleBlock[] {
+  return input.periods.map((period, index) =>
+    scheduleBlockSchema.parse({
+      id: `external_busy_${period.externalCalendarId}_${index + 1}`,
+      userId: input.userId,
+      taskId: `external_busy_${index + 1}`,
+      startAt: period.startAt,
+      endAt: period.endAt,
+      confidence: 1,
+      reason: "External calendar busy time.",
+      rescheduleCount: 0,
+      externalCalendarId: period.externalCalendarId
+    })
+  );
+}
+
+export function detectTaskCalendarDrift(input: {
+  task: Task;
+  liveEvent:
+    | {
+        externalCalendarEventId: string;
+        externalCalendarId: string;
+        scheduledStartAt: string;
+        scheduledEndAt: string;
+      }
+    | null;
+}): TaskCalendarDrift | null {
+  const { task, liveEvent } = input;
+
+  if (task.externalCalendarEventId === null || task.externalCalendarId === null) {
+    return null;
+  }
+
+  if (liveEvent === null) {
+    return taskCalendarDriftSchema.parse({
+      taskId: task.id,
+      reason: "missing_event",
+      expectedStartAt: task.scheduledStartAt,
+      expectedEndAt: task.scheduledEndAt,
+      actualStartAt: null,
+      actualEndAt: null
+    });
+  }
+
+  const startChanged = task.scheduledStartAt !== liveEvent.scheduledStartAt;
+  const endChanged = task.scheduledEndAt !== liveEvent.scheduledEndAt;
+  const calendarChanged = task.externalCalendarId !== liveEvent.externalCalendarId;
+
+  if (!startChanged && !endChanged && !calendarChanged) {
+    return null;
+  }
+
+  return taskCalendarDriftSchema.parse({
+    taskId: task.id,
+    reason: "calendar_changed",
+    expectedStartAt: task.scheduledStartAt,
+    expectedEndAt: task.scheduledEndAt,
+    actualStartAt: liveEvent.scheduledStartAt,
+    actualEndAt: liveEvent.scheduledEndAt
   });
 }
 

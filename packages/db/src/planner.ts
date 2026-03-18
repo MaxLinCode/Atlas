@@ -7,6 +7,11 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { inboxItems, plannerRuns, tasks, userProfiles } from "./schema";
+import {
+  attachGoogleCalendarConnectionStoreToTasks,
+  getDefaultGoogleCalendarConnectionStore,
+  type GoogleCalendarConnection
+} from "./google-calendar";
 
 export type PersistedPlannerRun = {
   id: string;
@@ -23,6 +28,7 @@ export type InboxProcessingContext = {
   tasks: Task[];
   scheduleBlocks: ScheduleBlock[];
   userProfile: UserProfile;
+  googleCalendarConnection: GoogleCalendarConnection | null;
 };
 
 export type DraftTaskForPersistence = {
@@ -103,6 +109,15 @@ export interface InboxProcessingStore {
     plannerRun: Omit<PersistedPlannerRun, "id">;
   }): Promise<PersistedPlannerRun>;
   saveFailure(inboxItemId: string): Promise<void>;
+  reconcileTaskCalendarProjection(input: {
+    taskId: string;
+    externalCalendarEventId: string | null;
+    externalCalendarId: string | null;
+    scheduledStartAt: string | null;
+    scheduledEndAt: string | null;
+    calendarSyncStatus: "in_sync" | "out_of_sync";
+    calendarSyncUpdatedAt: string;
+  }): Promise<void>;
 }
 
 type StoredInboxItem = InboxItem & {
@@ -129,6 +144,10 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     return Array.from(this.tasksById.values());
   }
 
+  replaceTask(taskId: string, task: StoredTask) {
+    this.tasksById.set(taskId, task);
+  }
+
   listScheduleBlocks() {
     return buildScheduleBlocksFromTasks(this.listTasks());
   }
@@ -151,14 +170,15 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       return null;
     }
 
-    return {
-      inboxItem,
-      tasks: Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId),
-      scheduleBlocks: buildScheduleBlocksFromTasks(
-        Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId)
-      ),
-      userProfile: this.userProfilesById.get(inboxItem.userId) ?? buildDefaultUserProfile(inboxItem.userId)
-    };
+      return {
+        inboxItem,
+        tasks: Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId),
+        scheduleBlocks: buildScheduleBlocksFromTasks(
+          Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId)
+        ),
+        userProfile: this.userProfilesById.get(inboxItem.userId) ?? buildDefaultUserProfile(inboxItem.userId),
+        googleCalendarConnection: await getDefaultGoogleCalendarConnectionStore().getConnection(inboxItem.userId)
+      };
   }
 
   async markInboxProcessing(inboxItemId: string) {
@@ -207,7 +227,9 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
         externalCalendarEventId: currentBlock?.id ?? null,
         externalCalendarId: currentBlock?.externalCalendarId ?? null,
         scheduledStartAt: currentBlock?.startAt ?? null,
-        scheduledEndAt: currentBlock?.endAt ?? null
+        scheduledEndAt: currentBlock?.endAt ?? null,
+        calendarSyncStatus: "in_sync",
+        calendarSyncUpdatedAt: currentBlock ? new Date().toISOString() : task.calendarSyncUpdatedAt
       };
       this.tasksById.set(task.id, persistedTask);
       return persistedTask;
@@ -253,6 +275,8 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
         externalCalendarId: task.externalCalendarId,
         scheduledStartAt: input.newStartAt,
         scheduledEndAt: input.newEndAt,
+        calendarSyncStatus: "in_sync",
+        calendarSyncUpdatedAt: new Date().toISOString(),
         rescheduleCount: task.rescheduleCount + 1
       };
       this.tasksById.set(task.id, updatedTask);
@@ -314,6 +338,8 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
           externalCalendarId: block.externalCalendarId,
           scheduledStartAt: block.startAt,
           scheduledEndAt: block.endAt,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: new Date().toISOString(),
           rescheduleCount: isReschedule ? task.rescheduleCount + 1 : task.rescheduleCount
         };
         this.tasksById.set(task.id, updatedTask);
@@ -388,6 +414,32 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
     });
   }
 
+  async reconcileTaskCalendarProjection(input: {
+    taskId: string;
+    externalCalendarEventId: string | null;
+    externalCalendarId: string | null;
+    scheduledStartAt: string | null;
+    scheduledEndAt: string | null;
+    calendarSyncStatus: "in_sync" | "out_of_sync";
+    calendarSyncUpdatedAt: string;
+  }) {
+    const existing = this.tasksById.get(input.taskId);
+
+    if (!existing) {
+      throw new Error(`Task ${input.taskId} not found.`);
+    }
+
+    this.tasksById.set(input.taskId, {
+      ...existing,
+      externalCalendarEventId: input.externalCalendarEventId,
+      externalCalendarId: input.externalCalendarId,
+      scheduledStartAt: input.scheduledStartAt,
+      scheduledEndAt: input.scheduledEndAt,
+      calendarSyncStatus: input.calendarSyncStatus,
+      calendarSyncUpdatedAt: input.calendarSyncUpdatedAt
+    });
+  }
+
   private requireInboxItem(inboxItemId: string) {
     const inboxItem = this.inboxItemsById.get(inboxItemId);
 
@@ -448,6 +500,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
       externalCalendarId: task.externalCalendarId,
       scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
       scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
+      calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
+      calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
       rescheduleCount: task.rescheduleCount,
       lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
       completedAt: task.completedAt?.toISOString() ?? null,
@@ -481,7 +535,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             reminderStyle: profileRows[0].reminderStyle as UserProfile["reminderStyle"],
             breakdownLevel: profileRows[0].breakdownLevel
           }
-        : buildDefaultUserProfile(inboxItem.userId)
+        : buildDefaultUserProfile(inboxItem.userId),
+      googleCalendarConnection: await getDefaultGoogleCalendarConnectionStore().getConnection(inboxItem.userId)
     };
   }
 
@@ -519,6 +574,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             externalCalendarId: task.externalCalendarId,
             scheduledStartAt: task.scheduledStartAt ? new Date(task.scheduledStartAt) : null,
             scheduledEndAt: task.scheduledEndAt ? new Date(task.scheduledEndAt) : null,
+            calendarSyncStatus: task.calendarSyncStatus,
+            calendarSyncUpdatedAt: task.calendarSyncUpdatedAt ? new Date(task.calendarSyncUpdatedAt) : null,
             rescheduleCount: task.rescheduleCount,
             lastFollowupAt: task.lastFollowupAt ? new Date(task.lastFollowupAt) : null,
             completedAt: task.completedAt ? new Date(task.completedAt) : null,
@@ -551,7 +608,9 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             externalCalendarEventId: currentBlock?.id ?? null,
             externalCalendarId: currentBlock?.externalCalendarId ?? null,
             scheduledStartAt: currentBlock?.startAt ? new Date(currentBlock.startAt) : null,
-            scheduledEndAt: currentBlock?.endAt ? new Date(currentBlock.endAt) : null
+            scheduledEndAt: currentBlock?.endAt ? new Date(currentBlock.endAt) : null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: currentBlock ? new Date() : createdTask.calendarSyncUpdatedAt
           })
           .where(eq(tasks.id, createdTask.id));
       }
@@ -596,6 +655,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             remappedBlocks.find((block) => block.taskId === task.id)?.endAt ??
             task.scheduledEndAt?.toISOString() ??
             null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt:
+            remappedBlocks.find((block) => block.taskId === task.id) !== undefined
+              ? new Date().toISOString()
+              : task.calendarSyncUpdatedAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
@@ -638,6 +702,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             externalCalendarId: existingTask.externalCalendarId,
             scheduledStartAt: new Date(input.newStartAt),
             scheduledEndAt: new Date(input.newEndAt),
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: new Date(),
             rescheduleCount: existingTask.rescheduleCount + 1
           })
           .where(eq(tasks.id, existingTask.id));
@@ -709,6 +775,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
             externalCalendarId: block.externalCalendarId,
             scheduledStartAt: new Date(block.startAt),
             scheduledEndAt: new Date(block.endAt),
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: new Date(),
             rescheduleCount: isReschedule
               ? (existingTask?.rescheduleCount ?? 0) + 1
               : (existingTask?.rescheduleCount ?? 0)
@@ -732,6 +800,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
           externalCalendarId: task.externalCalendarId,
           scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
           scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
+          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
+          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
@@ -824,6 +894,28 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
       .where(eq(inboxItems.id, inboxItemId));
   }
 
+  async reconcileTaskCalendarProjection(input: {
+    taskId: string;
+    externalCalendarEventId: string | null;
+    externalCalendarId: string | null;
+    scheduledStartAt: string | null;
+    scheduledEndAt: string | null;
+    calendarSyncStatus: "in_sync" | "out_of_sync";
+    calendarSyncUpdatedAt: string;
+  }) {
+    await this.db
+      .update(tasks)
+      .set({
+        externalCalendarEventId: input.externalCalendarEventId,
+        externalCalendarId: input.externalCalendarId,
+        scheduledStartAt: input.scheduledStartAt ? new Date(input.scheduledStartAt) : null,
+        scheduledEndAt: input.scheduledEndAt ? new Date(input.scheduledEndAt) : null,
+        calendarSyncStatus: input.calendarSyncStatus,
+        calendarSyncUpdatedAt: new Date(input.calendarSyncUpdatedAt)
+      })
+      .where(eq(tasks.id, input.taskId));
+  }
+
   async close() {
     await this.client.end();
   }
@@ -881,6 +973,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
 }
 
 const defaultInMemoryStore = new InMemoryInboxProcessingStore();
+attachGoogleCalendarConnectionStoreToTasks({
+  getTasks: () => defaultInMemoryStore.listTasks(),
+  replaceTask: (taskId, task) => defaultInMemoryStore.replaceTask(taskId, task)
+});
 let postgresStore: PostgresInboxProcessingStore | null = null;
 
 export function getDefaultInboxProcessingStore(): InboxProcessingStore {

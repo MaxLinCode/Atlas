@@ -15,9 +15,17 @@ Use this workflow to deploy the Atlas webhook route to Vercel and connect a Tele
 Set these in the Vercel project for the target environment before deploying:
 
 - `DATABASE_URL`
+- `APP_BASE_URL`
 - `OPENAI_API_KEY`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
+- `TELEGRAM_ALLOWED_USER_IDS`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_OAUTH_REDIRECT_URI`
+- `GOOGLE_LINK_TOKEN_SECRET`
+- `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
+- `CRON_SECRET`
 
 ## Route expectations
 

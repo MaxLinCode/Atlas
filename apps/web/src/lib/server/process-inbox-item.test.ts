@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxPlanningOutput } from "@atlas/core";
 import {
+  getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
   listPlannerRunsForTests,
   listScheduleBlocksForTests,
   listTasksForTests,
+  resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
   seedInboxItemForProcessingTests
 } from "@atlas/db";
-import { resetCalendarAdapterForTests } from "@atlas/integrations";
+import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
 
 import { processInboxItem } from "./process-inbox-item";
 
 describe("process inbox item service", () => {
   beforeEach(() => {
     resetInboxProcessingStoreForTests();
+    resetGoogleCalendarConnectionStoreForTests();
     resetCalendarAdapterForTests();
   });
 
@@ -34,6 +37,7 @@ describe("process inbox item service", () => {
         inboxItemId: "inbox-1"
       },
       {
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.9,
           summary: "Captured and scheduled Review launch checklist.",
@@ -79,6 +83,61 @@ describe("process inbox item service", () => {
     });
   });
 
+  it("asks for Google Calendar linking instead of scheduling against the in-memory fallback", async () => {
+    resetGoogleCalendarConnectionStoreForTests();
+    seedInboxItemForProcessingTests({
+      id: "inbox-unlinked",
+      userId: "123",
+      sourceEventId: "event-unlinked",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-unlinked"
+      },
+      {
+        calendar: null,
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Captured and scheduled Review launch checklist.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Review launch checklist",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayOffset: 0,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task in the next slot."
+            }
+          ],
+          userReplyMessage: "Schedule it."
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(result.followUpMessage).toContain("connect Google Calendar");
+  });
+
   it("uses model-provided timing constraints for combined task and schedule requests", async () => {
     seedInboxItemForProcessingTests({
       id: "inbox-2",
@@ -95,6 +154,7 @@ describe("process inbox item service", () => {
         inboxItemId: "inbox-2"
       },
       {
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.91,
           summary: "Scheduled Submit taxes for tomorrow at 3pm.",
@@ -180,6 +240,7 @@ describe("process inbox item service", () => {
         }
       },
       {
+        calendar: getDefaultCalendarAdapter(),
         planner
       }
     );
@@ -211,6 +272,7 @@ describe("process inbox item service", () => {
       { inboxItemId: "inbox-task" },
       {
         store,
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.9,
           summary: "Scheduled Review launch checklist.",
@@ -257,6 +319,7 @@ describe("process inbox item service", () => {
       { inboxItemId: "inbox-move" },
       {
         store,
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.83,
           summary: "Moved the scheduled review block to 3pm.",
@@ -291,6 +354,170 @@ describe("process inbox item service", () => {
     });
   });
 
+  it("keeps move scheduling out of Google-busy slots", async () => {
+    const store = getDefaultInboxProcessingStore();
+    await getDefaultGoogleCalendarConnectionStore().upsertConnection({
+      userId: "123",
+      providerAccountId: "google-user-1",
+      email: "max@example.com",
+      selectedCalendarId: "primary",
+      selectedCalendarName: "Primary",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      tokenExpiresAt: "2026-03-20T17:00:00.000Z",
+      scopes: ["calendar"],
+      syncCursor: null,
+      lastSyncedAt: null,
+      revokedAt: null
+    });
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-task-busy",
+      userId: "123",
+      sourceEventId: "event-task-busy",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-task-busy" },
+      {
+        store,
+        calendar: {
+          provider: "google-calendar",
+          createEvent: async (input) => ({
+            externalCalendarEventId: "event-1",
+            externalCalendarId: input.externalCalendarId ?? "primary",
+            scheduledStartAt: input.startAt,
+            scheduledEndAt: input.endAt
+          }),
+          updateEvent: async (input) => ({
+            externalCalendarEventId: input.externalCalendarEventId,
+            externalCalendarId: input.externalCalendarId ?? "primary",
+            scheduledStartAt: input.startAt,
+            scheduledEndAt: input.endAt
+          }),
+          getEvent: async () => ({
+            externalCalendarEventId: "event-1",
+            externalCalendarId: "primary",
+            scheduledStartAt: "2026-03-19T17:00:00.000Z",
+            scheduledEndAt: "2026-03-19T18:00:00.000Z"
+          }),
+          listBusyPeriods: async () => [
+            {
+              startAt: "2026-03-18T15:00:00.000Z",
+              endAt: "2026-03-18T16:00:00.000Z",
+              externalCalendarId: "primary"
+            }
+          ]
+        },
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Review launch checklist.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Review launch checklist",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayOffset: 0,
+                explicitHour: 17,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "5pm"
+              },
+              reason: "Schedule the new task."
+            }
+          ],
+          userReplyMessage: "Scheduled."
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-move-busy",
+      userId: "123",
+      sourceEventId: "event-move-busy",
+      rawText: "move it to 3pm",
+      normalizedText: "move it to 3pm",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-move-busy" },
+      {
+        store,
+        calendar: {
+          provider: "google-calendar",
+          createEvent: async () => {
+            throw new Error("not used");
+          },
+          updateEvent: async (input) => ({
+            externalCalendarEventId: input.externalCalendarEventId,
+            externalCalendarId: input.externalCalendarId ?? "primary",
+            scheduledStartAt: input.startAt,
+            scheduledEndAt: input.endAt
+          }),
+          getEvent: async () => {
+            const task = listTasksForTests()[0];
+            if (!task?.externalCalendarEventId || !task.externalCalendarId || !task.scheduledStartAt || !task.scheduledEndAt) {
+              return null;
+            }
+            return {
+              externalCalendarEventId: task.externalCalendarEventId,
+              externalCalendarId: task.externalCalendarId,
+              scheduledStartAt: task.scheduledStartAt,
+              scheduledEndAt: task.scheduledEndAt
+            };
+          },
+          listBusyPeriods: async () => [
+            {
+              startAt: "2026-03-18T15:00:00.000Z",
+              endAt: "2026-03-18T16:00:00.000Z",
+              externalCalendarId: "primary"
+            }
+          ]
+        },
+        planner: async () => ({
+          confidence: 0.83,
+          summary: "Moved the scheduled review block to 3pm.",
+          actions: [
+            {
+              type: "move_schedule_block",
+              blockRef: {
+                alias: "schedule_block_1"
+              },
+              scheduleConstraint: {
+                dayOffset: 0,
+                explicitHour: 15,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "at 3pm"
+              },
+              reason: "The user asked to move it to 3pm."
+            }
+          ],
+          userReplyMessage: "Moved."
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("updated_schedule");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T16:00:00.000Z");
+  });
+
   it("marks invalid model output references for clarification", async () => {
     seedInboxItemForProcessingTests({
       id: "inbox-3",
@@ -305,6 +532,7 @@ describe("process inbox item service", () => {
     const result = await processInboxItem(
       { inboxItemId: "inbox-3" },
       {
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.35,
           summary: "Move the block.",
@@ -361,7 +589,8 @@ describe("process inbox item service", () => {
             updateEvent: async () => {
               throw new Error("calendar unavailable");
             },
-            getEvent: async () => null
+            getEvent: async () => null,
+            listBusyPeriods: async () => []
           },
           planner: async () => ({
             confidence: 0.9,
@@ -421,6 +650,7 @@ describe("process inbox item service", () => {
       { inboxItemId: "inbox-task" },
       {
         store,
+        calendar: getDefaultCalendarAdapter(),
         planner: async () => ({
           confidence: 0.9,
           summary: "Scheduled Review launch checklist.",
@@ -493,7 +723,8 @@ describe("process inbox item service", () => {
                 scheduledStartAt: task.scheduledStartAt,
                 scheduledEndAt: task.scheduledEndAt
               };
-            }
+            },
+            listBusyPeriods: async () => []
           },
           planner: async () => ({
             confidence: 0.83,
