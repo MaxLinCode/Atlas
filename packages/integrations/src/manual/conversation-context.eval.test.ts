@@ -44,7 +44,6 @@ const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "mixed-turn reference uses recent context and stays discuss-first",
     input: {
       route: "conversation_then_mutation",
-      rawText: "Could we move it to Friday morning instead?",
       normalizedText: "Could we move it to Friday morning instead?",
       recentTurns: DENTIST_TURNS
     },
@@ -60,7 +59,6 @@ const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "write-adjacent question stays hedged",
     input: {
       route: "conversation",
-      rawText: "Did you already create that?",
       normalizedText: "Did you already create that?",
       recentTurns: DENTIST_TURNS
     },
@@ -75,7 +73,6 @@ const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "planning dialogue uses recent continuity",
     input: {
       route: "conversation",
-      rawText: "How should I prioritize tomorrow?",
       normalizedText: "How should I prioritize tomorrow?",
       recentTurns: PRIORITIZATION_TURNS
     },

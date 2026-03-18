@@ -33,7 +33,6 @@ export const conversationMemorySummaryOutputSchema = z.object({
 
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
-  rawText: z.string().min(1),
   normalizedText: z.string().min(1),
   recentTurns: z.array(conversationTurnSchema),
   memorySummary: z.string().nullable()
@@ -278,6 +277,8 @@ function buildSystemPrompt() {
     "Do not convert conditional language into multiple concrete schedule mutations.",
     "Do not overconfidently use existing aliases when the message also introduces new tasks.",
     "Do not emit multiple conflicting schedule actions for the same item.",
+    "User-facing reply:",
+    "Include a userReplyMessage field with a friendly, natural response summarizing what you are planning to do (e.g., 'Got it, I've scheduled your dentist appointment for Friday at 2pm.') or clarifying what you need from the user.",
     "Return only valid structured actions that the application can safely validate and apply."
   ].join(" ");
 }
@@ -346,11 +347,13 @@ function buildConfirmedMutationRecoverySystemPrompt() {
     "You are Atlas, reconstructing a concrete write-ready mutation request from short-horizon confirmation context.",
     "The latest user turn may be a confirmation or refinement of one recent proposed write.",
     "Use only the provided latest turn, recent turns, and any optional working summary.",
-    "Return outcome recovered only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
+    "Return 'recovered' only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
     "The recovered text should be a concise natural-language request that restates the intended write directly.",
     "If the latest turn only confirms a vague or multi-option proposal, or if there are multiple plausible proposals, return needs_clarification.",
     "Do not invent task identity or scheduling details that are not supported by the provided context.",
     "Transcript is short-horizon confirmation context only, not canonical state.",
+    "If outcome is 'recovered', set recoveredText to the concrete write-ready request and userReplyMessage to a brief natural confirmation of the action.",
+    "If outcome is 'needs_clarification', set recoveredText to null and userReplyMessage to a helpful clarifying question for the user.",
     "Return only the structured response."
   ].join(" ");
 }

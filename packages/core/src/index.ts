@@ -238,7 +238,8 @@ export const planningActionSchema = z.discriminatedUnion("type", [
 export const inboxPlanningOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
   summary: z.string().min(1),
-  actions: z.array(planningActionSchema).min(1)
+  actions: z.array(planningActionSchema).min(1),
+  userReplyMessage: z.string().min(1)
 });
 
 export const inboxPlanningTaskContextSchema = z.object({
@@ -293,16 +294,17 @@ export const confirmedMutationRecoveryInputSchema = z.object({
 
 export const confirmedMutationRecoveryOutputSchema = z.object({
   outcome: z.enum(["recovered", "needs_clarification"]),
-  recoveredRawText: z.string().optional(),
-  recoveredNormalizedText: z.string().optional(),
-  reason: z.string().min(1)
+  recoveredText: z.string().nullable(),
+  reason: z.string().min(1),
+  userReplyMessage: z.string().min(1)
 }).refine((data) => {
   if (data.outcome === "recovered") {
-    return data.recoveredRawText && data.recoveredNormalizedText;
+    return typeof data.recoveredText === "string" && data.recoveredText.length > 0;
   }
-  return true;
+
+  return data.recoveredText === null;
 }, {
-  message: "recoveredRawText and recoveredNormalizedText are required when outcome is 'recovered'"
+  message: "recoveredText is required for 'recovered' and must be null for 'needs_clarification'"
 });
 
 export const scheduleProposalInputSchema = z.object({
@@ -359,13 +361,11 @@ export const isConfirmedMutationRecovered = (
   output: ConfirmedMutationRecoveryOutput
 ): output is ConfirmedMutationRecoveryOutput & {
   outcome: "recovered";
-  recoveredRawText: string;
-  recoveredNormalizedText: string;
+  recoveredText: string;
 } => {
   return (
     output.outcome === "recovered" &&
-    typeof output.recoveredRawText === "string" &&
-    typeof output.recoveredNormalizedText === "string"
+    typeof output.recoveredText === "string"
   );
 };
 

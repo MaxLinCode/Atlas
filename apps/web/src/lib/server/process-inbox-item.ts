@@ -27,8 +27,7 @@ import {
 export type ProcessInboxItemRequest = {
   inboxItemId: string;
   planningInboxTextOverride?: {
-    rawText: string;
-    normalizedText: string;
+    text: string;
   };
 };
 
@@ -58,8 +57,8 @@ export async function processInboxItem(
     inboxItem: input.planningInboxTextOverride
       ? {
           ...context.inboxItem,
-          rawText: input.planningInboxTextOverride.rawText,
-          normalizedText: input.planningInboxTextOverride.normalizedText
+          rawText: input.planningInboxTextOverride.text,
+          normalizedText: input.planningInboxTextOverride.text
         }
       : context.inboxItem,
     userProfile: context.userProfile,
@@ -139,7 +138,7 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
       confidence: input.planning.confidence,
       plannerRun: input.plannerRun,
       reason: clarifyAction.reason,
-      followUpMessage: clarifyAction.reason
+      followUpMessage: input.planning.userReplyMessage
     });
   }
 
@@ -232,7 +231,7 @@ async function applyCreatedTaskActions(
     plannerRun: input.plannerRun,
     tasks: draftTasks,
     scheduleBlocks: scheduleBlocks.blocks,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
@@ -298,7 +297,7 @@ async function applyExistingTaskScheduleActions(
     plannerRun: input.plannerRun,
     taskIds: existingTaskIds,
     scheduleBlocks,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
@@ -350,7 +349,7 @@ async function applyMoveAction(
     newStartAt: updatedEvent.scheduledStartAt,
     newEndAt: updatedEvent.scheduledEndAt,
     reason: action.reason,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
@@ -528,9 +527,9 @@ function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessIn
 
   if (
     input.planningInboxTextOverride &&
-    (!input.planningInboxTextOverride.rawText.trim() || !input.planningInboxTextOverride.normalizedText.trim())
+    !input.planningInboxTextOverride.text.trim()
   ) {
-    throw new Error("planningInboxTextOverride must include non-empty rawText and normalizedText.");
+    throw new Error("planningInboxTextOverride must include non-empty text.");
   }
 
   return input;

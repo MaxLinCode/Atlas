@@ -3,10 +3,21 @@
 ## Active focus
 
 Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
-Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and improve the Telegram bot's post-router UX now that context-aware conversation and confirmation-aware routing are landed.
+Current implementation focus: ship real Google Calendar integration so Atlas can create and move actual calendar events, keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, and implement the locked follow-up/reschedule runtime on top of that lean task model.
 
 ## Near-term milestones
 
+- Ship Google Calendar integration end to end:
+  - OAuth/account linking
+  - real calendar event create/update/read flows
+  - busy-time awareness for scheduling proposals
+  - reliable mapping between Atlas task commitments and Google Calendar event ids
+- Plan and execute a security hardening pass before any public bot exposure:
+  - Telegram allowlist or private-beta access gate so only approved users can reach the bot
+  - explicit user/account authz boundaries across inbox items, tasks, planner runs, and calendar operations
+  - secure Google Calendar OAuth state handling, token storage, refresh, and revocation
+  - rate limits and usage caps to protect OpenAI spend and integration quotas
+  - logging, redaction, and admin-surface review to reduce PII exposure
 - Tighten outbound Telegram delivery reliability and error observability.
 - Thread clarification handling through persisted inbox, planner-run, task, and schedule state so reply messages can resume processing safely.
 - Back the admin inbox, planner-runs, and schedule pages with real repository data.
@@ -14,10 +25,6 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - Add the task-level schema and repository support needed for the locked follow-up runtime, including `followup_reminder_sent_at`.
 - Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
 - Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
-- Implement conversational bot behavior in small slices rather than one broad thread:
-  - mutation reply renderer
-  - only summarize recent chat when it materially improves a conversation reply
-  - tighten confirmed-mutation recovery and reply quality around schedule-forward proposals
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
 - Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
@@ -27,6 +34,8 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - Atlas should be a planning assistant first and a mutation engine second.
 - Schedule-forward remains a core product opinion: when work becomes actionable, Atlas should bias toward proposing or placing time on the schedule.
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
+- The missing product-critical step is real Google Calendar integration; until Atlas reads and writes real calendar events, the schedule-forward experience is not complete.
+- Once real calendar integration exists, security hardening becomes launch-blocking: Atlas must not allow unauthorized users to spend OpenAI credits, access private planning history, or interact with linked private calendars.
 - Every Atlas task should seek scheduled time immediately; unscheduled backlog should not be the default operating model.
 - Every scheduled task should receive follow-up after the scheduled block ends, and `awaiting_followup` is now a key lifecycle concept.
 - `awaiting_followup` should begin only after the scheduled block has ended and Atlas has issued a follow-up nudge for that task.
@@ -43,6 +52,8 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
 - Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
+- Confirmed-mutation recovery currently reconstructs one synthesized write-ready `recoveredText` plus a separate `userReplyMessage`; the recovery output is model-facing and must stay distinct from persisted inbox capture text.
+- The confirmed-mutation path should keep reusing the normal mutation planner via `planningInboxTextOverride.text` rather than introducing a second planner contract for short confirmation turns.
 - The current runtime now stores live scheduled commitment fields directly on `tasks`: `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
 - The lean follow-up seam should stay on the task row, not in transport history:
   - `last_followup_at`: the most recent outbound accountability follow-up Atlas successfully sent for the task

@@ -175,7 +175,6 @@ export async function handleTelegramWebhook(
     const memorySummary = await buildConversationMemorySummary(recentTurns, dependencies);
     const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
       route: routedWithContext.route,
-      rawText: normalizedMessage.rawText,
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
       memorySummary
@@ -227,7 +226,7 @@ export async function handleTelegramWebhook(
           userId: normalizedMessage.user.telegramUserId,
           chatId: normalizedMessage.chatId,
           inboxItemId: ingress.inboxItem.id,
-          text: recoveredMutation.reason
+          text: recoveredMutation.userReplyMessage
         },
         {
           sender: dependencies.sender ?? sendTelegramMessage,
@@ -241,7 +240,7 @@ export async function handleTelegramWebhook(
             routing: routedWithContext,
             processing: {
               outcome: "conversation_replied",
-              reply: recoveredMutation.reason
+              reply: recoveredMutation.userReplyMessage
             }
           }
         }
@@ -251,15 +250,14 @@ export async function handleTelegramWebhook(
     await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
     if (!isConfirmedMutationRecovered(recoveredMutation)) {
-      throw new Error("Expected recovered mutation to have recoveredRawText and recoveredNormalizedText");
+      throw new Error("Expected recovered mutation to include recoveredText");
     }
 
     const processing = await processInboxItem(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
-          rawText: recoveredMutation.recoveredRawText,
-          normalizedText: recoveredMutation.recoveredNormalizedText
+          text: recoveredMutation.recoveredText
         }
       },
       {

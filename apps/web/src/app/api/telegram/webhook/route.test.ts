@@ -33,6 +33,7 @@ vi.mock("@atlas/integrations", async () => {
     planInboxItemWithResponses: async () => ({
       confidence: 0.9,
       summary: "Captured and scheduled Review launch checklist.",
+      userReplyMessage: "Captured and scheduled Review launch checklist.",
       actions: [
         {
           type: "create_task",
@@ -339,13 +340,14 @@ describe("telegram webhook route", () => {
           },
           reason: "The user confirmed the proposed 3pm slot."
         }
-      ]
+      ],
+      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
     }));
     const confirmedMutationRecoverer = vi.fn(async () => ({
       outcome: "recovered" as const,
-      recoveredRawText: "Schedule the dentist reminder at 3pm.",
-      recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
-      reason: "The user confirmed the concrete 3pm proposal."
+      recoveredText: "Schedule the dentist reminder at 3pm.",
+      reason: "The user confirmed the concrete 3pm proposal.",
+      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
     }));
 
     const response = await handleTelegramWebhook(
@@ -439,7 +441,8 @@ describe("telegram webhook route", () => {
           },
           reason: "The user asked to push it 1 hour later."
         }
-      ]
+      ],
+      userReplyMessage: "Done - I've moved it to 4pm."
     }));
 
     seedInboxItemForProcessingTests({
@@ -505,9 +508,9 @@ describe("telegram webhook route", () => {
         }),
         confirmedMutationRecoverer: async () => ({
           outcome: "recovered",
-          recoveredRawText: "Move the scheduled review block 1 hour later.",
-          recoveredNormalizedText: "Move the scheduled review block 1 hour later.",
-          reason: "The user refined the recent concrete proposal."
+          recoveredText: "Move the scheduled review block 1 hour later.",
+          reason: "The user refined the recent concrete proposal.",
+          userReplyMessage: "Done - I've moved it to 4pm."
         }),
         turnRouter: async () => ({
           route: "confirmed_mutation",
@@ -566,7 +569,9 @@ describe("telegram webhook route", () => {
         }),
         confirmedMutationRecoverer: async () => ({
           outcome: "needs_clarification",
-          reason: "I have two recent proposals in view. Which one do you want me to apply?"
+          recoveredText: null,
+          reason: "I have two recent proposals in view. Which one do you want me to apply?",
+          userReplyMessage: "I have two recent proposals in view. Which one do you want me to apply?"
         }),
         turnRouter: async () => ({
           route: "confirmed_mutation",
@@ -803,7 +808,6 @@ describe("telegram webhook route", () => {
       });
       expect(conversationResponder).toHaveBeenCalledWith({
         route: "conversation",
-        rawText: "How should I prioritize this week?",
         normalizedText: "How should I prioritize this week?",
         recentTurns: [
           {
@@ -909,7 +913,6 @@ describe("telegram webhook route", () => {
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation_then_mutation",
-      rawText: "Could we move it to tomorrow morning?",
       normalizedText: "Could we move it to tomorrow morning?",
       recentTurns: [
         {
@@ -970,7 +973,6 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation",
-      rawText: "Should we talk this through first?",
       normalizedText: "Should we talk this through first?",
       recentTurns: [
         {

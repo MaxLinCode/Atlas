@@ -89,6 +89,7 @@ describe("integrations", () => {
             output_parsed: {
               confidence: 0.91,
               summary: "Create and schedule a tax task.",
+              userReplyMessage: "Got it - tax task scheduled for 3pm.",
               actions: [
                 {
                   type: "create_task",
@@ -253,9 +254,9 @@ describe("integrations", () => {
           parse: async () => ({
             output_parsed: {
               outcome: "recovered",
-              recoveredRawText: "Schedule the dentist reminder at 3pm.",
-              recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
-              reason: "The user confirmed the recent concrete proposal."
+              recoveredText: "Schedule the dentist reminder at 3pm.",
+              reason: "The user confirmed the recent concrete proposal.",
+              userReplyMessage: "Got it - dentest reminder scheduled at 3pm."
             }
           })
         }
@@ -264,7 +265,7 @@ describe("integrations", () => {
 
     expect(result).toMatchObject({
       outcome: "recovered",
-      recoveredNormalizedText: "Schedule the dentist reminder at 3pm."
+      recoveredText: "Schedule the dentist reminder at 3pm."
     });
   });
 
@@ -288,6 +289,7 @@ describe("integrations", () => {
             parse: async () => ({
               output_parsed: {
                 outcome: "recovered",
+                recoveredText: null,
                 reason: "Missing recovered text."
               }
             })
@@ -301,7 +303,6 @@ describe("integrations", () => {
     const result = await respondToConversationTurnWithResponses(
       {
         route: "conversation",
-        rawText: "How should I plan tomorrow?",
         normalizedText: "How should I plan tomorrow?",
         recentTurns: [
           {
