@@ -2,36 +2,26 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
-import { getConfig, inboxPlanningContextSchema, inboxPlanningOutputSchema } from "@atlas/core";
+import {
+  getConfig,
+  inboxPlanningContextSchema,
+  inboxPlanningOutputSchema,
+  turnRoutingInputSchema,
+  turnRoutingOutputSchema,
+  conversationTurnSchema,
+  confirmedMutationRecoveryInputSchema,
+  confirmedMutationRecoveryOutputSchema,
+  type TurnRoutingInput,
+  type TurnRoutingOutput,
+  type ConfirmedMutationRecoveryInput,
+  type ConfirmedMutationRecoveryOutput
+} from "@atlas/core";
 
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL = "gpt-4o-mini";
-
-export const turnRoutingInputSchema = z.object({
-  rawText: z.string().min(1),
-  normalizedText: z.string().min(1),
-  recentTurns: z.array(z.object({
-    role: z.enum(["user", "assistant"]),
-    text: z.string().min(1),
-    createdAt: z.string().datetime()
-  }))
-});
-
-export const turnRouteSchema = z.enum(["conversation", "mutation", "conversation_then_mutation", "confirmed_mutation"]);
-
-export const turnRoutingOutputSchema = z.object({
-  route: turnRouteSchema,
-  reason: z.string().min(1)
-});
-
-export const conversationTurnSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  text: z.string().min(1),
-  createdAt: z.string().datetime()
-});
 
 export const conversationMemorySummaryInputSchema = z.object({
   recentTurns: z.array(conversationTurnSchema)
@@ -40,26 +30,6 @@ export const conversationMemorySummaryInputSchema = z.object({
 export const conversationMemorySummaryOutputSchema = z.object({
   summary: z.string()
 });
-
-export const confirmedMutationRecoveryInputSchema = z.object({
-  rawText: z.string().min(1),
-  normalizedText: z.string().min(1),
-  recentTurns: z.array(conversationTurnSchema),
-  memorySummary: z.string().nullable()
-});
-
-export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion("outcome", [
-  z.object({
-    outcome: z.literal("recovered"),
-    recoveredRawText: z.string().min(1),
-    recoveredNormalizedText: z.string().min(1),
-    reason: z.string().min(1)
-  }),
-  z.object({
-    outcome: z.literal("needs_clarification"),
-    reason: z.string().min(1)
-  })
-]);
 
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
@@ -73,14 +43,8 @@ export const conversationResponseOutputSchema = z.object({
   reply: z.string().min(1)
 });
 
-export type TurnRoute = z.infer<typeof turnRouteSchema>;
-export type TurnRoutingInput = z.infer<typeof turnRoutingInputSchema>;
-export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
-export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
 export type ConversationMemorySummaryInput = z.infer<typeof conversationMemorySummaryInputSchema>;
 export type ConversationMemorySummaryOutput = z.infer<typeof conversationMemorySummaryOutputSchema>;
-export type ConfirmedMutationRecoveryInput = z.infer<typeof confirmedMutationRecoveryInputSchema>;
-export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type ConversationResponseInput = z.infer<typeof conversationResponseInputSchema>;
 export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
 

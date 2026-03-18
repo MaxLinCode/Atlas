@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { TurnRoutingInput } from "@atlas/core";
 
-import { routeTurnWithResponses, type TurnRoutingInput } from "../openai";
+import { routeTurnWithResponses } from "../openai";
 
 type RouterConfirmationEvalCase = {
   name: string;

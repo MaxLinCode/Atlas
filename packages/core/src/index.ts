@@ -260,6 +260,50 @@ export const inboxPlanningContextSchema = z.object({
   now: z.string().datetime().optional()
 });
 
+export const conversationTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  text: z.string().min(1),
+  createdAt: z.string().datetime()
+});
+
+export const turnRouteSchema = z.enum([
+  "conversation",
+  "mutation",
+  "conversation_then_mutation",
+  "confirmed_mutation"
+]);
+
+export const turnRoutingInputSchema = z.object({
+  rawText: z.string().min(1),
+  normalizedText: z.string().min(1),
+  recentTurns: z.array(conversationTurnSchema)
+});
+
+export const turnRoutingOutputSchema = z.object({
+  route: turnRouteSchema,
+  reason: z.string().min(1)
+});
+
+export const confirmedMutationRecoveryInputSchema = z.object({
+  rawText: z.string().min(1),
+  normalizedText: z.string().min(1),
+  recentTurns: z.array(conversationTurnSchema),
+  memorySummary: z.string().nullable()
+});
+
+export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("recovered"),
+    recoveredRawText: z.string().min(1),
+    recoveredNormalizedText: z.string().min(1),
+    reason: z.string().min(1)
+  }),
+  z.object({
+    outcome: z.literal("needs_clarification"),
+    reason: z.string().min(1)
+  })
+]);
+
 export const scheduleProposalInputSchema = z.object({
   userId: z.string(),
   openTasks: z.array(taskSchema),
@@ -296,6 +340,12 @@ export type InboxPlanningOutput = z.infer<typeof inboxPlanningOutputSchema>;
 export type TaskReference = z.infer<typeof taskReferenceSchema>;
 export type ScheduleBlockReference = z.infer<typeof scheduleBlockReferenceSchema>;
 export type InboxPlanningContext = z.infer<typeof inboxPlanningContextSchema>;
+export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
+export type TurnRoute = z.infer<typeof turnRouteSchema>;
+export type TurnRoutingInput = z.infer<typeof turnRoutingInputSchema>;
+export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
+export type ConfirmedMutationRecoveryInput = z.infer<typeof confirmedMutationRecoveryInputSchema>;
+export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type CapturedTaskInput = {
   userId: string;
   inboxItemId: string;

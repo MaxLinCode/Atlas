@@ -1,11 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ConversationTurn, TurnRoute, TurnRoutingInput } from "@atlas/core";
 
-import {
-  routeTurnWithResponses,
-  type ConversationTurn,
-  type TurnRoute,
-  type TurnRoutingInput
-} from "../openai";
+import { routeTurnWithResponses } from "../openai";
 
 type TurnRouterEvalCase = {
   input: TurnRoutingInput;

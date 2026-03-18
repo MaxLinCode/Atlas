@@ -118,14 +118,22 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - short-horizon confirmations and concrete refinements may route as `confirmed_mutation`
   - `apps/web` recovers a write-ready mutation request from recent context and reuses the existing structured mutation path
   - ambiguous confirmations still stay discuss-first and non-writing
+- Routing ownership is now aligned to the intended architecture:
+  - `apps/web` owns routing orchestration and route application
+  - `packages/core` owns routing and confirmation-recovery product contracts
+  - `packages/integrations` owns OpenAI transport, prompts, and parsing against those core-owned contracts
 - The next app-owned slice is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
 - Verification completed on this branch:
   - `pnpm typecheck`
-  - `pnpm test`
-  - `pnpm --filter @atlas/integration-tests test`
+  - `pnpm --filter @atlas/core test`
+  - `pnpm --filter @atlas/web test`
+  - `pnpm --filter @atlas/integrations test`
   - `pnpm eval:conversation-context`
   - `pnpm eval:router-confirmation`
   - `pnpm eval:turn-router`
+- Additional verification attempted:
+  - `pnpm test` currently fails only because the existing Postgres-backed integration suite cannot connect to local Postgres in this environment (`EPERM` to `127.0.0.1:5432` / `::1:5432`)
+  - `pnpm --filter @atlas/integration-tests test` fails for the same environment reason
 
 ## Next Handoff
 

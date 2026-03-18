@@ -1,9 +1,9 @@
 import {
-  routeTurnWithResponses,
   type TurnRoute,
   type TurnRoutingInput,
   type TurnRoutingOutput
-} from "@atlas/integrations";
+} from "@atlas/core";
+import { routeTurnWithResponses } from "@atlas/integrations";
 
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = {

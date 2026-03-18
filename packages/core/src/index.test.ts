@@ -10,6 +10,8 @@ import {
   buildScheduleProposal,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
+  confirmedMutationRecoveryOutputSchema,
+  turnRoutingOutputSchema,
   getConfig,
   inboxPlanningOutputSchema,
   isTaskFollowupDue,
@@ -222,6 +224,22 @@ describe("core package", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("accepts confirmed_mutation as a valid turn route and parses recovery outputs", () => {
+    const routeResult = turnRoutingOutputSchema.safeParse({
+      route: "confirmed_mutation",
+      reason: "The user confirmed one recent concrete proposal."
+    });
+    const recoveryResult = confirmedMutationRecoveryOutputSchema.safeParse({
+      outcome: "recovered",
+      recoveredRawText: "Schedule the dentist reminder at 3pm.",
+      recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
+      reason: "The user confirmed the recent concrete proposal."
+    });
+
+    expect(routeResult.success).toBe(true);
+    expect(recoveryResult.success).toBe(true);
   });
 
   it("builds a valid schedule proposal for pending tasks", async () => {

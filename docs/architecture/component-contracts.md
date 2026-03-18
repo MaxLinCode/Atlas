@@ -109,7 +109,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-`packages/core` owns product types, turn-routing and mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
+`packages/core` owns product types, turn-routing and confirmation-recovery schemas, mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
 
 ### Accepts
 
@@ -134,6 +134,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 ### Allowed decisions
 
 - Validation of model-produced turn-routing output through app-owned schemas
+- Validation of model-produced confirmation-recovery output through app-owned schemas
 - Validation of model-produced mutation output through app-owned schemas
 - Scheduling heuristics that are deterministic and explainable
 - Follow-up and accountability rules captured in product docs
@@ -151,6 +152,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 ### Role
 
 The model layer interprets messy user text for three app-selected responsibilities: turn routing, conversational planning, and structured mutation proposals.
+`packages/integrations` owns the transport wrappers, prompt text, and API calls for those model tasks, but it should parse against core-owned schemas rather than defining the product contracts itself.
 
 ### Accepts
 
