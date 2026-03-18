@@ -277,6 +277,8 @@ function buildSystemPrompt() {
     "Do not convert conditional language into multiple concrete schedule mutations.",
     "Do not overconfidently use existing aliases when the message also introduces new tasks.",
     "Do not emit multiple conflicting schedule actions for the same item.",
+    "User-facing reply:",
+    "Include a userReplyMessage field with a friendly, natural response summarizing what you are planning to do (e.g., 'Got it, I've scheduled your dentist appointment for Friday at 2pm.') or clarifying what you need from the user.",
     "Return only valid structured actions that the application can safely validate and apply."
   ].join(" ");
 }
@@ -350,6 +352,9 @@ function buildConfirmedMutationRecoverySystemPrompt() {
     "If the latest turn only confirms a vague or multi-option proposal, or if there are multiple plausible proposals, return needs_clarification.",
     "Do not invent task identity or scheduling details that are not supported by the provided context.",
     "Transcript is short-horizon confirmation context only, not canonical state.",
+    "User-facing replies:",
+    "For 'recovered', set userReplyMessage to a brief natural response confirming what you're about to do.",
+    "For 'needs_clarification', set userReplyMessage to a helpful clarifying question for the user, not an internal note.",
     "Return only the structured response."
   ].join(" ");
 }

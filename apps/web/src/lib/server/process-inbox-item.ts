@@ -139,7 +139,7 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
       confidence: input.planning.confidence,
       plannerRun: input.plannerRun,
       reason: clarifyAction.reason,
-      followUpMessage: clarifyAction.reason
+      followUpMessage: input.planning.userReplyMessage
     });
   }
 

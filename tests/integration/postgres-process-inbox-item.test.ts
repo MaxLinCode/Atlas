@@ -74,6 +74,7 @@ if (!databaseUrl) {
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
+            userReplyMessage: "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
             actions: [
               {
                 type: "create_task",
@@ -153,6 +154,7 @@ if (!databaseUrl) {
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
+            userReplyMessage: "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
             actions: [
               {
                 type: "create_task",
@@ -209,6 +211,7 @@ if (!databaseUrl) {
           planner: async () => ({
             confidence: 0.84,
             summary: "Moved it to 3pm.",
+            userReplyMessage: "Perfect, I've moved it to 3pm.",
             actions: [
               {
                 type: "move_schedule_block",

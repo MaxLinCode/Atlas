@@ -89,6 +89,7 @@ describe("integrations", () => {
             output_parsed: {
               confidence: 0.91,
               summary: "Create and schedule a tax task.",
+              userReplyMessage: "Got it - tax task scheduled for 3pm.",
               actions: [
                 {
                   type: "create_task",
@@ -255,7 +256,8 @@ describe("integrations", () => {
               outcome: "recovered",
               recoveredRawText: "Schedule the dentist reminder at 3pm.",
               recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
-              reason: "The user confirmed the recent concrete proposal."
+              reason: "The user confirmed the recent concrete proposal.",
+              userReplyMessage: "Got it - dentest reminder scheduled at 3pm."
             }
           })
         }

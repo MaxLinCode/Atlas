@@ -226,7 +226,7 @@ export async function handleTelegramWebhook(
           userId: normalizedMessage.user.telegramUserId,
           chatId: normalizedMessage.chatId,
           inboxItemId: ingress.inboxItem.id,
-          text: recoveredMutation.reason
+          text: recoveredMutation.userReplyMessage
         },
         {
           sender: dependencies.sender ?? sendTelegramMessage,
@@ -240,7 +240,7 @@ export async function handleTelegramWebhook(
             routing: routedWithContext,
             processing: {
               outcome: "conversation_replied",
-              reply: recoveredMutation.reason
+              reply: recoveredMutation.userReplyMessage
             }
           }
         }

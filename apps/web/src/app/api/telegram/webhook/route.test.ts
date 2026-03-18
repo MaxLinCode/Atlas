@@ -339,13 +339,15 @@ describe("telegram webhook route", () => {
           },
           reason: "The user confirmed the proposed 3pm slot."
         }
-      ]
+      ],
+      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
     }));
     const confirmedMutationRecoverer = vi.fn(async () => ({
       outcome: "recovered" as const,
       recoveredRawText: "Schedule the dentist reminder at 3pm.",
       recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
-      reason: "The user confirmed the concrete 3pm proposal."
+      reason: "The user confirmed the concrete 3pm proposal.",
+      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
     }));
 
     const response = await handleTelegramWebhook(
@@ -439,7 +441,8 @@ describe("telegram webhook route", () => {
           },
           reason: "The user asked to push it 1 hour later."
         }
-      ]
+      ],
+      userReplyMessage: "Done - I've moved it to 4pm."
     }));
 
     seedInboxItemForProcessingTests({
@@ -507,7 +510,8 @@ describe("telegram webhook route", () => {
           outcome: "recovered",
           recoveredRawText: "Move the scheduled review block 1 hour later.",
           recoveredNormalizedText: "Move the scheduled review block 1 hour later.",
-          reason: "The user refined the recent concrete proposal."
+          reason: "The user refined the recent concrete proposal.",
+          userReplyMessage: "Done - I've moved it to 4pm."
         }),
         turnRouter: async () => ({
           route: "confirmed_mutation",
@@ -566,7 +570,8 @@ describe("telegram webhook route", () => {
         }),
         confirmedMutationRecoverer: async () => ({
           outcome: "needs_clarification",
-          reason: "I have two recent proposals in view. Which one do you want me to apply?"
+          reason: "I have two recent proposals in view. Which one do you want me to apply?",
+          userReplyMessage: "I have two recent proposals in view. Which one do you want me to apply?"
         }),
         turnRouter: async () => ({
           route: "confirmed_mutation",

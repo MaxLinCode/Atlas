@@ -238,7 +238,8 @@ export const planningActionSchema = z.discriminatedUnion("type", [
 export const inboxPlanningOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
   summary: z.string().min(1),
-  actions: z.array(planningActionSchema).min(1)
+  actions: z.array(planningActionSchema).min(1),
+  userReplyMessage: z.string().min(1)
 });
 
 export const inboxPlanningTaskContextSchema = z.object({
@@ -295,7 +296,8 @@ export const confirmedMutationRecoveryOutputSchema = z.object({
   outcome: z.enum(["recovered", "needs_clarification"]),
   recoveredRawText: z.string().optional(),
   recoveredNormalizedText: z.string().optional(),
-  reason: z.string().min(1)
+  reason: z.string().min(1),
+  userReplyMessage: z.string().min(1)
 }).refine((data) => {
   if (data.outcome === "recovered") {
     return data.recoveredRawText && data.recoveredNormalizedText;
