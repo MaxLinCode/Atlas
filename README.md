@@ -53,6 +53,7 @@ For local-only test credentials, prefer `apps/web/.env.test.local`, which is git
 - `OPENAI_API_KEY`: OpenAI API key
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token
 - `TELEGRAM_WEBHOOK_SECRET`: shared secret used to verify Telegram webhook deliveries
+- `TELEGRAM_ALLOWED_USER_IDS`: comma-separated Telegram user id allowlist for private-beta access; required in all environments
 
 To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
 

@@ -11,9 +11,10 @@ import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   confirmedMutationRecoveryOutputSchema,
-  turnRoutingOutputSchema,
   getConfig,
+  getTelegramAllowedUserIds,
   inboxPlanningOutputSchema,
+  isTelegramUserAllowed,
   isTaskFollowupDue,
   normalizeTelegramText,
   normalizeTelegramUpdate,
@@ -22,6 +23,7 @@ import {
   resolveTaskReference,
   scheduleBlockSchema,
   taskSchema,
+  turnRoutingOutputSchema,
   userProfileSchema
 } from "./index";
 
@@ -51,15 +53,43 @@ describe("core package", () => {
       DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
       OPENAI_API_KEY: "test-openai-key",
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
-      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
+      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
+      TELEGRAM_ALLOWED_USER_IDS: "123"
     });
 
     expect(config).toMatchObject({
       DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
       OPENAI_API_KEY: "test-openai-key",
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
-      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret"
+      TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
+      TELEGRAM_ALLOWED_USER_IDS: "123"
     });
+  });
+
+  it("requires TELEGRAM_ALLOWED_USER_IDS in config", () => {
+    expect(() =>
+      getConfig({
+        DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+        OPENAI_API_KEY: "test-openai-key",
+        TELEGRAM_BOT_TOKEN: "test-telegram-token",
+        TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
+        TELEGRAM_ALLOWED_USER_IDS: ""
+      })
+    ).toThrow(/TELEGRAM_ALLOWED_USER_IDS is required/);
+  });
+
+  it("parses Telegram allowlisted user ids from config", () => {
+    expect(
+      getTelegramAllowedUserIds({
+        TELEGRAM_ALLOWED_USER_IDS: "123, 456 ,789"
+      })
+    ).toEqual(new Set(["123", "456", "789"]));
+  });
+
+  it("fails closed for an empty Telegram allowlist and blocks unknown users otherwise", () => {
+    expect(isTelegramUserAllowed("123", new Set())).toBe(false);
+    expect(isTelegramUserAllowed("123", new Set(["456"]))).toBe(false);
+    expect(isTelegramUserAllowed("123", new Set(["123"]))).toBe(true);
   });
 
   it("builds stable Telegram idempotency keys", () => {

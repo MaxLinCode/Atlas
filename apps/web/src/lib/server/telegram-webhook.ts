@@ -1,7 +1,9 @@
 import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
+  getTelegramAllowedUserIds,
   isConfirmedMutationRecovered,
+  isTelegramUserAllowed,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
   type ConversationTurn,
@@ -129,6 +131,18 @@ export async function handleTelegramWebhook(
         accepted: true,
         ignored: true,
         reason: "unsupported_telegram_update"
+      }
+    };
+  }
+
+  const allowedTelegramUserIds = getTelegramAllowedUserIds(config);
+
+  if (!isTelegramUserAllowed(normalizedMessage.user.telegramUserId, allowedTelegramUserIds)) {
+    return {
+      status: 403,
+      body: {
+        accepted: false,
+        error: "telegram_user_not_allowed"
       }
     };
   }
