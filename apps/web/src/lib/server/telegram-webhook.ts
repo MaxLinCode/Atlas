@@ -1,6 +1,7 @@
 import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
+  isConfirmedMutationRecovered,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
   type ConversationTurn,
@@ -248,6 +249,10 @@ export async function handleTelegramWebhook(
     }
 
     await dependencies.primeProcessingStore?.(ingress.inboxItem);
+
+    if (!isConfirmedMutationRecovered(recoveredMutation)) {
+      throw new Error("Expected recovered mutation to have recoveredRawText and recoveredNormalizedText");
+    }
 
     const processing = await processInboxItem(
       {

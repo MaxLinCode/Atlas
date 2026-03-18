@@ -291,18 +291,19 @@ export const confirmedMutationRecoveryInputSchema = z.object({
   memorySummary: z.string().nullable()
 });
 
-export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion("outcome", [
-  z.object({
-    outcome: z.literal("recovered"),
-    recoveredRawText: z.string().min(1),
-    recoveredNormalizedText: z.string().min(1),
-    reason: z.string().min(1)
-  }),
-  z.object({
-    outcome: z.literal("needs_clarification"),
-    reason: z.string().min(1)
-  })
-]);
+export const confirmedMutationRecoveryOutputSchema = z.object({
+  outcome: z.enum(["recovered", "needs_clarification"]),
+  recoveredRawText: z.string().optional(),
+  recoveredNormalizedText: z.string().optional(),
+  reason: z.string().min(1)
+}).refine((data) => {
+  if (data.outcome === "recovered") {
+    return data.recoveredRawText && data.recoveredNormalizedText;
+  }
+  return true;
+}, {
+  message: "recoveredRawText and recoveredNormalizedText are required when outcome is 'recovered'"
+});
 
 export const scheduleProposalInputSchema = z.object({
   userId: z.string(),
@@ -352,6 +353,20 @@ export type CapturedTaskInput = {
   title: string;
   priority: Task["priority"];
   urgency: Task["urgency"];
+};
+
+export const isConfirmedMutationRecovered = (
+  output: ConfirmedMutationRecoveryOutput
+): output is ConfirmedMutationRecoveryOutput & {
+  outcome: "recovered";
+  recoveredRawText: string;
+  recoveredNormalizedText: string;
+} => {
+  return (
+    output.outcome === "recovered" &&
+    typeof output.recoveredRawText === "string" &&
+    typeof output.recoveredNormalizedText === "string"
+  );
 };
 
 const DEFAULT_USER_PROFILE: Omit<UserProfile, "userId"> = {
