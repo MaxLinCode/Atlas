@@ -26,6 +26,10 @@ import {
 
 export type ProcessInboxItemRequest = {
   inboxItemId: string;
+  planningInboxTextOverride?: {
+    rawText: string;
+    normalizedText: string;
+  };
 };
 
 export type ProcessInboxItemDependencies = {
@@ -51,7 +55,13 @@ export async function processInboxItem(
   await store.markInboxProcessing(parsed.inboxItemId);
 
   const planningContext = buildInboxPlanningContext({
-    inboxItem: context.inboxItem,
+    inboxItem: input.planningInboxTextOverride
+      ? {
+          ...context.inboxItem,
+          rawText: input.planningInboxTextOverride.rawText,
+          normalizedText: input.planningInboxTextOverride.normalizedText
+        }
+      : context.inboxItem,
     userProfile: context.userProfile,
     tasks: context.tasks,
     scheduleBlocks: context.scheduleBlocks
@@ -514,6 +524,13 @@ function buildErrorEnvelope(error: unknown) {
 function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessInboxItemRequest {
   if (typeof input.inboxItemId !== "string" || input.inboxItemId.length === 0) {
     throw new Error("processInboxItem requires an inboxItemId.");
+  }
+
+  if (
+    input.planningInboxTextOverride &&
+    (!input.planningInboxTextOverride.rawText.trim() || !input.planningInboxTextOverride.normalizedText.trim())
+  ) {
+    throw new Error("planningInboxTextOverride must include non-empty rawText and normalizedText.");
   }
 
   return input;

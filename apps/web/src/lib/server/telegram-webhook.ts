@@ -1,6 +1,9 @@
 import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
+  type ConfirmedMutationRecoveryInput,
+  type ConfirmedMutationRecoveryOutput,
+  type ConversationTurn,
   getConfig,
   normalizeTelegramUpdate,
   telegramUpdateSchema
@@ -16,6 +19,7 @@ import {
   type PersistedInboxItem
 } from "@atlas/db";
 import {
+  recoverConfirmedMutationWithResponses,
   summarizeConversationMemoryWithResponses,
   sendTelegramMessage,
   type ConversationMemorySummaryInput,
@@ -51,6 +55,9 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   conversationMemorySummarizer?: (
     input: ConversationMemorySummaryInput
   ) => Promise<ConversationMemorySummaryOutput>;
+  confirmedMutationRecoverer?: (
+    input: ConfirmedMutationRecoveryInput
+  ) => Promise<ConfirmedMutationRecoveryOutput>;
 };
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -148,29 +155,25 @@ export async function handleTelegramWebhook(
     };
   }
 
-  const routing = await (dependencies.turnRouter ?? routeTelegramTurn)({
+  const recentTurns = await listRecentConversationTurns(
+    normalizedMessage.user.telegramUserId,
+    RECENT_CONVERSATION_TURN_LIMIT,
+    dependencies.conversationHistoryStore
+  );
+  const routedWithContext = await (dependencies.turnRouter ?? routeTelegramTurn)({
     rawText: normalizedMessage.rawText,
     normalizedText: normalizedMessage.normalizedText,
+    recentTurns
   });
 
-  if (!routing.writesAllowed) {
-    if (routing.route === "mutation") {
+  if (!routedWithContext.writesAllowed) {
+    if (routedWithContext.route === "mutation" || routedWithContext.route === "confirmed_mutation") {
       throw new Error("Turn router returned mutation while writes were disabled.");
     }
 
-    const recentTurns = await listRecentConversationTurns(
-      normalizedMessage.user.telegramUserId,
-      RECENT_CONVERSATION_TURN_LIMIT,
-      dependencies.conversationHistoryStore
-    );
-    const memorySummary = await (dependencies.conversationMemorySummarizer ??
-      summarizeConversationMemoryWithResponses)({
-      recentTurns
-    })
-      .then((summary) => summary.summary)
-      .catch(() => null);
+    const memorySummary = await buildConversationMemorySummary(recentTurns, dependencies);
     const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
-      route: routing.route,
+      route: routedWithContext.route,
       rawText: normalizedMessage.rawText,
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
@@ -197,12 +200,91 @@ export async function handleTelegramWebhook(
         idempotencyKey,
         ingestion: normalizedMessage,
         inboxItem: ingress.inboxItem,
-        turnRoute: routing.route,
-        routing,
+        turnRoute: routedWithContext.route,
+        routing: routedWithContext,
         processing: {
           outcome: "conversation_replied",
           reply: conversationResponse.reply
         },
+        outboundDelivery
+      }
+    };
+  }
+
+  if (routedWithContext.route === "confirmed_mutation") {
+    const recoveredMutation = await (dependencies.confirmedMutationRecoverer ??
+      recoverConfirmedMutationWithResponses)({
+      rawText: normalizedMessage.rawText,
+      normalizedText: normalizedMessage.normalizedText,
+      recentTurns,
+      memorySummary: null
+    });
+
+    if (recoveredMutation.outcome === "needs_clarification") {
+      return replyWithText(
+        {
+          userId: normalizedMessage.user.telegramUserId,
+          chatId: normalizedMessage.chatId,
+          inboxItemId: ingress.inboxItem.id,
+          text: recoveredMutation.reason
+        },
+        {
+          sender: dependencies.sender ?? sendTelegramMessage,
+          ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+          body: {
+            accepted: true,
+            idempotencyKey,
+            ingestion: normalizedMessage,
+            inboxItem: ingress.inboxItem,
+            turnRoute: routedWithContext.route,
+            routing: routedWithContext,
+            processing: {
+              outcome: "conversation_replied",
+              reply: recoveredMutation.reason
+            }
+          }
+        }
+      );
+    }
+
+    await dependencies.primeProcessingStore?.(ingress.inboxItem);
+
+    const processing = await processInboxItem(
+      {
+        inboxItemId: ingress.inboxItem.id,
+        planningInboxTextOverride: {
+          rawText: recoveredMutation.recoveredRawText,
+          normalizedText: recoveredMutation.recoveredNormalizedText
+        }
+      },
+      {
+        ...(dependencies.store ? { store: dependencies.store } : {}),
+        ...(dependencies.planner ? { planner: dependencies.planner } : {})
+      }
+    );
+    const outboundDelivery = await sendFollowUpMessage(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        chatId: normalizedMessage.chatId,
+        inboxItemId: ingress.inboxItem.id,
+        text: processing.followUpMessage
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
+      }
+    );
+
+    return {
+      status: 200,
+      body: {
+        accepted: true,
+        idempotencyKey,
+        ingestion: normalizedMessage,
+        inboxItem: ingress.inboxItem,
+        turnRoute: routedWithContext.route,
+        routing: routedWithContext,
+        processing,
         outboundDelivery
       }
     };
@@ -239,8 +321,8 @@ export async function handleTelegramWebhook(
       idempotencyKey,
       ingestion: normalizedMessage,
       inboxItem: ingress.inboxItem,
-      turnRoute: routing.route,
-      routing,
+      turnRoute: routedWithContext.route,
+      routing: routedWithContext,
       processing,
       outboundDelivery
     }
@@ -258,6 +340,26 @@ type SendFollowUpMessageDependencies = {
   sender: typeof sendTelegramMessage;
   deliveryStore?: OutgoingTelegramDeliveryStore;
 };
+
+type ReplyWithTextInput = SendFollowUpMessageInput;
+type ReplyWithTextDependencies = SendFollowUpMessageDependencies & {
+  body: Record<string, unknown>;
+};
+
+async function replyWithText(
+  input: ReplyWithTextInput,
+  dependencies: ReplyWithTextDependencies
+) {
+  const outboundDelivery = await sendFollowUpMessage(input, dependencies);
+
+  return {
+    status: 200,
+    body: {
+      ...dependencies.body,
+      outboundDelivery
+    }
+  };
+}
 
 async function sendFollowUpMessage(
   input: SendFollowUpMessageInput,
@@ -352,4 +454,15 @@ function buildOutgoingEventPayload(
     attempts,
     telegram: sentMessage
   };
+}
+
+async function buildConversationMemorySummary(
+  recentTurns: ConversationTurn[],
+  dependencies: TelegramWebhookDependencies
+) {
+  const summarizer = dependencies.conversationMemorySummarizer ?? summarizeConversationMemoryWithResponses;
+
+  return summarizer({ recentTurns })
+    .then((summary) => summary.summary)
+    .catch(() => null);
 }

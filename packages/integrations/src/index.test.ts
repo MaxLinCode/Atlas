@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
 import {
+  recoverConfirmedMutationWithResponses,
   respondToConversationTurnWithResponses,
   getDefaultCalendarAdapter,
   planInboxItemWithResponses,
@@ -158,7 +159,8 @@ describe("integrations", () => {
     const result = await routeTurnWithResponses(
       {
         rawText: "Can you help me plan tomorrow first?",
-        normalizedText: "Can you help me plan tomorrow first?"
+        normalizedText: "Can you help me plan tomorrow first?",
+        recentTurns: [],
       },
       {
         responses: {
@@ -182,7 +184,8 @@ describe("integrations", () => {
       routeTurnWithResponses(
         {
           rawText: "schedule this",
-          normalizedText: "schedule this"
+          normalizedText: "schedule this",
+          recentTurns: [],
         },
         {
           responses: {
@@ -190,6 +193,102 @@ describe("integrations", () => {
               output_parsed: {
                 route: "write_now",
                 reason: ""
+              }
+            })
+          }
+        }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("accepts confirmed mutation as a valid structured turn route", async () => {
+    const result = await routeTurnWithResponses(
+      {
+        rawText: "Yes",
+        normalizedText: "Yes",
+        recentTurns: [
+          {
+            role: "assistant",
+            text: "Would you like me to schedule it at 3pm?",
+            createdAt: "2026-03-17T16:00:00.000Z"
+          }
+        ],
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              route: "confirmed_mutation",
+              reason: "The latest turn confirms a recent concrete proposal."
+            }
+          })
+        }
+      }
+    );
+
+    expect(result.route).toBe("confirmed_mutation");
+  });
+
+  it("parses structured confirmed mutation recovery output from the Responses API client", async () => {
+    const result = await recoverConfirmedMutationWithResponses(
+      {
+        rawText: "Yes",
+        normalizedText: "Yes",
+        recentTurns: [
+          {
+            role: "assistant",
+            text: "Would you like me to schedule the dentist reminder at 3pm?",
+            createdAt: "2026-03-17T16:00:00.000Z"
+          },
+          {
+            role: "user",
+            text: "Yes",
+            createdAt: "2026-03-17T16:01:00.000Z"
+          }
+        ],
+        memorySummary: "The recent exchange contains a concrete 3pm proposal for the dentist reminder."
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              outcome: "recovered",
+              recoveredRawText: "Schedule the dentist reminder at 3pm.",
+              recoveredNormalizedText: "Schedule the dentist reminder at 3pm.",
+              reason: "The user confirmed the recent concrete proposal."
+            }
+          })
+        }
+      }
+    );
+
+    expect(result).toMatchObject({
+      outcome: "recovered",
+      recoveredNormalizedText: "Schedule the dentist reminder at 3pm."
+    });
+  });
+
+  it("rejects malformed confirmed mutation recovery output", async () => {
+    await expect(
+      recoverConfirmedMutationWithResponses(
+        {
+          rawText: "Friday works",
+          normalizedText: "Friday works",
+          recentTurns: [
+            {
+              role: "assistant",
+              text: "I can move it to Friday at 3pm.",
+              createdAt: "2026-03-17T16:00:00.000Z"
+            }
+          ],
+          memorySummary: "The recent exchange includes a Friday proposal."
+        },
+        {
+          responses: {
+            parse: async () => ({
+              output_parsed: {
+                outcome: "recovered",
+                reason: "Missing recovered text."
               }
             })
           }

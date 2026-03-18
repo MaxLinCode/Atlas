@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a conversation-first, schedule-forward product with a working mutation pipeline.
-Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and upgrade the conversational bot so the new conversation path is context-aware rather than text-only.
+Current implementation focus: keep `tasks` as the canonical live-state model with external-calendar-backed current commitments, implement the locked follow-up/reschedule runtime on top of that lean task model, and improve the Telegram bot's post-router UX now that context-aware conversation and confirmation-aware routing are landed.
 
 ## Near-term milestones
 
@@ -15,9 +15,9 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
 - Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
 - Implement conversational bot behavior in small slices rather than one broad thread:
-  - context-aware conversation state selection
   - mutation reply renderer
-  - mixed-turn confirmation handling
+  - only summarize recent chat when it materially improves a conversation reply
+  - tighten confirmed-mutation recovery and reply quality around schedule-forward proposals
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
 - Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
@@ -79,17 +79,21 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
 - The first `TurnRouter` slice is now landed:
   - routing is app-owned in `apps/web`
   - the router is model-assisted through `packages/integrations`
-  - inbound Telegram turns are classified as `conversation`, `mutation`, or `conversation_then_mutation`
+  - inbound Telegram turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
   - ingress is still persisted canonically before route selection
-  - only `mutation` enters the existing planner/write path
-  - `conversation` and `conversation_then_mutation` are explicitly non-writing in this slice
+  - `mutation` and `confirmed_mutation` enter the write-capable structured mutation path
+  - `conversation` and `conversation_then_mutation` remain non-writing
 - The turn-router prompt is now stricter about mutation readiness:
   - `mutation` should be reserved for clear, direct, sufficiently specified, write-ready requests
   - partial scheduling asks and other underspecified write intents should bias toward `conversation_then_mutation`
+  - short-horizon confirmations or concrete refinements of one recent proposal may now route as `confirmed_mutation`
   - a small few-shot example set now reinforces the incomplete-versus-write-ready boundary in the router prompt
 - A live local turn-router eval harness is now available:
   - `pnpm eval:turn-router` calls the real OpenAI Responses API against a curated fixture set
   - this is intended for manual prompt verification, not deterministic CI coverage
+- A live local router-confirmation eval harness is now available:
+  - `pnpm eval:router-confirmation` calls the real OpenAI Responses API against curated short-horizon confirmation fixtures
+  - this is intended for manual prompt verification of `confirmed_mutation` behavior, not deterministic CI coverage
 - A live local conversation-context eval harness is now available:
   - `pnpm eval:conversation-context` calls the real OpenAI Responses API against curated recent-turn continuity fixtures
   - this is intended for manual prompt verification of context use and hedged conversation behavior, not deterministic CI coverage
@@ -102,21 +106,34 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - the conversation path still does not write task or schedule state
   - the conversation path must not claim that side effects happened
 - The main limitation in conversation mode is now context grounding:
-  - the conversation path now loads a bounded recent-turn window from persisted Telegram transport records
-  - it derives a request-scoped working summary for conversational continuity on each non-writing turn
-  - this continuity layer is intentionally non-authoritative and must not be treated as canonical Atlas memory or mutation state
+- the conversation path now loads a bounded recent-turn window from persisted Telegram transport records before routing, while summaries are only generated when they add value for continuity or clarification rather than by default
+- it derives a request-scoped working summary for conversational continuity on non-writing turns only when the recent transcript or ambiguity makes it helpful
+- this continuity layer is intentionally non-authoritative and must not be treated as canonical Atlas memory or mutation state
 - The conversation response path remains app-owned:
   - `apps/web` assembles ephemeral conversation context for `conversation` and `conversation_then_mutation`
   - `packages/integrations` owns the summary and conversation model calls
   - `packages/db` owns the read model for recent persisted turns
-- The next task after this context-aware conversation upgrade is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
-- Mixed-turn confirmation handling is still deferred after those two slices. `conversation_then_mutation` should remain conversation-first until explicit confirmation flow is implemented.
+- Mixed-turn confirmation handling is now landed in a narrow v1 form:
+  - the router now uses bounded recent transcript when classifying the turn, and summaries stay optional downstream context rather than default routing input
+  - short-horizon confirmations and concrete refinements may route as `confirmed_mutation`
+  - `apps/web` recovers a write-ready mutation request from recent context and reuses the existing structured mutation path
+  - ambiguous confirmations still stay discuss-first and non-writing
+- Routing ownership is now aligned to the intended architecture:
+  - `apps/web` owns routing orchestration and route application
+  - `packages/core` owns routing and confirmation-recovery product contracts
+  - `packages/integrations` owns OpenAI transport, prompts, and parsing against those core-owned contracts
+- The next app-owned slice is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
 - Verification completed on this branch:
   - `pnpm typecheck`
-  - `pnpm test`
-  - `pnpm --filter @atlas/integration-tests test`
+  - `pnpm --filter @atlas/core test`
+  - `pnpm --filter @atlas/web test`
+  - `pnpm --filter @atlas/integrations test`
   - `pnpm eval:conversation-context`
+  - `pnpm eval:router-confirmation`
   - `pnpm eval:turn-router`
+- Additional verification attempted:
+  - `pnpm test` currently fails only because the existing Postgres-backed integration suite cannot connect to local Postgres in this environment (`EPERM` to `127.0.0.1:5432` / `::1:5432`)
+  - `pnpm --filter @atlas/integration-tests test` fails for the same environment reason
 
 ## Next Handoff
 
@@ -127,14 +144,18 @@ Current implementation focus: keep `tasks` as the canonical live-state model wit
   - map mutation outcomes into clearer user-facing replies
   - keep writes in the mutation path only
   - do not fold mutation rendering into the conversation service
+- After that, tighten when conversation mode actually requests a summary:
+  - keep recent turns as the default continuity layer
+  - skip summary generation when the recent window is already short and unambiguous
+  - preserve the current non-authoritative summary contract when it is used
 - Add tests that prove:
-  - context-aware conversation mode remains non-writing after the new recent-turn and working-summary layer
+  - context-aware conversation mode remains non-writing after the new recent-turn and optional working-summary layer
   - mutation turns now render through the dedicated mutation reply service
   - planner outcomes still persist exactly as before
   - no task or schedule writes happen outside the mutation branch
   - conversational turns still use the non-writing conversation response path
 - Reuse the existing outbound Telegram delivery path and ingress persistence.
-- Keep router behavior unchanged while landing the mutation reply renderer.
+- Preserve the current confirmation-aware router behavior while landing the mutation reply renderer.
 - Add a DB-backed integration test for the webhook conversation branch:
   - persist real ingress through the webhook path
   - route a turn to `conversation` or `conversation_then_mutation`

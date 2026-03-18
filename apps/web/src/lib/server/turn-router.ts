@@ -1,9 +1,9 @@
 import {
-  routeTurnWithResponses,
   type TurnRoute,
   type TurnRoutingInput,
   type TurnRoutingOutput
-} from "@atlas/integrations";
+} from "@atlas/core";
+import { routeTurnWithResponses } from "@atlas/integrations";
 
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = {
@@ -32,7 +32,7 @@ export async function routeTelegramTurn(
 }
 
 function allowsWrites(route: TurnRoute) {
-  return route === "mutation";
+  return route === "mutation" || route === "confirmed_mutation";
 }
 
 function parseTurnRouterInput(input: TurnRouterInput): TurnRouterInput {

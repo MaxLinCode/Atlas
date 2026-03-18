@@ -27,10 +27,13 @@ Use a two-path, app-routed model behavior for Telegram turns.
   - `conversation`
   - `mutation`
   - `conversation_then_mutation`
+  - `confirmed_mutation`
 - The router is model-assisted in v1.
-- Mixed turns are conversation-first in v1:
+- The application now loads the bounded recent-turn window before invoking the router prompt, and memory summaries are requested only when the app expects them to add clarity (for example, to resolve references) rather than by default.
+- Mixed turns are conversation-first until a later short-horizon confirmation turn:
   - Atlas should discuss, clarify, or propose first
   - mutation should occur only on a later confirming turn
+- `confirmed_mutation` is the explicit route for a short-horizon confirmation or concrete refinement of one recent proposed write.
 - Mutation remains the only write-capable path.
 - Conversation turns may be broad and helpful, but they must not claim that side effects happened unless the mutation path actually ran.
 - Transcript may be used as recent conversational context and short-horizon confirmation context in v1, but transcript is still not canonical product state.
@@ -48,7 +51,7 @@ Use a two-path, app-routed model behavior for Telegram turns.
 1. turn router
 2. conversational response path
 3. mutation reply renderer
-4. mixed-turn confirmation handling
+4. richer confirmation recovery beyond short-horizon confirmation
 
 ## Guardrails
 

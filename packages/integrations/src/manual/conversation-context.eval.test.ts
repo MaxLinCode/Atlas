@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ConversationTurn } from "@atlas/core";
 
 import {
   respondToConversationTurnWithResponses,
   summarizeConversationMemoryWithResponses,
-  type ConversationResponseInput,
-  type ConversationTurn
+  type ConversationResponseInput
 } from "../openai";
 
 type ConversationContextEvalCase = {

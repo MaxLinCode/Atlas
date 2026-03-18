@@ -118,7 +118,9 @@ Turn routing should use:
 5. Minimal schedule context needed to understand whether the turn is conversational or mutating
 6. The user's latest message
 
-This mode is optimized for choosing between `conversation`, `mutation`, and `conversation_then_mutation`. It should stay lighter than a full conversational prompt, but it may use more recent transcript than mutation mode because v1 confirmation recovery is intentionally short-horizon and transcript-assisted.
+This mode is optimized for choosing between `conversation`, `mutation`, `conversation_then_mutation`, and `confirmed_mutation`. It should stay lighter than a full conversational prompt, but it may use more recent transcript than mutation mode because v1 confirmation recovery is intentionally short-horizon and transcript-assisted.
+
+The app must fetch the bounded recent-turn window before invoking the router prompt so short-horizon context is available, while memory summaries are only produced when they demonstrably add clarity (e.g., to resolve references or describe a pending proposal) and are not the default routing input.
 
 ### Conversation mode
 
@@ -152,6 +154,7 @@ This mode is optimized for validated task, scheduling, completion, archive, and 
 - Prompt construction should distinguish among router, conversation, and mutation prompts rather than treating all model calls as one planner task.
 - Prompt construction may read recent conversation in conversation mode, but should not treat transcript as canonical state.
 - Prompt construction may use recent transcript for turn routing and short-horizon confirmation recovery in v1, but persisted Atlas state remains the source of truth for mutations.
+- `confirmed_mutation` should be reserved for short-horizon confirmations or concrete refinements of one recent proposed write; ambiguous confirmations should stay in `conversation_then_mutation`.
 - Prompt construction should provide model-readable references for existing tasks and current schedule-linked records so the app can safely resolve proposed mutations.
 - Structured mutation output must be validated at the application boundary before it can create or mutate product state.
 - Atlas should not try to reconstruct all conversational continuity from normalized database records alone.

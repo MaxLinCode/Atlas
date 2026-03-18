@@ -1,33 +1,92 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ConversationTurn, TurnRoute, TurnRoutingInput } from "@atlas/core";
 
-import { routeTurnWithResponses, type TurnRoute } from "../openai";
+import { routeTurnWithResponses } from "../openai";
 
 type TurnRouterEvalCase = {
-  input: string;
+  input: TurnRoutingInput;
   expectedRoute: TurnRoute;
   note: string;
 };
 
+const ASSISTANT_CONFIRMATION_TURNS: ConversationTurn[] = [
+  {
+    role: "assistant",
+    text: "Would you like me to schedule it at 3pm?",
+    createdAt: "2026-03-17T16:00:00.000Z"
+  },
+  {
+    role: "user",
+    text: "Yes",
+    createdAt: "2026-03-17T16:01:00.000Z"
+  }
+];
+
 const TURN_ROUTER_EVAL_CASES: TurnRouterEvalCase[] = [
   {
-    input: "create car maintenance appt",
+      input: {
+        rawText: "create car maintenance appt",
+        normalizedText: "create car maintenance appt",
+        recentTurns: [],
+      },
     expectedRoute: "conversation_then_mutation",
     note: "Partial scheduling ask should clarify before any write."
   },
   {
-    input: "schedule oil change for Friday at 2pm",
+      input: {
+        rawText: "schedule oil change for Friday at 2pm",
+        normalizedText: "schedule oil change for Friday at 2pm",
+        recentTurns: [],
+      },
     expectedRoute: "mutation",
     note: "Concrete scheduling request should be write-ready."
   },
   {
-    input: "should I do the oil change this week or next week?",
+      input: {
+        rawText: "should I do the oil change this week or next week?",
+        normalizedText: "should I do the oil change this week or next week?",
+        recentTurns: [],
+      },
     expectedRoute: "conversation",
     note: "Planning discussion without an immediate write."
   },
   {
-    input: "I might move this to Friday, what do you think?",
+      input: {
+        rawText: "I might move this to Friday, what do you think?",
+        normalizedText: "I might move this to Friday, what do you think?",
+        recentTurns: [],
+      },
     expectedRoute: "conversation_then_mutation",
     note: "Mixed discussion plus possible write should discuss first."
+  },
+  {
+    input: {
+      rawText: "Yes",
+      normalizedText: "Yes",
+      recentTurns: ASSISTANT_CONFIRMATION_TURNS,
+    },
+    expectedRoute: "confirmed_mutation",
+    note: "Short confirmation of one concrete recent proposal should be write-capable."
+  },
+  {
+    input: {
+      rawText: "Friday works",
+      normalizedText: "Friday works",
+      recentTurns: [
+        {
+          role: "assistant",
+          text: "I can move it to Friday at 3pm.",
+          createdAt: "2026-03-17T16:00:00.000Z"
+        },
+        {
+          role: "user",
+          text: "Friday works",
+          createdAt: "2026-03-17T16:01:00.000Z"
+        }
+      ],
+    },
+    expectedRoute: "confirmed_mutation",
+    note: "Concrete refinement of one recent proposal should be write-capable."
   }
 ];
 
@@ -52,13 +111,10 @@ describe.sequential("manual turn router eval", () => {
     }> = [];
 
     for (const testCase of TURN_ROUTER_EVAL_CASES) {
-      const result = await routeTurnWithResponses({
-        rawText: testCase.input,
-        normalizedText: testCase.input
-      });
+      const result = await routeTurnWithResponses(testCase.input);
 
       rows.push({
-        input: testCase.input,
+        input: testCase.input.rawText,
         expected: testCase.expectedRoute,
         actual: result.route,
         pass: result.route === testCase.expectedRoute,
