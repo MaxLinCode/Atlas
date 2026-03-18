@@ -355,6 +355,20 @@ export type CapturedTaskInput = {
   urgency: Task["urgency"];
 };
 
+export const isConfirmedMutationRecovered = (
+  output: ConfirmedMutationRecoveryOutput
+): output is ConfirmedMutationRecoveryOutput & {
+  outcome: "recovered";
+  recoveredRawText: string;
+  recoveredNormalizedText: string;
+} => {
+  return (
+    output.outcome === "recovered" &&
+    typeof output.recoveredRawText === "string" &&
+    typeof output.recoveredNormalizedText === "string"
+  );
+};
+
 const DEFAULT_USER_PROFILE: Omit<UserProfile, "userId"> = {
   timezone: "America/Los_Angeles",
   workdayStartHour: 9,
