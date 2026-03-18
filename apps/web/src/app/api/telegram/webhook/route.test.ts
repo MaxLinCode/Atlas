@@ -33,6 +33,7 @@ vi.mock("@atlas/integrations", async () => {
     planInboxItemWithResponses: async () => ({
       confidence: 0.9,
       summary: "Captured and scheduled Review launch checklist.",
+      userReplyMessage: "Captured and scheduled Review launch checklist.",
       actions: [
         {
           type: "create_task",

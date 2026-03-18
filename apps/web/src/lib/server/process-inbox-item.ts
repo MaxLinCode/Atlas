@@ -232,7 +232,7 @@ async function applyCreatedTaskActions(
     plannerRun: input.plannerRun,
     tasks: draftTasks,
     scheduleBlocks: scheduleBlocks.blocks,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
@@ -298,7 +298,7 @@ async function applyExistingTaskScheduleActions(
     plannerRun: input.plannerRun,
     taskIds: existingTaskIds,
     scheduleBlocks,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
@@ -350,7 +350,7 @@ async function applyMoveAction(
     newStartAt: updatedEvent.scheduledStartAt,
     newEndAt: updatedEvent.scheduledEndAt,
     reason: action.reason,
-    followUpMessage: input.planning.summary
+    followUpMessage: input.planning.userReplyMessage
   });
 }
 
