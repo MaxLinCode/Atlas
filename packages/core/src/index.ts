@@ -17,7 +17,16 @@ const envSchema = z.object({
   DATABASE_URL: postgresConnectionStringSchema,
   OPENAI_API_KEY: z.string().min(1),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
-  TELEGRAM_WEBHOOK_SECRET: z.string().min(1)
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
+  TELEGRAM_ALLOWED_USER_IDS: z.string().optional()
+}).superRefine((config, ctx) => {
+  if (!config.TELEGRAM_ALLOWED_USER_IDS?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "TELEGRAM_ALLOWED_USER_IDS is required.",
+      path: ["TELEGRAM_ALLOWED_USER_IDS"]
+    });
+  }
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -28,8 +37,35 @@ export function getConfig(overrides: Partial<Record<keyof AppConfig, string>> = 
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+    TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS,
     ...overrides
   });
+}
+
+export function getTelegramAllowedUserIds(config: Pick<AppConfig, "TELEGRAM_ALLOWED_USER_IDS"> = getConfig()) {
+  const rawValue = config.TELEGRAM_ALLOWED_USER_IDS;
+
+  if (!rawValue) {
+    return new Set<string>();
+  }
+
+  return new Set(
+    rawValue
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+}
+
+export function isTelegramUserAllowed(
+  telegramUserId: string,
+  allowedUserIds: ReadonlySet<string>
+) {
+  if (allowedUserIds.size === 0) {
+    return false;
+  }
+
+  return allowedUserIds.has(telegramUserId);
 }
 
 export const inboxProcessingStatusSchema = z.enum([

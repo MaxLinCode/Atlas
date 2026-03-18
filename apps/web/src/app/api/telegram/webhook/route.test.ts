@@ -69,7 +69,8 @@ const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
-  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS
 };
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
@@ -99,6 +100,7 @@ afterEach(() => {
   restoreEnv("OPENAI_API_KEY");
   restoreEnv("TELEGRAM_BOT_TOKEN");
   restoreEnv("TELEGRAM_WEBHOOK_SECRET");
+  restoreEnv("TELEGRAM_ALLOWED_USER_IDS");
 });
 
 beforeEach(() => {
@@ -106,6 +108,7 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+  process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
   resetCalendarAdapterForTests();
   sendTelegramMessageMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
@@ -153,6 +156,81 @@ describe("telegram webhook route", () => {
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(0);
     expect(listInboxItemsForTests()).toHaveLength(0);
+  });
+
+  it("rejects Telegram users that are not on the allowlist before persistence", async () => {
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "456";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 41,
+        message: {
+          message_id: 6,
+          date: 1_700_000_000,
+          text: "Review launch checklist",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(Promise.resolve(response.body)).resolves.toMatchObject({
+      accepted: false,
+      error: "telegram_user_not_allowed"
+    });
+    expect(listIncomingBotEventsForTests()).toHaveLength(0);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(0);
+    expect(listInboxItemsForTests()).toHaveLength(0);
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts Telegram users that are on the allowlist", async () => {
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123,456";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 42,
+        message: {
+          message_id: 7,
+          date: 1_700_000_000,
+          text: " Review   launch checklist ",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin",
+            username: "maxl",
+            language_code: "en"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(listIncomingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(1);
   });
 
   it("normalizes a Telegram text message and hands it to app services", async () => {

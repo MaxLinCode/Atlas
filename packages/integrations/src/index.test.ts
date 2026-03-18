@@ -17,7 +17,8 @@ const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
-  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
+  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS
 };
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
@@ -36,6 +37,7 @@ beforeEach(() => {
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+  process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
   resetCalendarAdapterForTests();
 });
 
@@ -44,6 +46,7 @@ afterEach(() => {
   restoreEnv("OPENAI_API_KEY");
   restoreEnv("TELEGRAM_BOT_TOKEN");
   restoreEnv("TELEGRAM_WEBHOOK_SECRET");
+  restoreEnv("TELEGRAM_ALLOWED_USER_IDS");
 });
 
 describe("integrations", () => {

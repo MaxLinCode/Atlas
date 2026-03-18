@@ -13,7 +13,8 @@ Current implementation focus: ship real Google Calendar integration so Atlas can
   - busy-time awareness for scheduling proposals
   - reliable mapping between Atlas task commitments and Google Calendar event ids
 - Plan and execute a security hardening pass before any public bot exposure:
-  - Telegram allowlist or private-beta access gate so only approved users can reach the bot
+  - treat the landed Telegram allowlist gate as the immediate private-beta lock; boot now fails unless `TELEGRAM_ALLOWED_USER_IDS` is configured
+  - extend the landed Telegram allowlist gate into broader authz boundaries across admin surfaces and future calendar linkage
   - explicit user/account authz boundaries across inbox items, tasks, planner runs, and calendar operations
   - secure Google Calendar OAuth state handling, token storage, refresh, and revocation
   - rate limits and usage caps to protect OpenAI spend and integration quotas
@@ -36,6 +37,7 @@ Current implementation focus: ship real Google Calendar integration so Atlas can
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
 - The missing product-critical step is real Google Calendar integration; until Atlas reads and writes real calendar events, the schedule-forward experience is not complete.
 - Once real calendar integration exists, security hardening becomes launch-blocking: Atlas must not allow unauthorized users to spend OpenAI credits, access private planning history, or interact with linked private calendars.
+- The Telegram allowlist gate is now real and is enough for immediate locked-down private use before the full security hardening pass; boot now fails when `TELEGRAM_ALLOWED_USER_IDS` is missing. It is still not a substitute for proper authz once admin surfaces and calendar linkage matter.
 - Every Atlas task should seek scheduled time immediately; unscheduled backlog should not be the default operating model.
 - Every scheduled task should receive follow-up after the scheduled block ends, and `awaiting_followup` is now a key lifecycle concept.
 - `awaiting_followup` should begin only after the scheduled block has ended and Atlas has issued a follow-up nudge for that task.
@@ -49,6 +51,7 @@ Current implementation focus: ship real Google Calendar integration so Atlas can
   - `schedule_blocks` are no longer the active persisted runtime schedule record
   - planner-facing `schedule_block_*` aliases are reconstructed from task state for compatibility
 - Webhook ingress is idempotent and persists canonical `inbox_items` before any planner mutation.
+- Telegram webhook ingress now supports an env-driven allowlist gate via `TELEGRAM_ALLOWED_USER_IDS`; blocked users are rejected before inbox persistence, planning, or outbound delivery, and app config now fails fast when that env var is missing.
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
 - Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
