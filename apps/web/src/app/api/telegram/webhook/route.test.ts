@@ -199,7 +199,7 @@ describe("telegram webhook route", () => {
       text: expect.stringContaining("I can do that, but I need access to your Google Calendar first. Connect here: https://atlas.example.com/google-calendar/connect?token=")
     });
     expect(listOutgoingBotEventsForTests()[0]).toMatchObject({
-      eventType: "telegram_google_calendar_link_gate",
+      eventType: "telegram_google_calendar_link",
       payload: {
         text: expect.not.stringContaining("token=")
       }

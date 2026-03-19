@@ -176,7 +176,7 @@ export async function handleTelegramWebhook(
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
         idempotencyKey: buildLazyLinkReplyIdempotencyKey(parsedUpdate.data.update_id),
-        eventType: "telegram_google_calendar_link_gate",
+        eventType: "telegram_google_calendar_link",
         text: connectReply,
         persistedText: redactTokenizedUrls(connectReply)
       },

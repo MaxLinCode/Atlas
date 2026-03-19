@@ -466,7 +466,7 @@ function readOutgoingText(payload: unknown) {
 }
 
 function shouldExcludeConversationEvent(eventType: string | undefined, text: string) {
-  if (eventType === "telegram_google_calendar_link_gate") {
+  if (eventType === "telegram_google_calendar_link") {
     return true;
   }
 
