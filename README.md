@@ -15,6 +15,7 @@ Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, 
 
 - `pnpm dev`: run the Next.js app locally
 - `pnpm build`: build all workspaces
+- `pnpm eval:planner`: run the live OpenAI planner eval fixture set against the current prompt
 - `pnpm eval:turn-router`: run the live OpenAI turn-router eval fixture set against the current prompt
 - `pnpm lint`: lint all workspaces
 - `pnpm typecheck`: run TypeScript checks across the repo

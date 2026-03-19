@@ -90,7 +90,9 @@ if (!databaseUrl) {
                   alias: "new_task_1"
                 },
                 scheduleConstraint: {
-                  dayOffset: 0,
+                  dayReference: null,
+                  weekday: null,
+                  weekOffset: null,
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
@@ -109,7 +111,7 @@ if (!databaseUrl) {
         select title, lifecycle_state, external_calendar_event_id, external_calendar_id, scheduled_start_at, scheduled_end_at
         from tasks
       `;
-      const insertedPlannerRuns = await sql`select version from planner_runs`;
+      const insertedPlannerRuns = await sql`select version, model_input->>'now' as now from planner_runs`;
       const updatedInbox = await sql`select processing_status from inbox_items where id = ${ingress.inboxItem.id}`;
 
       expect(insertedTasks).toHaveLength(1);
@@ -122,6 +124,7 @@ if (!databaseUrl) {
       expect(insertedTasks[0]?.scheduled_start_at).toBeTruthy();
       expect(insertedTasks[0]?.scheduled_end_at).toBeTruthy();
       expect(insertedPlannerRuns).toHaveLength(1);
+      expect(insertedPlannerRuns[0]?.now).toBeTruthy();
       expect(updatedInbox[0]?.processing_status).toBe("planned");
     });
 
@@ -170,7 +173,9 @@ if (!databaseUrl) {
                   alias: "new_task_1"
                 },
                 scheduleConstraint: {
-                  dayOffset: 0,
+                  dayReference: null,
+                  weekday: null,
+                  weekOffset: null,
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
@@ -219,7 +224,9 @@ if (!databaseUrl) {
                   alias: "schedule_block_1"
                 },
                 scheduleConstraint: {
-                  dayOffset: 0,
+                  dayReference: null,
+                  weekday: null,
+                  weekOffset: null,
                   explicitHour: 15,
                   minute: 0,
                   preferredWindow: null,
@@ -240,8 +247,8 @@ if (!databaseUrl) {
       `;
       expect(updatedTasks[0]?.reschedule_count).toBe(1);
       expect(updatedTasks[0]?.external_calendar_event_id).toBeTruthy();
-      expect(new Date(updatedTasks[0]?.scheduled_start_at as string | Date).toISOString()).toContain(
-        "T15:00:00.000Z"
+      expect(new Date(updatedTasks[0]?.scheduled_start_at as string | Date).toISOString()).toBe(
+        "2026-03-18T22:00:00.000Z"
       );
     });
 

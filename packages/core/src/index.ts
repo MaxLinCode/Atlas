@@ -207,7 +207,8 @@ export const inboxItemSchema = z.object({
   rawText: z.string(),
   normalizedText: z.string(),
   processingStatus: inboxProcessingStatusSchema,
-  linkedTaskIds: z.array(z.string()).default([])
+  linkedTaskIds: z.array(z.string()).default([]),
+  createdAt: z.string().datetime().optional()
 });
 
 const baseTaskSchema = z.object({
@@ -356,12 +357,56 @@ export const taskCandidateSchema = z.object({
   confidence: z.number().min(0).max(1)
 });
 
+export const weekdaySchema = z.enum([
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday"
+]);
+
 export const scheduleConstraintSchema = z.object({
-  dayOffset: z.number().int().min(0).max(14),
+  dayReference: z.enum(["today", "tomorrow", "weekday"]).nullable(),
+  weekday: weekdaySchema.nullable(),
+  weekOffset: z.number().int().min(0).max(8).nullable(),
   explicitHour: z.number().int().min(0).max(23).nullable(),
   minute: z.number().int().min(0).max(59),
   preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
   sourceText: z.string().min(1)
+}).superRefine((constraint, ctx) => {
+  if (constraint.dayReference === "weekday" && constraint.weekday === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "weekday is required when dayReference is 'weekday'.",
+      path: ["weekday"]
+    });
+  }
+
+  if (constraint.dayReference !== "weekday" && constraint.weekday !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "weekday must be null unless dayReference is 'weekday'.",
+      path: ["weekday"]
+    });
+  }
+
+  if (constraint.dayReference === "weekday" && constraint.weekOffset === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "weekOffset is required when dayReference is 'weekday'.",
+      path: ["weekOffset"]
+    });
+  }
+
+  if (constraint.dayReference !== "weekday" && constraint.weekOffset !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "weekOffset must be null unless dayReference is 'weekday'.",
+      path: ["weekOffset"]
+    });
+  }
 });
 
 export const taskReferenceSchema = z.discriminatedUnion("kind", [
@@ -508,6 +553,7 @@ export const scheduleProposalOutputSchema = z.object({
 
 export type InboxItem = z.infer<typeof inboxItemSchema>;
 export type ScheduleConstraint = z.infer<typeof scheduleConstraintSchema>;
+export type Weekday = z.infer<typeof weekdaySchema>;
 export type ScheduleProposalInput = z.infer<typeof scheduleProposalInputSchema>;
 export type ScheduleProposalOutput = z.infer<typeof scheduleProposalOutputSchema>;
 export type ScheduleBlock = z.infer<typeof scheduleBlockSchema>;
@@ -720,10 +766,7 @@ function computeStartAt(input: ComputeStartAtInput) {
 
   if (input.constraint) {
     const hour = input.constraint.explicitHour ?? preferredWindowHour(input.constraint.preferredWindow);
-    const localDate = addDaysToLocalDate(
-      getTimeZoneDateParts(start, input.profile.timezone),
-      input.constraint.dayOffset
-    );
+    const localDate = resolveConstraintLocalDate(start, input.profile.timezone, input.constraint);
 
     return advanceForConflicts(
       buildDateInTimeZone({
@@ -833,15 +876,65 @@ function getDateTimePart(
 
 function addDaysToLocalDate(
   date: { year: number; month: number; day: number },
-  dayOffset: number
+  dayCount: number
 ) {
-  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + dayOffset, 0, 0, 0));
+  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + dayCount, 0, 0, 0));
 
   return {
     year: shifted.getUTCFullYear(),
     month: shifted.getUTCMonth() + 1,
     day: shifted.getUTCDate()
   };
+}
+
+function resolveConstraintLocalDate(now: Date, timeZone: string, constraint: ScheduleConstraint) {
+  const localDate = getTimeZoneDateParts(now, timeZone);
+
+  if (constraint.dayReference === null || constraint.dayReference === "today") {
+    return {
+      year: localDate.year,
+      month: localDate.month,
+      day: localDate.day
+    };
+  }
+
+  if (constraint.dayReference === "tomorrow") {
+    return addDaysToLocalDate(localDate, 1);
+  }
+
+  return addDaysToLocalDate(
+    localDate,
+    daysUntilWeekday(getWeekdayInTimeZone(now, timeZone), constraint.weekday, constraint.weekOffset)
+  );
+}
+
+function getWeekdayInTimeZone(date: Date, timeZone: string): Weekday {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long"
+  }).format(date).toLowerCase();
+
+  return weekdaySchema.parse(formatted);
+}
+
+function daysUntilWeekday(
+  currentWeekday: Weekday,
+  targetWeekday: Weekday | null,
+  weekOffset: number | null
+) {
+  if (targetWeekday === null) {
+    throw new Error("weekday scheduling requires a target weekday.");
+  }
+
+  if (weekOffset === null) {
+    throw new Error("weekday scheduling requires a weekOffset.");
+  }
+
+  const weekdayOrder = weekdaySchema.options;
+  const currentIndex = weekdayOrder.indexOf(currentWeekday);
+  const targetIndex = weekdayOrder.indexOf(targetWeekday);
+
+  return (targetIndex - currentIndex + 7) % 7 + weekOffset * 7;
 }
 
 function buildDateInTimeZone(input: {
