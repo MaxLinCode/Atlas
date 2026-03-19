@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxPlanningOutput } from "@atlas/core";
 import {
+  getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
   listPlannerRunsForTests,
   listScheduleBlocksForTests,
@@ -10,12 +11,13 @@ import {
   listOutgoingBotEventsForTests,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
+  resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests,
   updateOutgoingTelegramMessage
 } from "@atlas/db";
-import { resetCalendarAdapterForTests } from "@atlas/integrations";
+import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
@@ -70,7 +72,10 @@ const ORIGINAL_ENV = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
-  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS
+  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS,
+  APP_BASE_URL: process.env.APP_BASE_URL,
+  GOOGLE_LINK_TOKEN_SECRET: process.env.GOOGLE_LINK_TOKEN_SECRET,
+  GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY
 };
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
@@ -101,14 +106,20 @@ afterEach(() => {
   restoreEnv("TELEGRAM_BOT_TOKEN");
   restoreEnv("TELEGRAM_WEBHOOK_SECRET");
   restoreEnv("TELEGRAM_ALLOWED_USER_IDS");
+  restoreEnv("APP_BASE_URL");
+  restoreEnv("GOOGLE_LINK_TOKEN_SECRET");
+  restoreEnv("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY");
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.DATABASE_URL = "postgres://atlas:atlas@localhost:5432/atlas";
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
   process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+  process.env.APP_BASE_URL = "https://atlas.example.com";
+  process.env.GOOGLE_LINK_TOKEN_SECRET = "google-link-secret";
+  process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
   resetCalendarAdapterForTests();
   sendTelegramMessageMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
@@ -130,9 +141,121 @@ beforeEach(() => {
   });
   resetIncomingTelegramIngressStoreForTests();
   resetInboxProcessingStoreForTests();
+  resetGoogleCalendarConnectionStoreForTests();
+  await getDefaultGoogleCalendarConnectionStore().upsertConnection({
+    userId: "123",
+    providerAccountId: "google-user-1",
+    email: "max@example.com",
+    selectedCalendarId: "primary",
+    selectedCalendarName: "Primary",
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+    tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    scopes: ["scope-a", "scope-b"],
+    syncCursor: null,
+    lastSyncedAt: null,
+    revokedAt: null
+  });
 });
 
 describe("telegram webhook route", () => {
+  it("gates unlinked users before ingress persistence and sends a Google connect link", async () => {
+    resetGoogleCalendarConnectionStoreForTests();
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 40,
+        message: {
+          message_id: 5,
+          date: 1_700_000_000,
+          text: "Schedule review launch checklist tomorrow at 9",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      lazyLinkRequired: true,
+      outboundDelivery: {
+        status: "sent",
+        attempts: 1
+      }
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: expect.stringContaining("I can do that, but I need access to your Google Calendar first. Connect here: https://atlas.example.com/google-calendar/connect?token=")
+    });
+    expect(listOutgoingBotEventsForTests()[0]).toMatchObject({
+      eventType: "telegram_google_calendar_link_gate",
+      payload: {
+        text: expect.not.stringContaining("token=")
+      }
+    });
+    expect(listOutgoingBotEventsForTests()[0]).toMatchObject({
+      payload: {
+        text: expect.stringContaining("[redacted Google Calendar connect link]")
+      }
+    });
+    expect(listIncomingBotEventsForTests()).toHaveLength(0);
+    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
+    expect(listInboxItemsForTests()).toHaveLength(0);
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
+    expect(listScheduleBlocksForTests()).toHaveLength(0);
+  });
+
+  it("also gates /start for unlinked users", async () => {
+    resetGoogleCalendarConnectionStoreForTests();
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 41,
+        message: {
+          message_id: 6,
+          date: 1_700_000_000,
+          text: "/start",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      lazyLinkRequired: true
+    });
+    expect(listIncomingBotEventsForTests()).toHaveLength(0);
+    expect(listInboxItemsForTests()).toHaveLength(0);
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects requests with the wrong Telegram webhook secret", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
@@ -145,6 +268,7 @@ describe("telegram webhook route", () => {
       ),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -181,6 +305,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -224,6 +349,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -259,6 +385,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -343,6 +470,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
         turnRouter: async () => ({
           route: "mutation",
@@ -449,6 +577,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
         planner,
         conversationMemorySummarizer: async () => ({
@@ -553,6 +682,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -579,6 +709,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
         planner,
         conversationMemorySummarizer: async () => ({
@@ -1157,6 +1288,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -1198,6 +1330,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -1252,6 +1385,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
         deliveryStore,
         primeProcessingStore: seedInboxItemForProcessingTests
       }
@@ -1273,6 +1407,7 @@ describe("telegram webhook route", () => {
 
     const dependencies = {
       store: getDefaultInboxProcessingStore(),
+      calendar: getDefaultCalendarAdapter(),
       primeProcessingStore: seedInboxItemForProcessingTests
     };
 

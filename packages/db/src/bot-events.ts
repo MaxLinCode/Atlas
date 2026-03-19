@@ -283,6 +283,7 @@ export class PostgresTelegramBotEventStore
         .limit(limit),
       this.db
         .select({
+          eventType: botEvents.eventType,
           payload: botEvents.payload,
           createdAt: botEvents.createdAt
         })
@@ -300,6 +301,7 @@ export class PostgresTelegramBotEventStore
         createdAt: row.createdAt.toISOString()
       })),
       events: eventRows.reverse().map((row) => ({
+        eventType: row.eventType,
         payload: row.payload,
         createdAt: row.createdAt.toISOString(),
         retryState: "sent" as const
@@ -415,6 +417,7 @@ function buildRecentConversationTurns(input: {
     createdAt: string;
   }>;
   events: Array<{
+    eventType?: string;
     payload: unknown;
     createdAt: string;
     retryState?: BotEventRetryState;
@@ -434,7 +437,7 @@ function buildRecentConversationTurns(input: {
 
       const text = readOutgoingText(event.payload);
 
-      if (!text) {
+      if (!text || shouldExcludeConversationEvent(event.eventType, text)) {
         return [];
       }
 
@@ -460,6 +463,17 @@ function readOutgoingText(payload: unknown) {
 
   const { text } = payload;
   return typeof text === "string" && text.trim() ? text : null;
+}
+
+function shouldExcludeConversationEvent(eventType: string | undefined, text: string) {
+  if (eventType === "telegram_google_calendar_link_gate") {
+    return true;
+  }
+
+  return (
+    text.includes("[redacted Google Calendar connect link]") ||
+    text.includes("I need access to your Google Calendar first. Connect here:")
+  );
 }
 
 function isTestEnvironment() {

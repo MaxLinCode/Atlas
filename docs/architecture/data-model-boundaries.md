@@ -45,6 +45,7 @@ Notes:
 - The model may suggest task structure, but Atlas owns the persisted task record.
 - `tasks` should hold the live lifecycle field, source and last-touch inbox provenance, task-level `reschedule_count`, and the current external-calendar-backed commitment snapshot.
 - The current commitment snapshot on `tasks` is `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
+- `calendar_sync_status` and `calendar_sync_updated_at` on `tasks` are Atlas-owned projection health fields. They record whether Atlas currently considers the linked external-calendar snapshot safe to trust as a local read model.
 - `awaiting_followup` is not entered at scheduling time. It should be entered only after the scheduled block has ended and Atlas has requested follow-up from the user.
 - `last_followup_at` and `followup_reminder_sent_at` belong to task-level product state, not to transport history.
 - `last_followup_at` is task-scoped. It records the most recent outbound accountability follow-up Atlas successfully sent for the task and is not cleared on reschedule.
@@ -78,6 +79,22 @@ Notes:
 - For MVP, only the subset needed for simple scheduling and reminders should be treated as active truth.
 - Richer fields may exist before the corresponding behavior is fully active.
 
+### `google_calendar_accounts`
+
+- Classification: canonical record
+- Represents: the Atlas-owned linkage between one Atlas user and one selected writable Google Calendar
+- Source of truth for: linked account identity, selected calendar identity, token lifecycle metadata, and sync bookkeeping needed to access Google Calendar on the user's behalf
+- Created by: app-owned Google OAuth callback flow after validation and token exchange
+- Allowed mutations: selected calendar metadata, token refresh metadata, revocation state, and sync cursor/timestamps owned by the app
+- Must not be confused with: scheduled task state or the external calendar event itself
+
+Notes:
+- V1 supports one linked Google account and one selected writable calendar per Atlas user.
+- This record exists so Atlas can resolve a user-scoped Google Calendar client without re-running OAuth on each request.
+- This record does not replace the task row as Atlas's local scheduled-commitment projection.
+- Access and refresh tokens are stored as encrypted-at-rest credentials, not as admin-readable metadata.
+- Normal read models should expose redacted linkage metadata only; raw credentials should be available only to the runtime path that builds the Google adapter.
+
 ## Operational records
 
 ### `bot_events`
@@ -93,6 +110,7 @@ Notes:
 - `bot_events` support transport reliability.
 - They are not the user-facing product memory.
 - They should not be the source of truth for whether the one follow-up reminder has already been sent.
+- They should have bounded operational retention rather than indefinite history by default.
 
 ### `planner_runs`
 
@@ -106,6 +124,46 @@ Notes:
 Notes:
 - If planner output changes later, the current canonical state still lives in `tasks`, not in `planner_runs`.
 - `planner_runs` may act as an operational anchor for conversational scheduling resolution, but they do not replace canonical task or schedule ownership.
+- Because planner runs may contain sensitive planning context, they should have bounded operational retention and should not be broadly exposed in admin/debug tooling.
+
+### `google_calendar_oauth_states`
+
+- Classification: operational record
+- Represents: short-lived OAuth state used to safely complete Google account-linking flows
+- Source of truth for: replay protection and request correlation during OAuth callback handling
+- Created by: app-owned Google OAuth start flow
+- Allowed mutations: one-time consumption and expiration handling
+- Must not be confused with: long-lived linked account state or task schedule state
+
+Notes:
+- OAuth state is operational security machinery, not product memory.
+- Consumed or expired state records should not be treated as evidence of an active linked account.
+- Retention should be measured in hours, not days.
+
+### `google_calendar_link_handoffs`
+
+- Classification: operational record
+- Represents: one-time Telegram-to-browser handoff records used to begin Google account linking safely
+- Source of truth for: replay protection before the app creates a short-lived link session cookie
+- Created by: app-owned Google connect-link issuance
+- Allowed mutations: one-time consumption and expiration cleanup
+- Must not be confused with: a logged-in Atlas session or an active linked account
+
+Notes:
+- These records are short-lived and should be purged aggressively after use or expiry.
+
+### `google_calendar_link_sessions`
+
+- Classification: operational record
+- Represents: short-lived server-side sessions used only to complete the Google OAuth handoff flow
+- Source of truth for: which Atlas user is allowed to start OAuth during the current link attempt
+- Created by: the app-owned `/google-calendar/connect` handoff route after validating a one-time link token
+- Allowed mutations: one-time consumption and expiration cleanup
+- Must not be confused with: durable user auth or long-lived Atlas account sessions
+
+Notes:
+- Link sessions are intentionally narrow and short-lived.
+- They exist to avoid placing a bearer-style user-binding token on the OAuth-start URL.
 
 ## Deferred or non-canonical-for-MVP records
 
@@ -134,8 +192,9 @@ Notes:
 ## Webhook-first rules
 
 - A Telegram update is transport input, not canonical product state by itself.
-- Ingress should persist operational transport state in `bot_events`.
-- Ingress should persist canonical capture state in `inbox_items` before extraction creates or mutates downstream task state.
+- Ingress should persist operational transport state in `bot_events` for linked users that enter normal processing.
+- Ingress should persist canonical capture state in `inbox_items` before extraction creates or mutates downstream task state for linked users.
+- The v1 unlinked-user Google connect gate is an explicit pre-ingress exception: Atlas may reply with a connect link and avoid persisting the inbound message entirely.
 - Planner output may create or update `tasks`, but it must not overwrite the meaning of the original `inbox_items`.
 - Scheduler output and calendar sync should update the task row's current commitment snapshot directly.
 - Conversational schedule moves should resolve against persisted Atlas state instead of treating Telegram history as the scheduler's source of truth.

@@ -55,6 +55,8 @@ export const tasks = pgTable(
     externalCalendarId: text("external_calendar_id"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
     scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
+    calendarSyncStatus: varchar("calendar_sync_status", { length: 32 }).notNull().default("in_sync"),
+    calendarSyncUpdatedAt: timestamp("calendar_sync_updated_at", { withTimezone: true }),
     rescheduleCount: integer("reschedule_count").notNull().default(0),
     lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -64,6 +66,51 @@ export const tasks = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
   }
 );
+
+export const googleCalendarAccounts = pgTable("google_calendar_accounts", {
+  userId: text("user_id").primaryKey(),
+  providerAccountId: text("provider_account_id").notNull(),
+  email: text("email").notNull(),
+  selectedCalendarId: text("selected_calendar_id").notNull(),
+  selectedCalendarName: text("selected_calendar_name").notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  syncCursor: text("sync_cursor"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const googleCalendarOauthStates = pgTable("google_calendar_oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id").notNull(),
+  redirectPath: text("redirect_path"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  codeVerifier: text("code_verifier"),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const googleCalendarLinkHandoffs = pgTable("google_calendar_link_handoffs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  redirectPath: text("redirect_path"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const googleCalendarLinkSessions = pgTable("google_calendar_link_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  redirectPath: text("redirect_path"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+});
 
 export const taskActions = pgTable("task_actions", {
   id: uuid("id").primaryKey(),

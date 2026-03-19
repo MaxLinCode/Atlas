@@ -3,7 +3,9 @@ import { ZodError } from "zod";
 
 import {
   buildCapturedTask,
+  buildBusyScheduleBlocks,
   buildDefaultUserProfile,
+  buildGoogleCalendarLinkToken,
   buildInboxPlanningContext,
   buildScheduleAdjustment,
   buildScheduleBlocksFromTasks,
@@ -11,8 +13,11 @@ import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   confirmedMutationRecoveryOutputSchema,
+  detectTaskCalendarDrift,
   getConfig,
+  getGoogleCalendarOAuthConfig,
   getTelegramAllowedUserIds,
+  verifyGoogleCalendarLinkToken,
   inboxPlanningOutputSchema,
   isTelegramUserAllowed,
   isTaskFollowupDue,
@@ -51,18 +56,32 @@ describe("core package", () => {
   it("accepts explicit config overrides", () => {
     const config = getConfig({
       DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+      APP_BASE_URL: "https://atlas.example.com",
       OPENAI_API_KEY: "test-openai-key",
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
       TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
-      TELEGRAM_ALLOWED_USER_IDS: "123"
+      TELEGRAM_ALLOWED_USER_IDS: "123",
+      GOOGLE_CLIENT_ID: "google-client-id",
+      GOOGLE_CLIENT_SECRET: "google-client-secret",
+      GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback",
+      GOOGLE_LINK_TOKEN_SECRET: "google-link-secret",
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+      CRON_SECRET: "cron-secret"
     });
 
     expect(config).toMatchObject({
       DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+      APP_BASE_URL: "https://atlas.example.com",
       OPENAI_API_KEY: "test-openai-key",
       TELEGRAM_BOT_TOKEN: "test-telegram-token",
       TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
-      TELEGRAM_ALLOWED_USER_IDS: "123"
+      TELEGRAM_ALLOWED_USER_IDS: "123",
+      GOOGLE_CLIENT_ID: "google-client-id",
+      GOOGLE_CLIENT_SECRET: "google-client-secret",
+      GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback",
+      GOOGLE_LINK_TOKEN_SECRET: "google-link-secret",
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+      CRON_SECRET: "cron-secret"
     });
   });
 
@@ -70,6 +89,7 @@ describe("core package", () => {
     expect(() =>
       getConfig({
         DATABASE_URL: "postgres://atlas:atlas@localhost:5432/atlas",
+        APP_BASE_URL: "https://atlas.example.com",
         OPENAI_API_KEY: "test-openai-key",
         TELEGRAM_BOT_TOKEN: "test-telegram-token",
         TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
@@ -86,6 +106,16 @@ describe("core package", () => {
     ).toEqual(new Set(["123", "456", "789"]));
   });
 
+  it("requires explicit Google Calendar OAuth config values", () => {
+    expect(() =>
+      getGoogleCalendarOAuthConfig({
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: "google-client-secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback"
+      })
+    ).toThrow();
+  });
+
   it("fails closed for an empty Telegram allowlist and blocks unknown users otherwise", () => {
     expect(isTelegramUserAllowed("123", new Set())).toBe(false);
     expect(isTelegramUserAllowed("123", new Set(["456"]))).toBe(false);
@@ -97,6 +127,33 @@ describe("core package", () => {
       "telegram:followup:inbox-item:inbox-1"
     );
     expect(buildTelegramWebhookIdempotencyKey(42)).toBe("telegram:webhook:update:42");
+  });
+
+  it("builds and verifies signed Google Calendar link tokens", () => {
+    const token = buildGoogleCalendarLinkToken({
+      userId: "123",
+      handoffId: "8c92af58-5f9a-4da3-9244-dd018395afb6",
+      expiresAt: "2026-03-20T17:00:00.000Z",
+      secret: "webhook-secret"
+    });
+
+    expect(
+      verifyGoogleCalendarLinkToken({
+        token,
+        secret: "webhook-secret",
+        now: "2026-03-20T16:00:00.000Z"
+      })
+    ).toMatchObject({
+      userId: "123",
+      handoffId: "8c92af58-5f9a-4da3-9244-dd018395afb6"
+    });
+    expect(
+      verifyGoogleCalendarLinkToken({
+        token,
+        secret: "wrong-secret",
+        now: "2026-03-20T16:00:00.000Z"
+      })
+    ).toBeNull();
   });
 
   it("builds the default captured task shape in core", () => {
@@ -118,6 +175,8 @@ describe("core package", () => {
       externalCalendarId: null,
       scheduledStartAt: null,
       scheduledEndAt: null,
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
@@ -139,6 +198,8 @@ describe("core package", () => {
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-15T16:00:00.000Z",
       scheduledEndAt: "2026-03-15T17:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: "2026-03-15T17:05:00.000Z",
       rescheduleCount: 2,
       lastFollowupAt: "2026-03-15T17:05:00.000Z",
       completedAt: null,
@@ -162,6 +223,8 @@ describe("core package", () => {
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-15T16:00:00.000Z",
       scheduledEndAt: "2026-03-15T17:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
@@ -185,6 +248,8 @@ describe("core package", () => {
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-13T17:00:00.000Z",
       scheduledEndAt: "2026-03-13T18:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
@@ -211,6 +276,91 @@ describe("core package", () => {
     expect(resolveTaskReference(context, { kind: "existing_task", alias: "existing_task_1" })?.id).toBe("task-1");
     expect(resolveScheduleBlockReference(context, { alias: "schedule_block_1" })?.id).toBe("event-1");
     expect(buildScheduleBlocksFromTasks([task])).toHaveLength(1);
+  });
+
+  it("builds busy blocks from external calendar busy periods", () => {
+    expect(
+      buildBusyScheduleBlocks({
+        userId: "123",
+        periods: [
+          {
+            startAt: "2026-03-13T19:00:00.000Z",
+            endAt: "2026-03-13T20:00:00.000Z",
+            externalCalendarId: "primary"
+          }
+        ]
+      })
+    ).toMatchObject([
+      {
+        userId: "123",
+        startAt: "2026-03-13T19:00:00.000Z",
+        endAt: "2026-03-13T20:00:00.000Z",
+        externalCalendarId: "primary"
+      }
+    ]);
+  });
+
+  it("detects task drift when the linked Google event changed", () => {
+    const task = taskSchema.parse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-13T17:00:00.000Z",
+      scheduledEndAt: "2026-03-13T18:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "medium"
+    });
+
+    expect(
+      detectTaskCalendarDrift({
+        task,
+        liveEvent: {
+          externalCalendarEventId: "event-1",
+          externalCalendarId: "primary",
+          scheduledStartAt: "2026-03-13T18:00:00.000Z",
+          scheduledEndAt: "2026-03-13T19:00:00.000Z"
+        }
+      })
+    ).toMatchObject({
+      taskId: "task-1",
+      reason: "calendar_changed"
+    });
+  });
+
+  it("does not build busy schedule blocks from out-of-sync task projections", () => {
+    const task = taskSchema.parse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-13T17:00:00.000Z",
+      scheduledEndAt: "2026-03-13T18:00:00.000Z",
+      calendarSyncStatus: "out_of_sync",
+      calendarSyncUpdatedAt: "2026-03-13T18:05:00.000Z",
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "medium"
+    });
+
+    expect(buildScheduleBlocksFromTasks([task])).toEqual([]);
   });
 
   it("accepts contract-shaped planning outputs", async () => {
@@ -299,6 +449,8 @@ describe("core package", () => {
           externalCalendarId: null,
           scheduledStartAt: null,
           scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
           rescheduleCount: 0,
           lastFollowupAt: null,
           completedAt: null,
@@ -361,6 +513,8 @@ describe("core package", () => {
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-15T16:00:00.000Z",
       scheduledEndAt: "2026-03-15T17:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
       completedAt: null,
