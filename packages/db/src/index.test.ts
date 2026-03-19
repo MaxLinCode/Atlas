@@ -234,7 +234,7 @@ describe("db package", () => {
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
-      eventType: "telegram_google_calendar_link_gate",
+      eventType: "telegram_google_calendar_link",
       idempotencyKey: "telegram:lazy-link:300",
       payload: {
         chatId: "999",
