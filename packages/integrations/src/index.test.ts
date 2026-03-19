@@ -208,6 +208,86 @@ describe("integrations", () => {
     ]);
   });
 
+  it("normalizes Google event datetimes with timezone offsets", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "event-1",
+          start: {
+            dateTime: "2026-03-18T17:00:00-07:00"
+          },
+          end: {
+            dateTime: "2026-03-18T18:00:00-07:00"
+          }
+        })
+      )
+    );
+    const adapter = createGoogleCalendarAdapter(
+      {
+        accessToken: "access-token",
+        selectedCalendarId: "primary"
+      },
+      {
+        fetch: fetchMock
+      }
+    );
+
+    await expect(
+      adapter.createEvent({
+        title: "Review launch checklist",
+        startAt: "2026-03-19T00:00:00.000Z",
+        endAt: "2026-03-19T01:00:00.000Z"
+      })
+    ).resolves.toMatchObject({
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-19T00:00:00.000Z",
+      scheduledEndAt: "2026-03-19T01:00:00.000Z"
+    });
+  });
+
+  it("normalizes Google free busy datetimes with timezone offsets", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          calendars: {
+            primary: {
+              busy: [
+                {
+                  start: "2026-03-18T17:00:00-07:00",
+                  end: "2026-03-18T18:00:00-07:00"
+                }
+              ]
+            }
+          }
+        })
+      )
+    );
+    const adapter = createGoogleCalendarAdapter(
+      {
+        accessToken: "access-token",
+        selectedCalendarId: "primary"
+      },
+      {
+        fetch: fetchMock
+      }
+    );
+
+    await expect(
+      adapter.listBusyPeriods({
+        startAt: "2026-03-18T23:00:00.000Z",
+        endAt: "2026-03-19T02:00:00.000Z",
+        externalCalendarId: "primary"
+      })
+    ).resolves.toMatchObject([
+      {
+        startAt: "2026-03-19T00:00:00.000Z",
+        endAt: "2026-03-19T01:00:00.000Z",
+        externalCalendarId: "primary"
+      }
+    ]);
+  });
+
   it("refreshes Google OAuth access tokens", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(

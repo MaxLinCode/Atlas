@@ -40,6 +40,20 @@ const googleUserInfoSchema = z.object({
   email: z.string().email()
 });
 
+const googleEventResponseSchema = z.object({
+  id: z.string().min(1),
+  start: z.object({
+    dateTime: z.string().datetime({
+      offset: true
+    })
+  }),
+  end: z.object({
+    dateTime: z.string().datetime({
+      offset: true
+    })
+  })
+});
+
 export type CalendarEventSnapshot = z.infer<typeof calendarEventSnapshotSchema>;
 export type CalendarBusyPeriod = z.infer<typeof calendarBusyPeriodSchema>;
 
@@ -242,8 +256,8 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
 
     return periods.map((period: { start?: string; end?: string }) =>
       calendarBusyPeriodSchema.parse({
-        startAt: period.start,
-        endAt: period.end,
+        startAt: normalizeGoogleDateTime(period.start),
+        endAt: normalizeGoogleDateTime(period.end),
         externalCalendarId: input.externalCalendarId
       })
     );
@@ -438,26 +452,27 @@ function buildGoogleEventBody(input: CalendarEventWriteInput) {
 }
 
 function parseGoogleEvent(payload: unknown, externalCalendarId: string): CalendarEventSnapshot {
-  const parsed = z
-    .object({
-      id: z.string().min(1),
-      start: z.object({
-        dateTime: z.string().datetime()
-      }),
-      end: z.object({
-        dateTime: z.string().datetime()
-      })
-    })
-    .parse(payload);
+  const parsed = googleEventResponseSchema.parse(payload);
 
   return calendarEventSnapshotSchema.parse({
     externalCalendarEventId: parsed.id,
     externalCalendarId,
-    scheduledStartAt: parsed.start.dateTime,
-    scheduledEndAt: parsed.end.dateTime
+    scheduledStartAt: normalizeGoogleDateTime(parsed.start.dateTime),
+    scheduledEndAt: normalizeGoogleDateTime(parsed.end.dateTime)
   });
 }
 
 function isWritableCalendar(accessRole?: string) {
   return accessRole === "owner" || accessRole === "writer";
+}
+
+function normalizeGoogleDateTime(value: string | undefined) {
+  const parsed = z
+    .string()
+    .datetime({
+      offset: true
+    })
+    .parse(value);
+
+  return new Date(parsed).toISOString();
 }

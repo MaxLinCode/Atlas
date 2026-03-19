@@ -6,35 +6,78 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const result = await handleGoogleCalendarOauthCallback(request);
+  try {
+    const result = await handleGoogleCalendarOauthCallback(request);
 
-  if (result.status === 200 && "completion" in result && result.completion) {
-    const response = new NextResponse(
-      buildGoogleCalendarConnectedHtml(result.completion.title, result.completion.message),
-      {
+    if (result.status === 200 && "completion" in result && result.completion) {
+      const response = buildHtmlResponse({
         status: 200,
-        headers: {
-          "content-type": "text/html; charset=utf-8"
-        }
+        title: result.completion.title,
+        message: result.completion.message
+      });
+
+      if ("headers" in result && result.headers["set-cookie"]) {
+        response.headers.set("set-cookie", result.headers["set-cookie"]);
       }
-    );
+
+      return response;
+    }
+
+    const response = buildHtmlResponse({
+      status: result.status,
+      ...buildFailureContent(result)
+    });
 
     if ("headers" in result && result.headers["set-cookie"]) {
       response.headers.set("set-cookie", result.headers["set-cookie"]);
     }
 
     return response;
+  } catch {
+    return buildHtmlResponse({
+      status: 500,
+      title: "Google Calendar connection failed",
+      message: "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again."
+    });
   }
+}
 
-  const response = NextResponse.json(result.body, {
-    status: result.status
+function buildHtmlResponse(input: {
+  status: number;
+  title: string;
+  message: string;
+}) {
+  return new NextResponse(buildGoogleCalendarConnectedHtml(input.title, input.message), {
+    status: input.status,
+    headers: {
+      "content-type": "text/html; charset=utf-8"
+    }
   });
+}
 
-  if ("headers" in result && result.headers["set-cookie"]) {
-    response.headers.set("set-cookie", result.headers["set-cookie"]);
+function buildFailureContent(result: {
+  status: number;
+  body?: unknown;
+}) {
+  const error =
+    typeof result.body === "object" &&
+    result.body !== null &&
+    "error" in result.body &&
+    typeof result.body.error === "string"
+      ? result.body.error
+      : null;
+
+  if (error === "invalid_oauth_state" || error === "missing_oauth_params") {
+    return {
+      title: "Google Calendar link expired",
+      message: "This Google Calendar link is no longer valid. Go back to Telegram and request a fresh connect link."
+    };
   }
 
-  return response;
+  return {
+    title: "Google Calendar connection failed",
+    message: "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again."
+  };
 }
 
 function buildGoogleCalendarConnectedHtml(title: string, message: string) {
