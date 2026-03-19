@@ -257,7 +257,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("planned");
-    expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toContain("T15:00:00.000Z");
+    expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toContain("T22:00:00.000Z");
   });
 
   it("allows an app-owned planning text override for confirmed mutation recovery", async () => {
@@ -411,7 +411,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T15:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-18T22:00:00.000Z");
     expect("updatedBlock" in result ? result.updatedBlock.id : "").toBe(listTasksForTests()[0]?.externalCalendarEventId);
     expect(listTasksForTests()[0]).toMatchObject({
       lastInboxItemId: "inbox-move",
@@ -580,7 +580,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T15:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-18T22:00:00.000Z");
   });
 
   it("marks invalid model output references for clarification", async () => {

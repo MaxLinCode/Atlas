@@ -719,27 +719,64 @@ function computeStartAt(input: ComputeStartAtInput) {
   start.setUTCSeconds(0, 0);
 
   if (input.constraint) {
-    start.setUTCDate(start.getUTCDate() + input.constraint.dayOffset);
-
     const hour = input.constraint.explicitHour ?? preferredWindowHour(input.constraint.preferredWindow);
-    start.setUTCHours(hour, input.constraint.minute, 0, 0);
-  } else {
-    start.setUTCHours(input.profile.workdayStartHour + input.slotOffset, 0, 0, 0);
-    if (start <= input.now) {
-      start.setUTCDate(start.getUTCDate() + 1);
-    }
+    const localDate = addDaysToLocalDate(
+      getTimeZoneDateParts(start, input.profile.timezone),
+      input.constraint.dayOffset
+    );
+
+    return advanceForConflicts(
+      buildDateInTimeZone({
+        timeZone: input.profile.timezone,
+        year: localDate.year,
+        month: localDate.month,
+        day: localDate.day,
+        hour,
+        minute: input.constraint.minute
+      }),
+      input.profile.focusBlockMinutes,
+      input.existingBlocks
+    );
   }
 
-  while (hasBlockConflict(start, input.profile.focusBlockMinutes, input.existingBlocks)) {
-    start.setUTCHours(start.getUTCHours() + 1, 0, 0, 0);
+  const localDate = getTimeZoneDateParts(start, input.profile.timezone);
+  let candidate = buildDateInTimeZone({
+    timeZone: input.profile.timezone,
+    year: localDate.year,
+    month: localDate.month,
+    day: localDate.day,
+    hour: input.profile.workdayStartHour + input.slotOffset,
+    minute: 0
+  });
+
+  if (candidate <= input.now) {
+    const nextLocalDate = addDaysToLocalDate(localDate, 1);
+    candidate = buildDateInTimeZone({
+      timeZone: input.profile.timezone,
+      year: nextLocalDate.year,
+      month: nextLocalDate.month,
+      day: nextLocalDate.day,
+      hour: input.profile.workdayStartHour + input.slotOffset,
+      minute: 0
+    });
   }
 
-  return start;
+  return advanceForConflicts(candidate, input.profile.focusBlockMinutes, input.existingBlocks);
 }
 
 function computeEndAt(input: ComputeStartAtInput) {
   const start = computeStartAt(input);
   return new Date(start.getTime() + input.profile.focusBlockMinutes * 60_000);
+}
+
+function advanceForConflicts(start: Date, durationMinutes: number, existingBlocks: ScheduleBlock[]) {
+  const candidate = new Date(start);
+
+  while (hasBlockConflict(candidate, durationMinutes, existingBlocks)) {
+    candidate.setUTCHours(candidate.getUTCHours() + 1, 0, 0, 0);
+  }
+
+  return candidate;
 }
 
 function preferredWindowHour(window: ScheduleConstraint["preferredWindow"]) {
@@ -756,6 +793,88 @@ function preferredWindowHour(window: ScheduleConstraint["preferredWindow"]) {
   }
 
   return 9;
+}
+
+function getTimeZoneDateParts(date: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+  const parts = formatter.formatToParts(date);
+
+  return {
+    year: Number(getDateTimePart(parts, "year")),
+    month: Number(getDateTimePart(parts, "month")),
+    day: Number(getDateTimePart(parts, "day")),
+    hour: Number(getDateTimePart(parts, "hour")),
+    minute: Number(getDateTimePart(parts, "minute")),
+    second: Number(getDateTimePart(parts, "second"))
+  };
+}
+
+function getDateTimePart(
+  parts: Intl.DateTimeFormatPart[],
+  type: "year" | "month" | "day" | "hour" | "minute" | "second"
+) {
+  const match = parts.find((part) => part.type === type);
+
+  if (!match) {
+    throw new Error(`Missing ${type} while formatting timezone parts.`);
+  }
+
+  return match.value;
+}
+
+function addDaysToLocalDate(
+  date: { year: number; month: number; day: number },
+  dayOffset: number
+) {
+  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + dayOffset, 0, 0, 0));
+
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate()
+  };
+}
+
+function buildDateInTimeZone(input: {
+  timeZone: string;
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+}) {
+  const targetUtc = Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute, 0);
+  let candidate = targetUtc;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = getTimeZoneDateParts(new Date(candidate), input.timeZone);
+    const observedUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second
+    );
+    const diff = targetUtc - observedUtc;
+
+    if (diff === 0) {
+      return new Date(candidate);
+    }
+
+    candidate += diff;
+  }
+
+  return new Date(candidate);
 }
 
 function hasBlockConflict(start: Date, durationMinutes: number, existingBlocks: ScheduleBlock[]) {

@@ -2,13 +2,19 @@ import type { ProcessedInboxResult } from "@atlas/db";
 
 const DEFAULT_TIME_ZONE = "America/Los_Angeles";
 
-export function renderMutationReply(result: ProcessedInboxResult): string {
+export function renderMutationReply(
+  result: ProcessedInboxResult,
+  options: { timeZone?: string } = {}
+): string {
+  const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
+
   switch (result.outcome) {
     case "planned": {
       return renderScheduledItemsReply({
         fallback: "I saved it.",
         tasks: result.createdTasks,
-        scheduleBlocks: result.scheduleBlocks
+        scheduleBlocks: result.scheduleBlocks,
+        timeZone
       });
     }
 
@@ -16,12 +22,13 @@ export function renderMutationReply(result: ProcessedInboxResult): string {
       return renderScheduledItemsReply({
         fallback: "I scheduled it.",
         tasks: result.scheduledTasks,
-        scheduleBlocks: result.scheduleBlocks
+        scheduleBlocks: result.scheduleBlocks,
+        timeZone
       });
     }
 
     case "updated_schedule": {
-      return `Moved it to ${formatScheduledTime(result.updatedBlock.startAt)}.`;
+      return `Moved it to ${formatScheduledTime(result.updatedBlock.startAt, timeZone)}.`;
     }
 
     case "needs_clarification":
@@ -29,9 +36,9 @@ export function renderMutationReply(result: ProcessedInboxResult): string {
   }
 }
 
-function formatScheduledTime(iso: string) {
+function formatScheduledTime(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: DEFAULT_TIME_ZONE,
+    timeZone,
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -47,6 +54,7 @@ function renderScheduledItemsReply(input: {
   fallback: string;
   tasks: { id: string; title: string }[];
   scheduleBlocks: { taskId: string; startAt: string }[];
+  timeZone: string;
 }) {
   const taskTitlesById = new Map(input.tasks.map((task) => [task.id, task.title]));
   const items = input.scheduleBlocks
@@ -57,7 +65,7 @@ function renderScheduledItemsReply(input: {
         return null;
       }
 
-      return `${quoteTaskTitle(title)} for ${formatScheduledTime(block.startAt)}`;
+      return `${quoteTaskTitle(title)} for ${formatScheduledTime(block.startAt, input.timeZone)}`;
     })
     .filter((item): item is string => item !== null);
 
