@@ -382,7 +382,9 @@ describe("core package", () => {
             alias: "new_task_1"
           },
           scheduleConstraint: {
-            dayOffset: 1,
+            dayReference: "tomorrow",
+            weekday: null,
+            weekOffset: null,
             explicitHour: 15,
             minute: 0,
             preferredWindow: null,
@@ -462,7 +464,9 @@ describe("core package", () => {
       existingBlocks: [],
       now: "2026-03-13T08:00:00.000Z",
       scheduleConstraint: {
-        dayOffset: 1,
+        dayReference: "tomorrow",
+        weekday: null,
+        weekOffset: null,
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
@@ -488,13 +492,16 @@ describe("core package", () => {
       }),
       userProfile: buildDefaultUserProfile("user-1"),
       scheduleConstraint: {
-        dayOffset: 0,
+        dayReference: null,
+        weekday: null,
+        weekOffset: null,
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
         sourceText: "at 3pm"
       },
-      existingBlocks: []
+      existingBlocks: [],
+      now: "2026-03-18T16:00:00.000Z"
     });
 
     expect(result.newStartAt).toBe("2026-03-18T22:00:00.000Z");
@@ -532,7 +539,9 @@ describe("core package", () => {
       existingBlocks: [],
       now: "2026-03-19T06:00:00.000Z",
       scheduleConstraint: {
-        dayOffset: 2,
+        dayReference: "weekday",
+        weekday: "friday",
+        weekOffset: 0,
         explicitHour: null,
         minute: 0,
         preferredWindow: "morning",
@@ -541,6 +550,169 @@ describe("core package", () => {
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T16:00:00.000Z");
+  });
+
+  it("resolves weekday scheduling from now in the user's timezone", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Car maintenance",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      now: "2026-03-18T16:00:00.000Z",
+      scheduleConstraint: {
+        dayReference: "weekday",
+        weekday: "friday",
+        weekOffset: 0,
+        explicitHour: 10,
+        minute: 0,
+        preferredWindow: null,
+        sourceText: "Friday at 10am"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-20T17:00:00.000Z");
+  });
+
+  it("rejects weekday scheduling without a weekday value", () => {
+    const result = inboxPlanningOutputSchema.safeParse({
+      confidence: 0.9,
+      summary: "Bad schedule constraint",
+      actions: [
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "existing_task",
+            alias: "existing_task_1"
+          },
+          scheduleConstraint: {
+            dayReference: "weekday",
+            weekday: null,
+            weekOffset: null,
+            explicitHour: 10,
+            minute: 0,
+            preferredWindow: null,
+            sourceText: "Friday at 10am"
+          },
+          reason: "Invalid weekday constraint."
+        }
+      ]
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("resolves next weekday scheduling with a week offset", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Plan review",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      now: "2026-03-18T16:00:00.000Z",
+      scheduleConstraint: {
+        dayReference: "weekday",
+        weekday: "friday",
+        weekOffset: 1,
+        explicitHour: 10,
+        minute: 0,
+        preferredWindow: null,
+        sourceText: "next Friday at 10am"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-27T17:00:00.000Z");
+  });
+
+  it("resolves repeated next weekday scheduling with larger week offsets", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Plan review",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      now: "2026-03-18T16:00:00.000Z",
+      scheduleConstraint: {
+        dayReference: "weekday",
+        weekday: "friday",
+        weekOffset: 2,
+        explicitHour: 10,
+        minute: 0,
+        preferredWindow: null,
+        sourceText: "next next Friday at 10am"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-04-03T17:00:00.000Z");
   });
 
   it("marks scheduled tasks as follow-up due only after the end time", () => {

@@ -50,7 +50,9 @@ vi.mock("@atlas/integrations", async () => {
             alias: "new_task_1"
           },
           scheduleConstraint: {
-            dayOffset: 0,
+            dayReference: null,
+            weekday: null,
+            weekOffset: null,
             explicitHour: 9,
             minute: 0,
             preferredWindow: null,
@@ -537,7 +539,9 @@ describe("telegram webhook route", () => {
             alias: "new_task_1"
           },
           scheduleConstraint: {
-            dayOffset: 0,
+            dayReference: null,
+            weekday: null,
+            weekOffset: null,
             explicitHour: 15,
             minute: 0,
             preferredWindow: null,
@@ -643,7 +647,9 @@ describe("telegram webhook route", () => {
             alias: "schedule_block_1"
           },
           scheduleConstraint: {
-            dayOffset: 0,
+            dayReference: null,
+            weekday: null,
+            weekOffset: null,
             explicitHour: 16,
             minute: 0,
             preferredWindow: null,

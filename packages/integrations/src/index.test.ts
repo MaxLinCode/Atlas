@@ -417,11 +417,13 @@ describe("integrations", () => {
           rawText: "Submit taxes tomorrow at 3pm",
           normalizedText: "Submit taxes tomorrow at 3pm",
           processingStatus: "received",
-          linkedTaskIds: []
+          linkedTaskIds: [],
+          createdAt: "2026-03-13T08:00:00.000Z"
         },
         userProfile: buildDefaultUserProfile("123"),
         tasks: [],
-        scheduleBlocks: []
+        scheduleBlocks: [],
+        now: "2026-03-13T08:00:00.000Z"
       },
       {
         responses: {
@@ -444,7 +446,9 @@ describe("integrations", () => {
                     alias: "new_task_1"
                   },
                   scheduleConstraint: {
-                    dayOffset: 1,
+                    dayReference: "tomorrow",
+                    weekday: null,
+                    weekOffset: null,
                     explicitHour: 15,
                     minute: 0,
                     preferredWindow: null,

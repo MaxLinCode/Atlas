@@ -68,7 +68,8 @@ export async function processInboxItem(
       : context.inboxItem,
     userProfile: context.userProfile,
     tasks: context.tasks,
-    scheduleBlocks: context.scheduleBlocks
+    scheduleBlocks: context.scheduleBlocks,
+    now: context.inboxItem.createdAt ?? new Date().toISOString()
   });
 
   let planning: InboxPlanningOutput;

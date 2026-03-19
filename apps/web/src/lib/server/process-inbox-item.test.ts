@@ -33,7 +33,8 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: "2026-03-18T16:00:00.000Z"
     });
 
     const result = await processInboxItem(
@@ -60,7 +61,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
@@ -75,6 +78,9 @@ describe("process inbox item service", () => {
 
     expect(result.outcome).toBe("planned");
     expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(listPlannerRunsForTests()[0]?.modelInput).toMatchObject({
+      now: "2026-03-18T16:00:00.000Z"
+    });
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(listTasksForTests()[0]).toMatchObject({
       sourceInboxItemId: "inbox-1",
@@ -123,7 +129,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
@@ -178,7 +186,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
@@ -243,7 +253,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 1,
+                dayReference: "tomorrow",
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
@@ -279,7 +291,9 @@ describe("process inbox item service", () => {
             alias: "new_task_1"
           },
           scheduleConstraint: {
-            dayOffset: 0,
+            dayReference: null,
+            weekday: null,
+            weekOffset: null,
             explicitHour: 15,
             minute: 0,
             preferredWindow: null,
@@ -359,7 +373,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
@@ -397,7 +413,9 @@ describe("process inbox item service", () => {
                 alias: "schedule_block_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
@@ -498,7 +516,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 17,
                 minute: 0,
                 preferredWindow: null,
@@ -566,7 +586,9 @@ describe("process inbox item service", () => {
                 alias: "schedule_block_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
@@ -608,7 +630,9 @@ describe("process inbox item service", () => {
                 alias: "schedule_block_999"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
@@ -674,7 +698,9 @@ describe("process inbox item service", () => {
                   alias: "new_task_1"
                 },
                 scheduleConstraint: {
-                  dayOffset: 0,
+                  dayReference: null,
+                  weekday: null,
+                  weekOffset: null,
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
@@ -732,7 +758,9 @@ describe("process inbox item service", () => {
                 alias: "new_task_1"
               },
               scheduleConstraint: {
-                dayOffset: 0,
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
@@ -798,7 +826,9 @@ describe("process inbox item service", () => {
                   alias: "schedule_block_1"
                 },
                 scheduleConstraint: {
-                  dayOffset: 0,
+                  dayReference: null,
+                  weekday: null,
+                  weekOffset: null,
                   explicitHour: 15,
                   minute: 0,
                   preferredWindow: null,

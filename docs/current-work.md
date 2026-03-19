@@ -36,6 +36,11 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
 - Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
+- Clean up the remaining `schedule_block` compatibility layer and complete the task-first repository design:
+  - remove planner/runtime dependence on `schedule_block_*` aliases for existing-item reschedules and move mutations
+  - replace `move_schedule_block` with a task/current-commitment-first mutation contract
+  - make repository reads and writes treat `tasks` as the only live scheduling source of truth, with any schedule-block-shaped data derived as compatibility output only until the contract is removed
+  - once planner contracts, runtime handlers, and tests no longer depend on `schedule_blocks`, drop the table and its remaining migration/test scaffolding
 - Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
 
@@ -72,6 +77,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - `last_followup_at`: the most recent outbound accountability follow-up Atlas successfully sent for the task
   - `followup_reminder_sent_at`: the timestamp when Atlas sent the one extra reminder for the current unresolved follow-up episode
 - `schedule_blocks` no longer act as the active persisted scheduling record for runtime reads and writes. They remain a transitional artifact in the repo and planner vocabulary while the dedicated commitment/history design is still deferred.
+- Remaining cleanup gap: move/reschedule behavior still routes through planner-facing `schedule_block` aliases even though live scheduled state now lives on `tasks`; this should be collapsed into a task-first repository and mutation contract before `schedule_blocks` can be removed cleanly.
 - The task row now owns lifecycle state, current commitment snapshot, task-level `reschedule_count`, follow-up timestamps, and inbox provenance directly.
 - `0006_external_calendar_task_fields.sql` now backfills scheduled tasks from the old `current_commitment_id -> schedule_blocks` linkage before dropping the transitional column.
 - Inbox processing now treats calendar create/update failures like planner failures:
@@ -88,6 +94,10 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - otherwise Atlas creates a new Google calendar named `Atlas` during OAuth callback and stores that as `selected_calendar_id` / `selected_calendar_name`
   - Atlas must not silently fall back to the primary or another writable calendar for new links; if dedicated-calendar creation fails, linking should fail
 - Google access and refresh tokens are now encrypted at rest with `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`, and normal linked-account reads expose redacted metadata only.
+- Test-store parity follow-up:
+  - the in-memory Google Calendar connection store still keeps plaintext access and refresh tokens for tests, while the Postgres store encrypts them at rest
+  - this is not a production exposure, but it weakens storage-path parity and could hide encryption/regression bugs in tests
+  - follow-up: make the in-memory store use the same encrypt-on-write and decrypt-on-credential-read behavior as the Postgres store while preserving redacted non-credential reads
 - The public planner/debug mutation routes have been removed. The only intended external app surfaces are:
   - `POST /api/telegram/webhook`
   - `GET /google-calendar/connect`
@@ -141,9 +151,18 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - partial scheduling asks and other underspecified write intents should bias toward `conversation_then_mutation`
   - short-horizon confirmations or concrete refinements of one recent proposal may now route as `confirmed_mutation`
   - a small few-shot example set now reinforces the incomplete-versus-write-ready boundary in the router prompt
+- Scheduling normalization investigation pending:
+  - observed bug: `Friday at 10am` was normalized into same-day scheduling intent instead of a named-weekday intent anchored to the inbox timestamp
+  - concrete mismatch: with explicit dates in `America/Los_Angeles`, the task landed on Wednesday, March 18, 2026 instead of Friday, March 20, 2026
+  - current hypothesis: planner normalization failed before deterministic scheduling because relative dates were left to the model without an app-owned anchor date and deterministic weekday resolution
+  - next investigation steps: inspect the recorded planner input in `planner_runs`, add explicit timestamp context to the planner payload, and add a regression test covering weekday-name scheduling from a fixed `now`
+  - handoff note: this update is documentation-only; no code checks were run
 - A live local turn-router eval harness is now available:
   - `pnpm eval:turn-router` calls the real OpenAI Responses API against a curated fixture set
   - this is intended for manual prompt verification, not deterministic CI coverage
+- A live local planner eval harness is now available:
+  - `pnpm eval:planner` calls the real OpenAI Responses API against curated planner timing fixtures
+  - this is intended for manual prompt verification of schedule normalization behavior, not deterministic CI coverage
 - A live local router-confirmation eval harness is now available:
   - `pnpm eval:router-confirmation` calls the real OpenAI Responses API against curated short-horizon confirmation fixtures
   - this is intended for manual prompt verification of `confirmed_mutation` behavior, not deterministic CI coverage

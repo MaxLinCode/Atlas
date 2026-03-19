@@ -120,9 +120,7 @@ export interface InboxProcessingStore {
   }): Promise<void>;
 }
 
-type StoredInboxItem = InboxItem & {
-  createdAt?: Date;
-};
+type StoredInboxItem = InboxItem;
 
 type StoredTask = Omit<Task, "createdAt"> & {
   createdAt?: string | undefined;
@@ -519,7 +517,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         rawText: inboxItem.rawText,
         normalizedText: inboxItem.normalizedText,
         processingStatus: inboxItem.processingStatus as InboxItem["processingStatus"],
-        linkedTaskIds: inboxItem.linkedTaskIds
+        linkedTaskIds: inboxItem.linkedTaskIds,
+        createdAt: inboxItem.createdAt.toISOString()
       },
       tasks: parsedTasks,
       scheduleBlocks: buildScheduleBlocksFromTasks(parsedTasks),
@@ -934,7 +933,8 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
       rawText: row.rawText,
       normalizedText: row.normalizedText,
       processingStatus: row.processingStatus as InboxItem["processingStatus"],
-      linkedTaskIds: row.linkedTaskIds
+      linkedTaskIds: row.linkedTaskIds,
+      createdAt: row.createdAt.toISOString()
     };
   }
 
