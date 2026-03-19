@@ -219,6 +219,109 @@ describe("db package", () => {
     ]);
   });
 
+  it("excludes Google Calendar link gate replies from recent conversation turns", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordIncomingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_message",
+      idempotencyKey: "telegram:webhook:update:300",
+      payload: {
+        update_id: 300
+      },
+      rawText: "Schedule review launch checklist tomorrow",
+      normalizedText: "Schedule review launch checklist tomorrow"
+    });
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_google_calendar_link_gate",
+      idempotencyKey: "telegram:lazy-link:300",
+      payload: {
+        chatId: "999",
+        text: "[redacted Google Calendar connect link]",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:lazy-link:300",
+      payload: {
+        chatId: "999",
+        text: "[redacted Google Calendar connect link]",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:301",
+      payload: {
+        chatId: "999",
+        text: "Scheduled for tomorrow at 9am.",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:301",
+      payload: {
+        chatId: "999",
+        text: "Scheduled for tomorrow at 9am.",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+
+    const turns = await listRecentConversationTurns("123", 6);
+
+    expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
+      "user:Schedule review launch checklist tomorrow",
+      "assistant:Scheduled for tomorrow at 9am."
+    ]);
+  });
+
+  it("excludes legacy persisted Google Calendar link copy from recent conversation turns", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordIncomingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_message",
+      idempotencyKey: "telegram:webhook:update:400",
+      payload: {
+        update_id: 400
+      },
+      rawText: "Schedule taxes tomorrow",
+      normalizedText: "Schedule taxes tomorrow"
+    });
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:400",
+      payload: {
+        chatId: "999",
+        text: "I can do that, but I need access to your Google Calendar first. Connect here: [redacted Google Calendar connect link]. Once connected, send that again.",
+        attempts: 0
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:400",
+      payload: {
+        chatId: "999",
+        text: "I can do that, but I need access to your Google Calendar first. Connect here: [redacted Google Calendar connect link]. Once connected, send that again.",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+
+    const turns = await listRecentConversationTurns("123", 6);
+
+    expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
+      "user:Schedule taxes tomorrow"
+    ]);
+  });
+
   it("stores planner-backed scheduling on task rows and derives schedule blocks from them", async () => {
     resetInboxProcessingStoreForTests();
     seedInboxItemForProcessingTests({

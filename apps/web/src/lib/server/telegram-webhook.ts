@@ -176,6 +176,7 @@ export async function handleTelegramWebhook(
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
         idempotencyKey: buildLazyLinkReplyIdempotencyKey(parsedUpdate.data.update_id),
+        eventType: "telegram_google_calendar_link_gate",
         text: connectReply,
         persistedText: redactTokenizedUrls(connectReply)
       },
@@ -397,6 +398,7 @@ type SendFollowUpMessageInput = {
   chatId: string;
   inboxItemId?: string;
   idempotencyKey?: string;
+  eventType?: string;
   text: string;
   persistedText?: string;
 };
@@ -441,7 +443,7 @@ async function sendFollowUpMessage(
   const reservation = await recordOutgoingTelegramMessageIfNew(
     {
       userId: input.userId,
-      eventType: "telegram_followup_message",
+      eventType: input.eventType ?? "telegram_followup_message",
       idempotencyKey,
       payload: {
         chatId: input.chatId,

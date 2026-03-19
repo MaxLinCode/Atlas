@@ -6,6 +6,7 @@ Current playbooks:
 
 - `feature-delivery.md`: standard Git-based workflow for shipping features, fixes, and behavior changes in Atlas
 - `vercel-telegram-webhook.md`: deploy the Telegram webhook app to Vercel and run the first smoke test
+- `production-deploy-checklist.md`: ordered production deploy runbook covering env setup, migrations, Vercel deploy, webhook verification, Google OAuth validation, and cron verification
 
 Examples:
 

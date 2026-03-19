@@ -64,6 +64,8 @@ For local-only test credentials, prefer `apps/web/.env.test.local`, which is git
 
 To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
 
+For hosted rollout steps, use [`docs/workflows/production-deploy-checklist.md`](docs/workflows/production-deploy-checklist.md) as the main production deploy runbook and [`docs/workflows/vercel-telegram-webhook.md`](docs/workflows/vercel-telegram-webhook.md) for the narrower webhook-only setup flow.
+
 Atlas no longer exposes public planner/debug mutation routes. The intended externally reachable surfaces are:
 
 - `POST /api/telegram/webhook`
