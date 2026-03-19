@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxPlanningOutput } from "@atlas/core";
 import {
   getDefaultGoogleCalendarConnectionStore,
@@ -19,6 +19,10 @@ describe("process inbox item service", () => {
     resetInboxProcessingStoreForTests();
     resetGoogleCalendarConnectionStoreForTests();
     resetCalendarAdapterForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("creates a task and calendar-backed current commitment from model-driven capture", async () => {
@@ -136,6 +140,74 @@ describe("process inbox item service", () => {
     expect(result.outcome).toBe("needs_clarification");
     expect(listTasksForTests()).toHaveLength(0);
     expect(result.followUpMessage).toContain("connect Google Calendar");
+  });
+
+  it("logs calendar write attempts and success for scheduled task creation", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-log-create",
+      userId: "123",
+      sourceEventId: "event-log-create",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    await processInboxItem(
+      {
+        inboxItemId: "inbox-log-create"
+      },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Captured and scheduled Review launch checklist.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Review launch checklist",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayOffset: 0,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task in the next slot."
+            }
+          ],
+          userReplyMessage: "Scheduled."
+        })
+      }
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      "calendar_write_attempt",
+      expect.objectContaining({
+        operation: "create",
+        userId: "123"
+      })
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      "calendar_write_succeeded",
+      expect.objectContaining({
+        operation: "create",
+        userId: "123",
+        externalCalendarId: "primary"
+      })
+    );
   });
 
   it("uses model-provided timing constraints for combined task and schedule requests", async () => {

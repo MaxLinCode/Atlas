@@ -494,31 +494,70 @@ async function scheduleTaskWithCalendar(input: {
   proposedBlock: ScheduleBlock;
 }): Promise<ScheduleBlock> {
   const currentEvent = await getCurrentCalendarEvent(input.calendar, input.task);
+  const operation = currentEvent ? "update" : "create";
+  const externalCalendarId =
+    currentEvent?.externalCalendarId ??
+    input.task.externalCalendarId ??
+    input.proposedBlock.externalCalendarId ??
+    input.selectedCalendarId;
 
-  const calendarEvent = currentEvent
-    ? await input.calendar.updateEvent({
-        externalCalendarEventId: currentEvent.externalCalendarEventId,
-        externalCalendarId: currentEvent.externalCalendarId,
-        title: input.task.title,
-        startAt: input.proposedBlock.startAt,
-        endAt: input.proposedBlock.endAt
-      })
-    : await input.calendar.createEvent({
-        title: input.task.title,
-        startAt: input.proposedBlock.startAt,
-        endAt: input.proposedBlock.endAt,
-        externalCalendarId:
-          input.task.externalCalendarId ?? input.proposedBlock.externalCalendarId ?? input.selectedCalendarId
-      });
-
-  return buildScheduleBlockFromCalendarEvent({
-    taskId: input.proposedBlock.taskId,
+  logCalendarWriteAttempt({
+    operation,
+    taskId: input.task.id,
     userId: input.task.userId,
-    reason: input.proposedBlock.reason,
-    rescheduleCount: input.proposedBlock.rescheduleCount,
-    confidence: input.proposedBlock.confidence,
-    calendarEvent
+    externalCalendarEventId: currentEvent?.externalCalendarEventId ?? null,
+    externalCalendarId,
+    startAt: input.proposedBlock.startAt,
+    endAt: input.proposedBlock.endAt
   });
+
+  try {
+    const calendarEvent = currentEvent
+      ? await input.calendar.updateEvent({
+          externalCalendarEventId: currentEvent.externalCalendarEventId,
+          externalCalendarId: currentEvent.externalCalendarId,
+          title: input.task.title,
+          startAt: input.proposedBlock.startAt,
+          endAt: input.proposedBlock.endAt
+        })
+      : await input.calendar.createEvent({
+          title: input.task.title,
+          startAt: input.proposedBlock.startAt,
+          endAt: input.proposedBlock.endAt,
+          externalCalendarId
+        });
+
+    logCalendarWriteSuccess({
+      operation,
+      taskId: input.task.id,
+      userId: input.task.userId,
+      externalCalendarEventId: calendarEvent.externalCalendarEventId,
+      externalCalendarId: calendarEvent.externalCalendarId,
+      startAt: calendarEvent.scheduledStartAt,
+      endAt: calendarEvent.scheduledEndAt
+    });
+
+    return buildScheduleBlockFromCalendarEvent({
+      taskId: input.proposedBlock.taskId,
+      userId: input.task.userId,
+      reason: input.proposedBlock.reason,
+      rescheduleCount: input.proposedBlock.rescheduleCount,
+      confidence: input.proposedBlock.confidence,
+      calendarEvent
+    });
+  } catch (error) {
+    logCalendarWriteFailure({
+      operation,
+      taskId: input.task.id,
+      userId: input.task.userId,
+      externalCalendarEventId: currentEvent?.externalCalendarEventId ?? null,
+      externalCalendarId,
+      startAt: input.proposedBlock.startAt,
+      endAt: input.proposedBlock.endAt,
+      error
+    });
+    throw error;
+  }
 }
 
 async function buildRuntimeScheduleBlocks(
@@ -588,6 +627,60 @@ function buildScheduleBlockFromCalendarEvent(input: {
     rescheduleCount: input.rescheduleCount,
     externalCalendarId: input.calendarEvent.externalCalendarId
   };
+}
+
+function logCalendarWriteAttempt(input: {
+  operation: "create" | "update";
+  taskId: string;
+  userId: string;
+  externalCalendarEventId: string | null;
+  externalCalendarId: string | null;
+  startAt: string;
+  endAt: string;
+}) {
+  console.info("calendar_write_attempt", input);
+}
+
+function logCalendarWriteSuccess(input: {
+  operation: "create" | "update";
+  taskId: string;
+  userId: string;
+  externalCalendarEventId: string;
+  externalCalendarId: string;
+  startAt: string;
+  endAt: string;
+}) {
+  console.info("calendar_write_succeeded", input);
+}
+
+function logCalendarWriteFailure(input: {
+  operation: "create" | "update";
+  taskId: string;
+  userId: string;
+  externalCalendarEventId: string | null;
+  externalCalendarId: string | null;
+  startAt: string;
+  endAt: string;
+  error: unknown;
+}) {
+  console.error("calendar_write_failed", {
+    operation: input.operation,
+    taskId: input.taskId,
+    userId: input.userId,
+    externalCalendarEventId: input.externalCalendarEventId,
+    externalCalendarId: input.externalCalendarId,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    error:
+      input.error instanceof Error
+        ? {
+            name: input.error.name,
+            message: input.error.message
+          }
+        : {
+            message: String(input.error)
+          }
+  });
 }
 
 function saveClarification(input: ApplyPlanningResultInput, reason: string) {

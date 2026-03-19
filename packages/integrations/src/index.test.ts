@@ -130,6 +130,11 @@ describe("integrations", () => {
           JSON.stringify({
             items: [
               {
+                id: "atlas-calendar-id",
+                summary: "Atlas",
+                accessRole: "owner"
+              },
+              {
                 id: "primary",
                 summary: "Primary",
                 primary: true,
@@ -160,8 +165,64 @@ describe("integrations", () => {
       })
     ).resolves.toMatchObject({
       providerAccountId: "google-user-1",
-      selectedCalendarId: "primary"
+      selectedCalendarId: "atlas-calendar-id",
+      selectedCalendarName: "Atlas"
     });
+  });
+
+  it("creates an Atlas calendar for new links when one does not already exist", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "google-user-1",
+            email: "max@example.com"
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "primary",
+                summary: "My Calendar",
+                primary: true,
+                accessRole: "owner"
+              }
+            ]
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "atlas-created-id",
+            summary: "Atlas"
+          })
+        )
+      );
+
+    await expect(
+      fetchGoogleCalendarIdentity({
+        accessToken: "access-token",
+        fetch: fetchMock
+      })
+    ).resolves.toMatchObject({
+      providerAccountId: "google-user-1",
+      email: "max@example.com",
+      selectedCalendarId: "atlas-created-id",
+      selectedCalendarName: "Atlas"
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "https://www.googleapis.com/calendar/v3/calendars",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
   });
 
   it("reads Google free busy periods through the real adapter contract", async () => {

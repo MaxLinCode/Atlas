@@ -35,6 +35,11 @@ const googleCalendarListResponseSchema = z.object({
   )
 });
 
+const googleCalendarRecordSchema = z.object({
+  id: z.string().min(1),
+  summary: z.string().min(1)
+});
+
 const googleUserInfoSchema = z.object({
   id: z.string().min(1),
   email: z.string().email()
@@ -413,8 +418,12 @@ export async function fetchGoogleCalendarIdentity(input: {
   const userInfo = googleUserInfoSchema.parse(await userInfoResponse.json());
   const calendarList = googleCalendarListResponseSchema.parse(await calendarsResponse.json());
   const selectedCalendar =
-    calendarList.items.find((calendar) => calendar.primary && isWritableCalendar(calendar.accessRole)) ??
-    calendarList.items.find((calendar) => isWritableCalendar(calendar.accessRole));
+    findExistingAtlasCalendar(calendarList.items) ??
+    (await createAtlasCalendar({
+      accessToken: input.accessToken,
+      fetch: fetchImpl
+    }).catch(() => null)) ??
+    findWritableFallbackCalendar(calendarList.items);
 
   if (!selectedCalendar) {
     throw new Error("No writable Google Calendar was returned for the linked account.");
@@ -464,6 +473,55 @@ function parseGoogleEvent(payload: unknown, externalCalendarId: string): Calenda
 
 function isWritableCalendar(accessRole?: string) {
   return accessRole === "owner" || accessRole === "writer";
+}
+
+function findExistingAtlasCalendar(
+  calendars: Array<{
+    id: string;
+    summary: string;
+    primary?: boolean;
+    accessRole?: string;
+  }>
+) {
+  return (
+    calendars.find(
+      (calendar) => isWritableCalendar(calendar.accessRole) && calendar.summary.trim().toLowerCase() === "atlas"
+    ) ?? null
+  );
+}
+
+function findWritableFallbackCalendar(
+  calendars: Array<{
+    id: string;
+    summary: string;
+    primary?: boolean;
+    accessRole?: string;
+  }>
+) {
+  return (
+    calendars.find((calendar) => calendar.primary && isWritableCalendar(calendar.accessRole)) ??
+    calendars.find((calendar) => isWritableCalendar(calendar.accessRole)) ??
+    null
+  );
+}
+
+async function createAtlasCalendar(input: {
+  accessToken: string;
+  fetch: typeof fetch;
+}) {
+  const response = await input.fetch("https://www.googleapis.com/calendar/v3/calendars", {
+    method: "POST",
+    headers: buildGoogleHeaders(input.accessToken),
+    body: JSON.stringify({
+      summary: "Atlas"
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google calendar creation failed with status ${response.status}.`);
+  }
+
+  return googleCalendarRecordSchema.parse(await response.json());
 }
 
 function normalizeGoogleDateTime(value: string | undefined) {

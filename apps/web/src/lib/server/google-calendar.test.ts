@@ -155,6 +155,11 @@ describe("google calendar app services", () => {
           JSON.stringify({
             items: [
               {
+                id: "atlas-calendar-id",
+                summary: "Atlas",
+                accessRole: "owner"
+              },
+              {
                 id: "primary",
                 summary: "Primary",
                 primary: true,
@@ -183,7 +188,8 @@ describe("google calendar app services", () => {
     });
     await expect(connectionStore.getConnection("123")).resolves.toMatchObject({
       email: "max@example.com",
-      selectedCalendarId: "primary"
+      selectedCalendarId: "atlas-calendar-id",
+      selectedCalendarName: "Atlas"
     });
     expect("headers" in result ? result.headers["set-cookie"] : "").toContain(
       `${buildGoogleCalendarConnectCookieName()}=`
