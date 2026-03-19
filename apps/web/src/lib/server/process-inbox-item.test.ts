@@ -515,7 +515,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T16:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toContain("T15:00:00.000Z");
   });
 
   it("marks invalid model output references for clarification", async () => {

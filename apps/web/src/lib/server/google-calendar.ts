@@ -99,6 +99,15 @@ export async function handleGoogleCalendarConnect(
     connectionStore?: GoogleCalendarConnectionStore;
   } = {}
 ) {
+  return handleGoogleCalendarConnectPreview(request);
+}
+
+export async function handleGoogleCalendarConnectPreview(
+  request: Request,
+  _dependencies: {
+    connectionStore?: GoogleCalendarConnectionStore;
+  } = {}
+) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   const config = getConfig();
@@ -141,7 +150,63 @@ export async function handleGoogleCalendarConnect(
     };
   }
 
+  return {
+    status: 200,
+    body: {
+      accepted: true,
+      token
+    },
+    confirmation: {
+      title: "Connect Google Calendar",
+      message: "Atlas needs access to your Google Calendar before it can schedule work for you.",
+      actionLabel: "Continue to Google"
+    }
+  };
+}
+
+export async function handleGoogleCalendarConnectConfirm(
+  request: Request,
+  dependencies: {
+    connectionStore?: GoogleCalendarConnectionStore;
+  } = {}
+) {
+  const formData = await request.formData().catch(() => null);
+  const tokenValue = formData?.get("token");
+
+  if (typeof tokenValue !== "string" || tokenValue.length === 0) {
+    return {
+      status: 400,
+      body: {
+        accepted: false,
+        error: "missing_link_token"
+      }
+    };
+  }
+
+  const url = new URL(request.url);
+  url.searchParams.set("token", tokenValue);
+  const previewResult = await handleGoogleCalendarConnectPreview(new Request(url.toString()));
+
+  if (previewResult.status !== 200) {
+    return previewResult;
+  }
+
   const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const verifiedToken = verifyGoogleCalendarLinkToken({
+    token: tokenValue,
+    secret: getGoogleCalendarSecurityConfig().GOOGLE_LINK_TOKEN_SECRET
+  });
+
+  if (!verifiedToken) {
+    return {
+      status: 403,
+      body: {
+        accepted: false,
+        error: "invalid_link_token"
+      }
+    };
+  }
+
   const handoff = await connectionStore.consumeLinkHandoff(verifiedToken.handoffId);
 
   if (!handoff || handoff.userId !== verifiedToken.userId) {

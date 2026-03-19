@@ -12,7 +12,8 @@ import {
 import {
   buildGoogleCalendarConnectCookieName,
   createGoogleCalendarConnectLink,
-  handleGoogleCalendarConnect,
+  handleGoogleCalendarConnectConfirm,
+  handleGoogleCalendarConnectPreview,
   handleGoogleCalendarOauthCallback,
   reconcileGoogleCalendarConnections,
   resolveGoogleCalendarAdapter,
@@ -36,7 +37,7 @@ describe("google calendar app services", () => {
     resetInboxProcessingStoreForTests();
   });
 
-  it("creates a one-time connect link and starts OAuth from a valid link session", async () => {
+  it("previews a connect link on get and starts OAuth only after explicit confirmation", async () => {
     const connectionStore = getDefaultGoogleCalendarConnectionStore();
     const connectLink = await createGoogleCalendarConnectLink(
       {
@@ -49,7 +50,24 @@ describe("google calendar app services", () => {
       }
     );
 
-    const connectResult = await handleGoogleCalendarConnect(new Request(connectLink), {
+    const previewResult = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
+      connectionStore
+    });
+
+    expect(previewResult.status).toBe(200);
+    expect("confirmation" in previewResult ? previewResult.confirmation : null).toMatchObject({
+      title: "Connect Google Calendar"
+    });
+
+    const previewUrl = new URL(connectLink);
+    const token = previewUrl.searchParams.get("token");
+    const confirmRequest = new Request("http://localhost/google-calendar/connect", {
+      method: "POST",
+      body: new URLSearchParams({
+        token: token ?? ""
+      })
+    });
+    const connectResult = await handleGoogleCalendarConnectConfirm(confirmRequest, {
       connectionStore
     });
 
@@ -83,9 +101,22 @@ describe("google calendar app services", () => {
         connectionStore
       }
     );
-    const connectResult = await handleGoogleCalendarConnect(new Request(connectLink), {
+    const previewUrl = new URL(connectLink);
+    const previewResult = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
       connectionStore
     });
+    expect(previewResult.status).toBe(200);
+    const connectResult = await handleGoogleCalendarConnectConfirm(
+      new Request("http://localhost/google-calendar/connect", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: previewUrl.searchParams.get("token") ?? ""
+        })
+      }),
+      {
+        connectionStore
+      }
+    );
     const cookie = "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
     const start = await startGoogleCalendarOauth(
       new Request("http://localhost/api/google-calendar/oauth/start", {
@@ -171,21 +202,54 @@ describe("google calendar app services", () => {
       }
     );
 
-    const first = await handleGoogleCalendarConnect(new Request(connectLink), {
+    const previewUrl = new URL(connectLink);
+    const firstPreview = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
       connectionStore
     });
-    const replay = await handleGoogleCalendarConnect(new Request(connectLink), {
-      connectionStore
-    });
-    const forged = await handleGoogleCalendarConnect(
+    const first = await handleGoogleCalendarConnectConfirm(
+      new Request("http://localhost/google-calendar/connect", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: previewUrl.searchParams.get("token") ?? ""
+        })
+      }),
+      {
+        connectionStore
+      }
+    );
+    const replay = await handleGoogleCalendarConnectConfirm(
+      new Request("http://localhost/google-calendar/connect", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: previewUrl.searchParams.get("token") ?? ""
+        })
+      }),
+      {
+        connectionStore
+      }
+    );
+    const forgedPreview = await handleGoogleCalendarConnectPreview(
       new Request("http://localhost/google-calendar/connect?token=forged"),
       {
         connectionStore
       }
     );
+    const forged = await handleGoogleCalendarConnectConfirm(
+      new Request("http://localhost/google-calendar/connect", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: "forged"
+        })
+      }),
+      {
+        connectionStore
+      }
+    );
 
+    expect(firstPreview.status).toBe(200);
     expect(first.status).toBe(302);
     expect(replay.status).toBe(403);
+    expect(forgedPreview.status).toBe(403);
     expect(forged.status).toBe(403);
   });
 
@@ -224,9 +288,17 @@ describe("google calendar app services", () => {
         connectionStore
       }
     );
-    const connectResult = await handleGoogleCalendarConnect(new Request(connectLink), {
-      connectionStore
-    });
+    const connectResult = await handleGoogleCalendarConnectConfirm(
+      new Request("http://localhost/google-calendar/connect", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: new URL(connectLink).searchParams.get("token") ?? ""
+        })
+      }),
+      {
+        connectionStore
+      }
+    );
     const cookie = "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
     const start = await startGoogleCalendarOauth(
       new Request("http://localhost/api/google-calendar/oauth/start", {

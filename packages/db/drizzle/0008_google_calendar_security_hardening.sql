@@ -1,4 +1,4 @@
-CREATE TABLE "google_calendar_link_handoffs" (
+CREATE TABLE IF NOT EXISTS "google_calendar_link_handoffs" (
   "id" text PRIMARY KEY NOT NULL,
   "user_id" text NOT NULL,
   "redirect_path" text,
@@ -7,7 +7,7 @@ CREATE TABLE "google_calendar_link_handoffs" (
   "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "google_calendar_link_sessions" (
+CREATE TABLE IF NOT EXISTS "google_calendar_link_sessions" (
   "id" text PRIMARY KEY NOT NULL,
   "user_id" text NOT NULL,
   "redirect_path" text,
