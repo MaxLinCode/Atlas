@@ -12,6 +12,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - finish disconnect UX and revoked-account operator visibility
   - tighten reconciliation observability and out-of-sync task handling
   - preserve the no-implicit-fallback rule: runtime scheduling requires a linked Google calendar, while in-memory calendar use stays test-only
+  - remove mutation-time `userReplyMessage` generation from the write-capable planner contract and render mutation replies only after the persisted outcome is known
   - split the app-owned Google Calendar service by responsibility:
     - link flow and session handling
     - runtime adapter resolution and token refresh
@@ -82,6 +83,10 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - Telegram now issues a one-time `/google-calendar/connect` handoff token signed with `GOOGLE_LINK_TOKEN_SECRET`
   - the connect route consumes that handoff, creates a short-lived server-side link session, sets an `HttpOnly` cookie, and redirects to OAuth start
   - OAuth start derives the Atlas user from that link session only
+- New Google links now target a dedicated Google calendar for Atlas-managed scheduling:
+  - if a writable calendar named `Atlas` already exists, Atlas links to it
+  - otherwise Atlas creates a new Google calendar named `Atlas` during OAuth callback and stores that as `selected_calendar_id` / `selected_calendar_name`
+  - Atlas must not silently fall back to the primary or another writable calendar for new links; if dedicated-calendar creation fails, linking should fail
 - Google access and refresh tokens are now encrypted at rest with `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`, and normal linked-account reads expose redacted metadata only.
 - The public planner/debug mutation routes have been removed. The only intended external app surfaces are:
   - `POST /api/telegram/webhook`
@@ -94,7 +99,13 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - Symbolic aliases are still important for existing-item mutations, but they are likely unnecessary overhead for simple new-task capture.
 - The webhook no longer seeds test-only in-memory processing state. Tests must inject in-memory stores and explicit priming when they want to exercise the handler without Postgres.
 - The webhook now attempts outbound Telegram follow-up delivery for planner outcomes, retries once inline on transport failure, and records outgoing transport events in `bot_events`.
-- The current lazy-link gate intentionally reuses webhook delivery plumbing, but the next cleanup pass should split generic gate replies from inbox-linked follow-up delivery so transport persistence and redaction rules stay explicit.
+- The lazy-link gate no longer pollutes normal recent-turn conversation context:
+  - pre-link Google connect replies now use their own bot-event type
+  - conversation-history reads explicitly exclude both the new gate event type and legacy persisted gate-copy text
+- The current lazy-link gate still intentionally reuses webhook delivery plumbing, but the next cleanup pass should split generic gate replies from inbox-linked follow-up delivery so transport persistence and redaction rules stay explicit.
+- Calendar write observability is now present at the app scheduling boundary:
+  - `process-inbox-item` logs structured `calendar_write_attempt`, `calendar_write_succeeded`, and `calendar_write_failed` events
+  - these logs include user/task ids, calendar ids, event ids when known, scheduled timestamps, and redacted error summaries only
 - The app now clarifies instead of applying unsafe planner outputs for:
   - `clarify` mixed with mutating actions
   - unsupported mixes of move and create actions
@@ -110,6 +121,12 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - `pnpm --filter @atlas/web test`
   - `pnpm --filter @atlas/integrations test`
   - `pnpm --filter @atlas/integration-tests test`
+  - `pnpm --filter @atlas/integrations typecheck`
+  - `pnpm --filter @atlas/integrations test -- src/index.test.ts`
+  - `pnpm --filter @atlas/web test -- src/lib/server/google-calendar.test.ts`
+  - `pnpm --filter @atlas/web test -- src/lib/server/process-inbox-item.test.ts`
+  - `pnpm --filter @atlas/web test -- src/app/api/telegram/webhook/route.test.ts`
+  - `pnpm --filter @atlas/db test -- src/index.test.ts`
 - The core follow-up and reschedule runtime semantics are now locked in docs. Remaining implementation work should follow those contracts rather than reopening the model.
 - The conversational model behavior is now documented as a separate two-path architecture. Remaining work should implement that design incrementally instead of trying to ship a full conversational bot in one slice.
 - The first `TurnRouter` slice is now landed:
@@ -159,6 +176,10 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - `packages/core` owns routing and confirmation-recovery product contracts
   - `packages/integrations` owns OpenAI transport, prompts, and parsing against those core-owned contracts
 - The next app-owned slice is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
+- Mutation replies should be rendered from actual persisted outcome, not from pre-execution planner prose:
+  - write-capable planner outputs should stop carrying a mutation `userReplyMessage`
+  - the app should execute the mutation first, then render the user-facing reply from `ProcessedInboxResult` and persisted task/schedule state
+  - that reply path should be able to mention the real scheduled time, whether Atlas created or updated a calendar event, and other concrete outcome details
 - Verification completed on this branch:
   - `pnpm typecheck`
   - `pnpm --filter @atlas/core test`

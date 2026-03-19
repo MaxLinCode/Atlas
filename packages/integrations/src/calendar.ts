@@ -422,11 +422,10 @@ export async function fetchGoogleCalendarIdentity(input: {
     (await createAtlasCalendar({
       accessToken: input.accessToken,
       fetch: fetchImpl
-    }).catch(() => null)) ??
-    findWritableFallbackCalendar(calendarList.items);
+    }));
 
   if (!selectedCalendar) {
-    throw new Error("No writable Google Calendar was returned for the linked account.");
+    throw new Error("Atlas could not select or create its dedicated Google Calendar.");
   }
 
   return {
@@ -479,29 +478,14 @@ function findExistingAtlasCalendar(
   calendars: Array<{
     id: string;
     summary: string;
-    primary?: boolean;
-    accessRole?: string;
+    primary?: boolean | undefined;
+    accessRole?: string | undefined;
   }>
 ) {
   return (
     calendars.find(
       (calendar) => isWritableCalendar(calendar.accessRole) && calendar.summary.trim().toLowerCase() === "atlas"
     ) ?? null
-  );
-}
-
-function findWritableFallbackCalendar(
-  calendars: Array<{
-    id: string;
-    summary: string;
-    primary?: boolean;
-    accessRole?: string;
-  }>
-) {
-  return (
-    calendars.find((calendar) => calendar.primary && isWritableCalendar(calendar.accessRole)) ??
-    calendars.find((calendar) => isWritableCalendar(calendar.accessRole)) ??
-    null
   );
 }
 

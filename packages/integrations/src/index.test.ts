@@ -225,6 +225,41 @@ describe("integrations", () => {
     );
   });
 
+  it("fails linking when Atlas calendar creation fails", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "google-user-1",
+            email: "max@example.com"
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "primary",
+                summary: "My Calendar",
+                primary: true,
+                accessRole: "owner"
+              }
+            ]
+          })
+        )
+      )
+      .mockResolvedValueOnce(new Response("nope", { status: 500 }));
+
+    await expect(
+      fetchGoogleCalendarIdentity({
+        accessToken: "access-token",
+        fetch: fetchMock
+      })
+    ).rejects.toThrow("Google calendar creation failed with status 500.");
+  });
+
   it("reads Google free busy periods through the real adapter contract", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
