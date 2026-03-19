@@ -429,7 +429,6 @@ describe("integrations", () => {
             output_parsed: {
               confidence: 0.91,
               summary: "Create and schedule a tax task.",
-              userReplyMessage: "Got it - tax task scheduled for 3pm.",
               actions: [
                 {
                   type: "create_task",

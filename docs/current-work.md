@@ -180,6 +180,12 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - write-capable planner outputs should stop carrying a mutation `userReplyMessage`
   - the app should execute the mutation first, then render the user-facing reply from `ProcessedInboxResult` and persisted task/schedule state
   - that reply path should be able to mention the real scheduled time, whether Atlas created or updated a calendar event, and other concrete outcome details
+- That mutation-reply slice is now landed in app-owned form:
+  - write-capable planner outputs no longer carry `userReplyMessage`
+  - `apps/web` now renders mutation follow-up replies from persisted `ProcessedInboxResult` data after the write succeeds
+  - confirmed-mutation recovery still carries `userReplyMessage` for non-writing clarification replies only
+  - follow-up fix pending: render scheduled and moved times in the actual user timezone rather than a temporary app-default timezone; treat this as a nuanced product/runtime formatting task, not a quick string swap
+  - follow-up fix pending: mutation replies must enumerate every task or schedule item touched by a successful mutation, not just the first persisted item
 - Verification completed on this branch:
   - `pnpm typecheck`
   - `pnpm --filter @atlas/core test`

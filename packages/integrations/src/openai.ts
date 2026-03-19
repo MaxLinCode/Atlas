@@ -278,7 +278,7 @@ function buildSystemPrompt() {
     "Do not overconfidently use existing aliases when the message also introduces new tasks.",
     "Do not emit multiple conflicting schedule actions for the same item.",
     "User-facing reply:",
-    "Include a userReplyMessage field with a friendly, natural response summarizing what you are planning to do (e.g., 'Got it, I've scheduled your dentist appointment for Friday at 2pm.') or clarifying what you need from the user.",
+    "Do not include any user-facing reply text in this output. The application renders mutation replies after it knows the persisted outcome.",
     "Return only valid structured actions that the application can safely validate and apply."
   ].join(" ");
 }

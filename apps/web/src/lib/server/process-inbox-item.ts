@@ -25,6 +25,7 @@ import {
   type CalendarBusyPeriod,
   type ExternalCalendarAdapter
 } from "@atlas/integrations";
+import { renderMutationReply } from "./mutation-reply";
 import { resolveGoogleCalendarAdapter } from "./google-calendar";
 
 export type ProcessInboxItemRequest = {
@@ -146,13 +147,15 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
       return saveClarification(input, "Model returned clarify alongside mutating actions.");
     }
 
-    return input.store.saveNeedsClarificationResult({
+    return withRenderedFollowUp(
+      await input.store.saveNeedsClarificationResult({
       inboxItemId: input.context.inboxItem.id,
       confidence: input.planning.confidence,
       plannerRun: input.plannerRun,
       reason: clarifyAction.reason,
-      followUpMessage: input.planning.userReplyMessage
-    });
+      followUpMessage: ""
+    })
+    );
   }
 
   if (moveActions.length > 0) {
@@ -254,14 +257,16 @@ async function applyCreatedTaskActions(
     return saveClarification(input, scheduleBlocks.reason);
   }
 
-  return input.store.saveTaskCaptureResult({
+  return withRenderedFollowUp(
+    await input.store.saveTaskCaptureResult({
     inboxItemId: input.context.inboxItem.id,
     confidence: input.planning.confidence,
     plannerRun: input.plannerRun,
     tasks: draftTasks,
     scheduleBlocks: scheduleBlocks.blocks,
-    followUpMessage: input.planning.userReplyMessage
-  });
+    followUpMessage: ""
+  })
+  );
 }
 
 async function applyExistingTaskScheduleActions(
@@ -327,14 +332,16 @@ async function applyExistingTaskScheduleActions(
     existingBlocks = [...existingBlocks, persistedSchedule];
   }
 
-  return input.store.saveScheduleRequestResult({
+  return withRenderedFollowUp(
+    await input.store.saveScheduleRequestResult({
     inboxItemId: input.context.inboxItem.id,
     confidence: input.planning.confidence,
     plannerRun: input.plannerRun,
     taskIds: existingTaskIds,
     scheduleBlocks,
-    followUpMessage: input.planning.userReplyMessage
-  });
+    followUpMessage: ""
+  })
+  );
 }
 
 async function applyMoveAction(
@@ -414,7 +421,8 @@ async function applyMoveAction(
     endAt: adjustment.newEndAt
   });
 
-  return input.store.saveScheduleAdjustmentResult({
+  return withRenderedFollowUp(
+    await input.store.saveScheduleAdjustmentResult({
     inboxItemId: input.context.inboxItem.id,
     confidence: input.planning.confidence,
     plannerRun: input.plannerRun,
@@ -422,8 +430,9 @@ async function applyMoveAction(
     newStartAt: updatedEvent.scheduledStartAt,
     newEndAt: updatedEvent.scheduledEndAt,
     reason: action.reason,
-    followUpMessage: input.planning.userReplyMessage
-  });
+    followUpMessage: ""
+  })
+  );
 }
 
 async function buildScheduleBlocksForCreatedTasks(
@@ -690,7 +699,7 @@ function saveClarification(input: ApplyPlanningResultInput, reason: string) {
     plannerRun: input.plannerRun,
     reason,
     followUpMessage: reason
-  });
+  }).then(withRenderedFollowUp);
 }
 
 function buildPlannerRun(
@@ -741,4 +750,11 @@ function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessIn
   }
 
   return input;
+}
+
+function withRenderedFollowUp(result: ProcessedInboxResult): ProcessedInboxResult {
+  return {
+    ...result,
+    followUpMessage: renderMutationReply(result)
+  };
 }

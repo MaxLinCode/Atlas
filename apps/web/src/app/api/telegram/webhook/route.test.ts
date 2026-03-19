@@ -35,7 +35,6 @@ vi.mock("@atlas/integrations", async () => {
     planInboxItemWithResponses: async () => ({
       confidence: 0.9,
       summary: "Captured and scheduled Review launch checklist.",
-      userReplyMessage: "Captured and scheduled Review launch checklist.",
       actions: [
         {
           type: "create_task",
@@ -442,7 +441,7 @@ describe("telegram webhook route", () => {
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
-      text: "Captured and scheduled Review launch checklist."
+      text: expect.stringContaining("Scheduled 'Review launch checklist'")
     });
   });
 
@@ -546,8 +545,7 @@ describe("telegram webhook route", () => {
           },
           reason: "The user confirmed the proposed 3pm slot."
         }
-      ],
-      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
+      ]
     }));
     const confirmedMutationRecoverer = vi.fn(async () => ({
       outcome: "recovered" as const,
@@ -626,6 +624,11 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Scheduled 'Dentist reminder'")
+      })
+    );
   });
 
   it("supports broader follow-up refinements in confirmed mutation turns", async () => {
@@ -648,8 +651,7 @@ describe("telegram webhook route", () => {
           },
           reason: "The user asked to push it 1 hour later."
         }
-      ],
-      userReplyMessage: "Done - I've moved it to 4pm."
+      ]
     }));
 
     seedInboxItemForProcessingTests({
@@ -742,6 +744,11 @@ describe("telegram webhook route", () => {
         inboxItem: expect.objectContaining({
           rawText: "Move the scheduled review block 1 hour later."
         })
+      })
+    );
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Moved it to")
       })
     );
   });

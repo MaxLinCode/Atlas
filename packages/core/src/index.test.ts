@@ -367,7 +367,6 @@ describe("core package", () => {
     const result = await processInboxItem({
       confidence: 0.9,
       summary: "Create and schedule a task.",
-      userReplyMessage: "Captured and scheduled Review launch checklist.",
       actions: [
         {
           type: "create_task",
