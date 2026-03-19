@@ -68,8 +68,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task in the next slot."
             }
-          ],
-          userReplyMessage: "Got it - I've added 'Review launch checklist' to your schedule for tomorrow at 9am."
+          ]
         })
       }
     );
@@ -85,6 +84,7 @@ describe("process inbox item service", () => {
       externalCalendarId: "primary",
       rescheduleCount: 0
     });
+    expect(result.followUpMessage).toContain("Scheduled 'Review launch checklist'");
   });
 
   it("asks for Google Calendar linking instead of scheduling against the in-memory fallback", async () => {
@@ -131,8 +131,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task in the next slot."
             }
-          ],
-          userReplyMessage: "Schedule it."
+          ]
         })
       }
     );
@@ -187,8 +186,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task in the next slot."
             }
-          ],
-          userReplyMessage: "Scheduled."
+          ]
         })
       }
     );
@@ -253,8 +251,7 @@ describe("process inbox item service", () => {
               },
               reason: "The user requested tomorrow at 3pm."
             }
-          ],
-          userReplyMessage: "Got it--I've added 'Submit taxes' to your schedule for tomorrow at 3pm."
+          ]
         })
       }
     );
@@ -290,8 +287,7 @@ describe("process inbox item service", () => {
           },
           reason: "The user confirmed the 3pm proposal."
         }
-      ],
-          userReplyMessage: "Got it--I've added 'Submit taxes' to your schedule for tomorrow at 3pm."
+      ]
     }));
 
     seedInboxItemForProcessingTests({
@@ -371,8 +367,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task in the next slot."
             }
-          ],
-          userReplyMessage: "Got it - I've added 'Review launch checklist' to your schedule for tomorrow at 9am."
+          ]
         })
       }
     );
@@ -410,8 +405,7 @@ describe("process inbox item service", () => {
               },
               reason: "The user asked to move it to 3pm."
             }
-          ],
-          userReplyMessage: "Perfect - I've moved your review to 3pm today."
+          ]
         })
       }
     );
@@ -424,6 +418,7 @@ describe("process inbox item service", () => {
       lifecycleState: "scheduled",
       rescheduleCount: 1
     });
+    expect(result.followUpMessage).toContain("Moved it to");
   });
 
   it("keeps move scheduling out of Google-busy slots", async () => {
@@ -511,8 +506,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task."
             }
-          ],
-          userReplyMessage: "Scheduled."
+          ]
         })
       }
     );
@@ -580,8 +574,7 @@ describe("process inbox item service", () => {
               },
               reason: "The user asked to move it to 3pm."
             }
-          ],
-          userReplyMessage: "Moved."
+          ]
         })
       }
     );
@@ -623,8 +616,7 @@ describe("process inbox item service", () => {
               },
               reason: "Move the most likely block."
             }
-          ],
-          userReplyMessage: "I found your review block, but I'm not sure which one you meant. Can you clarify which event you want to move?"
+          ]
         })
       }
     );
@@ -690,8 +682,7 @@ describe("process inbox item service", () => {
                 },
                 reason: "Schedule the new task in the next slot."
               }
-            ],
-            userReplyMessage: "Got it--I've added 'Review launch checklist' to your schedule for tomorrow at 9am."
+            ]
           })
         }
       )
@@ -749,8 +740,7 @@ describe("process inbox item service", () => {
               },
               reason: "Schedule the new task in the next slot."
             }
-          ],
-          userReplyMessage: "Got it - I've added 'Review launch checklist' to your schedule for tomorrow at 9am."
+          ]
         })
       }
     );
@@ -816,8 +806,7 @@ describe("process inbox item service", () => {
                 },
                 reason: "The user asked to move it to 3pm."
               }
-            ],
-            userReplyMessage: "Perfect--I've moved your review to 3pm today."
+            ]
           })
         }
       )

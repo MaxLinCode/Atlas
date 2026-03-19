@@ -416,8 +416,7 @@ export const planningActionSchema = z.discriminatedUnion("type", [
 export const inboxPlanningOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
   summary: z.string().min(1),
-  actions: z.array(planningActionSchema).min(1),
-  userReplyMessage: z.string().min(1)
+  actions: z.array(planningActionSchema).min(1)
 });
 
 export const inboxPlanningTaskContextSchema = z.object({
