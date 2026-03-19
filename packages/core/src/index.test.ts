@@ -470,7 +470,7 @@ describe("core package", () => {
       }
     });
 
-    expect(result.inserts[0]?.startAt).toContain("T15:00:00.000Z");
+    expect(result.inserts[0]?.startAt).toBe("2026-03-14T22:00:00.000Z");
   });
 
   it("builds schedule adjustments from structured move requests", () => {
@@ -497,7 +497,50 @@ describe("core package", () => {
       existingBlocks: []
     });
 
-    expect(result.newStartAt).toContain("T15:00:00.000Z");
+    expect(result.newStartAt).toBe("2026-03-18T22:00:00.000Z");
+  });
+
+  it("interprets preferred-window scheduling in the user's timezone near UTC day boundaries", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Plan quarterly review",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      now: "2026-03-19T06:00:00.000Z",
+      scheduleConstraint: {
+        dayOffset: 2,
+        explicitHour: null,
+        minute: 0,
+        preferredWindow: "morning",
+        sourceText: "Friday morning"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-20T16:00:00.000Z");
   });
 
   it("marks scheduled tasks as follow-up due only after the end time", () => {

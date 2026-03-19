@@ -97,4 +97,48 @@ describe("mutation reply renderer", () => {
     expect(reply).toContain("'Review launch checklist'");
     expect(reply).toContain("'Send client update'");
   });
+
+  it("formats scheduled times in the supplied user timezone", () => {
+    const reply = renderMutationReply(
+      {
+        outcome: "updated_schedule",
+        inboxItem: {
+          id: "inbox-1",
+          userId: "123",
+          sourceEventId: "event-1",
+          rawText: "Move it",
+          normalizedText: "Move it",
+          processingStatus: "planned",
+          linkedTaskIds: ["task-1"]
+        },
+        plannerRun: {
+          id: "run-1",
+          userId: "123",
+          inboxItemId: "inbox-1",
+          version: "test",
+          modelInput: {},
+          modelOutput: {},
+          confidence: 0.9
+        },
+        updatedBlock: {
+          id: "event-a",
+          userId: "123",
+          taskId: "task-1",
+          startAt: "2026-03-20T16:00:00.000Z",
+          endAt: "2026-03-20T17:00:00.000Z",
+          confidence: 0.9,
+          reason: "Moved",
+          rescheduleCount: 1,
+          externalCalendarId: "primary"
+        },
+        followUpMessage: ""
+      },
+      {
+        timeZone: "America/Los_Angeles"
+      }
+    );
+
+    expect(reply).toContain("Mar 20");
+    expect(reply).toContain("9:00 AM");
+  });
 });

@@ -154,7 +154,8 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
       plannerRun: input.plannerRun,
       reason: clarifyAction.reason,
       followUpMessage: ""
-    })
+    }),
+      input.context.userProfile.timezone
     );
   }
 
@@ -265,7 +266,8 @@ async function applyCreatedTaskActions(
     tasks: draftTasks,
     scheduleBlocks: scheduleBlocks.blocks,
     followUpMessage: ""
-  })
+  }),
+    input.context.userProfile.timezone
   );
 }
 
@@ -340,7 +342,8 @@ async function applyExistingTaskScheduleActions(
     taskIds: existingTaskIds,
     scheduleBlocks,
     followUpMessage: ""
-  })
+  }),
+    input.context.userProfile.timezone
   );
 }
 
@@ -431,7 +434,8 @@ async function applyMoveAction(
     newEndAt: updatedEvent.scheduledEndAt,
     reason: action.reason,
     followUpMessage: ""
-  })
+  }),
+    input.context.userProfile.timezone
   );
 }
 
@@ -699,7 +703,7 @@ function saveClarification(input: ApplyPlanningResultInput, reason: string) {
     plannerRun: input.plannerRun,
     reason,
     followUpMessage: reason
-  }).then(withRenderedFollowUp);
+  }).then((result) => withRenderedFollowUp(result, input.context.userProfile.timezone));
 }
 
 function buildPlannerRun(
@@ -752,9 +756,9 @@ function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessIn
   return input;
 }
 
-function withRenderedFollowUp(result: ProcessedInboxResult): ProcessedInboxResult {
+function withRenderedFollowUp(result: ProcessedInboxResult, timeZone: string): ProcessedInboxResult {
   return {
     ...result,
-    followUpMessage: renderMutationReply(result)
+    followUpMessage: renderMutationReply(result, { timeZone })
   };
 }

@@ -184,8 +184,9 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - write-capable planner outputs no longer carry `userReplyMessage`
   - `apps/web` now renders mutation follow-up replies from persisted `ProcessedInboxResult` data after the write succeeds
   - confirmed-mutation recovery still carries `userReplyMessage` for non-writing clarification replies only
-  - follow-up fix pending: render scheduled and moved times in the actual user timezone rather than a temporary app-default timezone; treat this as a nuanced product/runtime formatting task, not a quick string swap
   - follow-up fix pending: mutation replies must enumerate every task or schedule item touched by a successful mutation, not just the first persisted item
+  - follow-up UX pending: add a lightweight timezone UX so Atlas can surface, confirm, and override the inferred scheduling timezone when needed
+  - landed follow-up: scheduling and mutation reply rendering now use the user timezone rather than a temporary app-default timezone
 - Verification completed on this branch:
   - `pnpm typecheck`
   - `pnpm --filter @atlas/core test`
