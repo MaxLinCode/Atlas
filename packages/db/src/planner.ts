@@ -61,6 +61,13 @@ export type ProcessedInboxResult =
       followUpMessage: string;
     }
   | {
+      outcome: "completed_tasks";
+      inboxItem: InboxItem;
+      plannerRun: PersistedPlannerRun;
+      completedTasks: Task[];
+      followUpMessage: string;
+    }
+  | {
       outcome: "needs_clarification";
       inboxItem: InboxItem;
       plannerRun: PersistedPlannerRun;
@@ -95,6 +102,13 @@ export interface InboxProcessingStore {
     plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     scheduleBlocks: ScheduleBlock[];
+    followUpMessage: string;
+  }): Promise<ProcessedInboxResult>;
+  saveTaskCompletionResult(input: {
+    inboxItemId: string;
+    confidence: number;
+    plannerRun: Omit<PersistedPlannerRun, "id">;
+    taskIds: string[];
     followUpMessage: string;
   }): Promise<ProcessedInboxResult>;
   saveNeedsClarificationResult(input: {
@@ -387,6 +401,55 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore {
       inboxItem: updatedInbox,
       plannerRun,
       reason: input.reason,
+      followUpMessage: input.followUpMessage
+    };
+  }
+
+  async saveTaskCompletionResult(input: {
+    inboxItemId: string;
+    confidence: number;
+    plannerRun: Omit<PersistedPlannerRun, "id">;
+    taskIds: string[];
+    followUpMessage: string;
+  }): Promise<ProcessedInboxResult> {
+    const inboxItem = this.requireInboxItem(input.inboxItemId);
+    const completedAt = new Date().toISOString();
+    const completedTasks = input.taskIds.flatMap((taskId) => {
+      const task = this.tasksById.get(taskId);
+
+      if (!task) {
+        return [];
+      }
+
+      const updatedTask: StoredTask = {
+        ...task,
+        lastInboxItemId: input.inboxItemId,
+        lifecycleState: "done",
+        externalCalendarEventId: null,
+        externalCalendarId: null,
+        scheduledStartAt: null,
+        scheduledEndAt: null,
+        calendarSyncStatus: "in_sync",
+        calendarSyncUpdatedAt: completedAt,
+        completedAt
+      };
+      this.tasksById.set(task.id, updatedTask);
+      return [updatedTask];
+    });
+
+    const plannerRun = this.insertPlannerRun(input.plannerRun);
+    const updatedInbox = {
+      ...inboxItem,
+      processingStatus: "planned" as const,
+      linkedTaskIds: input.taskIds
+    };
+    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+
+    return {
+      outcome: "completed_tasks",
+      inboxItem: updatedInbox,
+      plannerRun,
+      completedTasks,
       followUpMessage: input.followUpMessage
     };
   }
@@ -861,6 +924,85 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore {
         },
         plannerRun,
         reason: input.reason,
+        followUpMessage: input.followUpMessage
+      };
+    });
+  }
+
+  async saveTaskCompletionResult(input: {
+    inboxItemId: string;
+    confidence: number;
+    plannerRun: Omit<PersistedPlannerRun, "id">;
+    taskIds: string[];
+    followUpMessage: string;
+  }): Promise<ProcessedInboxResult> {
+    return this.db.transaction(async (tx) => {
+      const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
+      const completedAt = new Date();
+
+      for (const taskId of input.taskIds) {
+        await tx
+          .update(tasks)
+          .set({
+            lastInboxItemId: input.inboxItemId,
+            lifecycleState: "done",
+            externalCalendarEventId: null,
+            externalCalendarId: null,
+            scheduledStartAt: null,
+            scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: completedAt,
+            completedAt
+          })
+          .where(eq(tasks.id, taskId));
+      }
+
+      const completedTasksRows = input.taskIds.length
+        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        : [];
+      const completedTasks = completedTasksRows
+        .filter((task) => input.taskIds.includes(task.id))
+        .map((task) => ({
+          id: task.id,
+          userId: task.userId,
+          sourceInboxItemId: task.sourceInboxItemId,
+          lastInboxItemId: task.lastInboxItemId,
+          title: task.title,
+          lifecycleState: task.lifecycleState as Task["lifecycleState"],
+          externalCalendarEventId: task.externalCalendarEventId,
+          externalCalendarId: task.externalCalendarId,
+          scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
+          scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
+          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
+          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
+          rescheduleCount: task.rescheduleCount,
+          lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+          completedAt: task.completedAt?.toISOString() ?? null,
+          archivedAt: task.archivedAt?.toISOString() ?? null,
+          priority: task.priority as Task["priority"],
+          urgency: task.urgency as Task["urgency"],
+          createdAt: task.createdAt.toISOString()
+        }));
+
+      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+
+      await tx
+        .update(inboxItems)
+        .set({
+          processingStatus: "planned",
+          linkedTaskIds: input.taskIds
+        })
+        .where(eq(inboxItems.id, input.inboxItemId));
+
+      return {
+        outcome: "completed_tasks",
+        inboxItem: {
+          ...inboxItem,
+          processingStatus: "planned",
+          linkedTaskIds: input.taskIds
+        },
+        plannerRun,
+        completedTasks,
         followUpMessage: input.followUpMessage
       };
     });

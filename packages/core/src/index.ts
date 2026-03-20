@@ -446,6 +446,12 @@ export const moveScheduleBlockPlanningActionSchema = z.object({
   reason: z.string().min(1)
 });
 
+export const completeTaskPlanningActionSchema = z.object({
+  type: z.literal("complete_task"),
+  taskRef: taskReferenceSchema,
+  reason: z.string().min(1)
+});
+
 export const clarifyPlanningActionSchema = z.object({
   type: z.literal("clarify"),
   reason: z.string().min(1)
@@ -455,6 +461,7 @@ export const planningActionSchema = z.discriminatedUnion("type", [
   createTaskPlanningActionSchema,
   createScheduleBlockPlanningActionSchema,
   moveScheduleBlockPlanningActionSchema,
+  completeTaskPlanningActionSchema,
   clarifyPlanningActionSchema
 ]);
 
@@ -737,6 +744,7 @@ export function buildScheduleAdjustment(input: {
     profile: input.userProfile,
     existingBlocks: input.existingBlocks.filter((block) => block.id !== input.block.id),
     constraint: input.scheduleConstraint,
+    constraintBaseDate: new Date(input.block.startAt),
     slotOffset: 0
   });
   const endAt = new Date(startAt.getTime() + durationMinutes * 60_000);
@@ -757,6 +765,7 @@ type ComputeStartAtInput = {
   profile: UserProfile;
   existingBlocks: ScheduleBlock[];
   constraint: ScheduleConstraint | null;
+  constraintBaseDate?: Date;
   slotOffset: number;
 };
 
@@ -766,7 +775,12 @@ function computeStartAt(input: ComputeStartAtInput) {
 
   if (input.constraint) {
     const hour = input.constraint.explicitHour ?? preferredWindowHour(input.constraint.preferredWindow);
-    const localDate = resolveConstraintLocalDate(start, input.profile.timezone, input.constraint);
+    const localDate = resolveConstraintLocalDate(
+      start,
+      input.profile.timezone,
+      input.constraint,
+      input.constraintBaseDate
+    );
 
     return advanceForConflicts(
       buildDateInTimeZone({
@@ -887,7 +901,27 @@ function addDaysToLocalDate(
   };
 }
 
-function resolveConstraintLocalDate(now: Date, timeZone: string, constraint: ScheduleConstraint) {
+function resolveConstraintLocalDate(
+  now: Date,
+  timeZone: string,
+  constraint: ScheduleConstraint,
+  baseDate?: Date
+) {
+  if (
+    baseDate &&
+    constraint.dayReference === null &&
+    constraint.weekday === null &&
+    constraint.weekOffset === null
+  ) {
+    const baseLocalDate = getTimeZoneDateParts(baseDate, timeZone);
+
+    return {
+      year: baseLocalDate.year,
+      month: baseLocalDate.month,
+      day: baseLocalDate.day
+    };
+  }
+
   const localDate = getTimeZoneDateParts(now, timeZone);
 
   if (constraint.dayReference === null || constraint.dayReference === "today") {

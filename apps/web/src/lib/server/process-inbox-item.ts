@@ -142,6 +142,7 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
   const createTaskActions = actions.filter((action) => action.type === "create_task");
   const createScheduleActions = actions.filter((action) => action.type === "create_schedule_block");
   const moveActions = actions.filter((action) => action.type === "move_schedule_block");
+  const completeActions = actions.filter((action) => action.type === "complete_task");
 
   if (clarifyAction) {
     if (actions.length > 1) {
@@ -161,7 +162,12 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
   }
 
   if (moveActions.length > 0) {
-    if (moveActions.length !== 1 || createTaskActions.length > 0 || createScheduleActions.length > 0) {
+    if (
+      moveActions.length !== 1 ||
+      createTaskActions.length > 0 ||
+      createScheduleActions.length > 0 ||
+      completeActions.length > 0
+    ) {
       return saveClarification(input, "Model returned an unsupported mix of move and create actions.");
     }
 
@@ -179,11 +185,23 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
   }
 
   if (createTaskActions.length > 0) {
+    if (completeActions.length > 0) {
+      return saveClarification(input, "Model returned an unsupported mix of completion and creation actions.");
+    }
+
     if (!input.calendar) {
       return saveClarification(input, "Please connect Google Calendar before scheduling tasks.");
     }
 
     return applyCreatedTaskActions(input, createTaskActions, createScheduleActions);
+  }
+
+  if (completeActions.length > 0) {
+    if (createScheduleActions.length > 0) {
+      return saveClarification(input, "Model returned an unsupported mix of completion and scheduling actions.");
+    }
+
+    return applyCompletionActions(input, completeActions);
   }
 
   if (createScheduleActions.length > 0) {
@@ -436,6 +454,44 @@ async function applyMoveAction(
     reason: action.reason,
     followUpMessage: ""
   }),
+    input.context.userProfile.timezone
+  );
+}
+
+async function applyCompletionActions(
+  input: ApplyPlanningResultInput,
+  completeActions: Extract<PlanningAction, { type: "complete_task" }>[]
+) {
+  const referencedTaskAliases = completeActions.map((action) => action.taskRef.alias);
+
+  if (new Set(referencedTaskAliases).size !== referencedTaskAliases.length) {
+    return saveClarification(input, "Model returned multiple completion actions for the same task.");
+  }
+
+  const taskIds: string[] = [];
+
+  for (const action of completeActions) {
+    if (action.taskRef.kind !== "existing_task") {
+      return saveClarification(input, "Model returned a completion action for a non-persisted task.");
+    }
+
+    const task = resolveTaskReference(input.planningContext, action.taskRef);
+
+    if (!task) {
+      return saveClarification(input, `Could not resolve task alias ${action.taskRef.alias}.`);
+    }
+
+    taskIds.push(task.id);
+  }
+
+  return withRenderedFollowUp(
+    await input.store.saveTaskCompletionResult({
+      inboxItemId: input.context.inboxItem.id,
+      confidence: input.planning.confidence,
+      plannerRun: input.plannerRun,
+      taskIds,
+      followUpMessage: ""
+    }),
     input.context.userProfile.timezone
   );
 }
@@ -703,8 +759,20 @@ function saveClarification(input: ApplyPlanningResultInput, reason: string) {
     confidence: input.planning.confidence,
     plannerRun: input.plannerRun,
     reason,
-    followUpMessage: reason
+    followUpMessage: buildClarificationReply(reason)
   }).then((result) => withRenderedFollowUp(result, input.context.userProfile.timezone));
+}
+
+function buildClarificationReply(reason: string) {
+  if (
+    reason.startsWith("Model returned") ||
+    reason.startsWith("Could not resolve") ||
+    reason.startsWith("Expected ")
+  ) {
+    return "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.";
+  }
+
+  return reason;
 }
 
 function buildPlannerRun(
