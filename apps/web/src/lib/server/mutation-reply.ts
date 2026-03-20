@@ -31,8 +31,11 @@ export function renderMutationReply(
       return `Moved it to ${formatScheduledTime(result.updatedBlock.startAt, timeZone)}.`;
     }
 
+    case "completed_tasks":
+      return renderCompletedTasksReply(result.completedTasks);
+
     case "needs_clarification":
-      return result.reason;
+      return result.followUpMessage;
   }
 }
 
@@ -78,4 +81,22 @@ function renderScheduledItemsReply(input: {
   }
 
   return `Scheduled:\n${items.map((item) => `- ${item}`).join("\n")}`;
+}
+
+function renderCompletedTasksReply(tasks: { title: string }[]) {
+  if (tasks.length === 0) {
+    return "Marked it as done.";
+  }
+
+  if (tasks.length === 1) {
+    const [task] = tasks;
+
+    if (!task) {
+      return "Marked it as done.";
+    }
+
+    return `Marked ${quoteTaskTitle(task.title)} as done.`;
+  }
+
+  return `Marked as done:\n${tasks.map((task) => `- ${quoteTaskTitle(task.title)}`).join("\n")}`;
 }

@@ -12,7 +12,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - finish disconnect UX and revoked-account operator visibility
   - tighten reconciliation observability and out-of-sync task handling
   - preserve the no-implicit-fallback rule: runtime scheduling requires a linked Google calendar, while in-memory calendar use stays test-only
-  - remove mutation-time `userReplyMessage` generation from the write-capable planner contract and render mutation replies only after the persisted outcome is known
   - split the app-owned Google Calendar service by responsibility:
     - link flow and session handling
     - runtime adapter resolution and token refresh
@@ -70,6 +69,21 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
 - Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
+- Existing-task mutation turns need a narrow app-owned task candidate matching step before confirmed-mutation recovery or planner application when the user names a task informally, such as `journal` for `Journaling session`.
+- Keep that candidate matching deterministic and small-scope:
+  - build candidates from persisted non-archived tasks, not summaries
+  - prefer exact and near-exact title/token matches from the latest user turn
+  - use recent task context only as a tiebreaker, not as primary identity
+  - if there is one strong match, bind that task explicitly; if there are multiple plausible matches, ask a clarification
+- Compound mutation flow still needs refinement:
+  - for now, mixed planner outputs that combine `complete_task` with `create_task` are rejected rather than partially applied
+  - future work should define when explicit multi-write turns such as `journal is done, make a new coding task` may safely combine completion with new capture or scheduling
+  - that refinement should be validation-driven and task-centric, not a silent app-owned reducer over ambiguous mixed action sets
+- The next clarification-rendering slice should be source-based rather than string-pattern-based:
+  - planner `clarify` outputs should pass through their user-facing text directly
+  - confirmed-mutation recovery `needs_clarification` should pass through `userReplyMessage` directly
+  - app/runtime validation or execution failures should keep an internal audit `reason` but render user-facing clarification from app-owned safe copy
+  - result contracts should eventually separate internal `reason` from optional user-facing `userMessage` so renderers never need to infer which strings are safe
 - Confirmed-mutation recovery currently reconstructs one synthesized write-ready `recoveredText` plus a separate `userReplyMessage`; the recovery output is model-facing and must stay distinct from persisted inbox capture text.
 - The confirmed-mutation path should keep reusing the normal mutation planner via `planningInboxTextOverride.text` rather than introducing a second planner contract for short confirmation turns.
 - The current runtime now stores live scheduled commitment fields directly on `tasks`: `external_calendar_event_id`, `external_calendar_id`, `scheduled_start_at`, and `scheduled_end_at`.
@@ -151,12 +165,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - partial scheduling asks and other underspecified write intents should bias toward `conversation_then_mutation`
   - short-horizon confirmations or concrete refinements of one recent proposal may now route as `confirmed_mutation`
   - a small few-shot example set now reinforces the incomplete-versus-write-ready boundary in the router prompt
-- Scheduling normalization investigation pending:
-  - observed bug: `Friday at 10am` was normalized into same-day scheduling intent instead of a named-weekday intent anchored to the inbox timestamp
-  - concrete mismatch: with explicit dates in `America/Los_Angeles`, the task landed on Wednesday, March 18, 2026 instead of Friday, March 20, 2026
-  - current hypothesis: planner normalization failed before deterministic scheduling because relative dates were left to the model without an app-owned anchor date and deterministic weekday resolution
-  - next investigation steps: inspect the recorded planner input in `planner_runs`, add explicit timestamp context to the planner payload, and add a regression test covering weekday-name scheduling from a fixed `now`
-  - handoff note: this update is documentation-only; no code checks were run
 - A live local turn-router eval harness is now available:
   - `pnpm eval:turn-router` calls the real OpenAI Responses API against a curated fixture set
   - this is intended for manual prompt verification, not deterministic CI coverage
@@ -194,7 +202,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - `apps/web` owns routing orchestration and route application
   - `packages/core` owns routing and confirmation-recovery product contracts
   - `packages/integrations` owns OpenAI transport, prompts, and parsing against those core-owned contracts
-- The next app-owned slice is mutation reply rendering so planner/mutation outcomes and conversational turns stop sharing the same simple outbound reply shape.
 - Mutation replies should be rendered from actual persisted outcome, not from pre-execution planner prose:
   - write-capable planner outputs should stop carrying a mutation `userReplyMessage`
   - the app should execute the mutation first, then render the user-facing reply from `ProcessedInboxResult` and persisted task/schedule state
@@ -203,7 +210,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - write-capable planner outputs no longer carry `userReplyMessage`
   - `apps/web` now renders mutation follow-up replies from persisted `ProcessedInboxResult` data after the write succeeds
   - confirmed-mutation recovery still carries `userReplyMessage` for non-writing clarification replies only
-  - follow-up fix pending: mutation replies must enumerate every task or schedule item touched by a successful mutation, not just the first persisted item
   - follow-up UX pending: add a lightweight timezone UX so Atlas can surface, confirm, and override the inferred scheduling timezone when needed
   - landed follow-up: scheduling and mutation reply rendering now use the user timezone rather than a temporary app-default timezone
 - Verification completed on this branch:

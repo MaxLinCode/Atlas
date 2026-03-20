@@ -398,6 +398,28 @@ describe("core package", () => {
     expect(result.actions).toHaveLength(2);
   });
 
+  it("accepts completion actions for existing tasks", async () => {
+    const result = await processInboxItem({
+      confidence: 0.9,
+      summary: "Mark the journaling session as done.",
+      actions: [
+        {
+          type: "complete_task",
+          taskRef: {
+            kind: "existing_task",
+            alias: "existing_task_1"
+          },
+          reason: "The user said the journaling session is done."
+        }
+      ]
+    });
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "complete_task"
+    });
+  });
+
   it("rejects malformed structured outputs at the contract boundary", () => {
     const result = inboxPlanningOutputSchema.safeParse({
       confidence: 1.5,
@@ -504,7 +526,37 @@ describe("core package", () => {
       now: "2026-03-18T16:00:00.000Z"
     });
 
-    expect(result.newStartAt).toBe("2026-03-18T22:00:00.000Z");
+    expect(result.newStartAt).toBe("2026-03-13T22:00:00.000Z");
+  });
+
+  it("keeps move requests on the existing block day when only the time changes", () => {
+    const result = buildScheduleAdjustment({
+      block: scheduleBlockSchema.parse({
+        id: "event-1",
+        userId: "user-1",
+        taskId: "task-1",
+        startAt: "2026-03-20T16:00:00.000Z",
+        endAt: "2026-03-20T17:00:00.000Z",
+        confidence: 0.8,
+        reason: "Existing slot",
+        rescheduleCount: 0,
+        externalCalendarId: "primary"
+      }),
+      userProfile: buildDefaultUserProfile("user-1"),
+      scheduleConstraint: {
+        dayReference: null,
+        weekday: null,
+        weekOffset: null,
+        explicitHour: 10,
+        minute: 0,
+        preferredWindow: null,
+        sourceText: "10am"
+      },
+      existingBlocks: [],
+      now: "2026-03-19T16:00:00.000Z"
+    });
+
+    expect(result.newStartAt).toBe("2026-03-20T17:00:00.000Z");
   });
 
   it("interprets preferred-window scheduling in the user's timezone near UTC day boundaries", async () => {

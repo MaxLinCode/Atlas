@@ -759,6 +759,139 @@ describe("telegram webhook route", () => {
     );
   });
 
+  it("completes a recent task from a confirmed mutation recovery turn", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    await handleTelegramWebhook(
+      buildRequest({
+        update_id: 56,
+        message: {
+          message_id: 21,
+          date: 1_700_000_014,
+          text: "Journaling session",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        planner: async (): Promise<InboxPlanningOutput> => ({
+          confidence: 0.9,
+          summary: "Scheduled Journaling session.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Journaling session",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task in the next slot."
+            }
+          ]
+        })
+      }
+    );
+    sendTelegramMessageMock.mockClear();
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 57,
+        message: {
+          message_id: 22,
+          date: 1_700_000_015,
+          text: "journal is done",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        planner: async (): Promise<InboxPlanningOutput> => ({
+          confidence: 0.92,
+          summary: "Marked the journaling session as done.",
+          actions: [
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              reason: "The user said the journaling session is done."
+            }
+          ]
+        }),
+        confirmedMutationRecoverer: async () => ({
+          outcome: "recovered",
+          recoveredText: "Mark the journaling session as done.",
+          reason: "The latest turn clearly reports completion of the recent journaling task.",
+          userReplyMessage: "Got it."
+        }),
+        turnRouter: async () => ({
+          route: "confirmed_mutation",
+          reason: "The latest turn clearly completes one recent task.",
+          writesAllowed: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "confirmed_mutation",
+      processing: {
+        outcome: "completed_tasks"
+      }
+    });
+    expect(listTasksForTests()).toHaveLength(1);
+    expect(listTasksForTests()[0]).toMatchObject({
+      title: "Journaling session",
+      lifecycleState: "done",
+      externalCalendarEventId: null,
+      externalCalendarId: null
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Marked 'Journaling session' as done."
+      })
+    );
+  });
+
   it("falls back to clarification when confirmed mutation recovery is ambiguous", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
     const planner = vi.fn();

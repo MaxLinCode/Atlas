@@ -338,6 +338,206 @@ describe("process inbox item service", () => {
     );
   });
 
+  it("keeps confirmed mutation time refinements on the already scheduled day", async () => {
+    const store = getDefaultInboxProcessingStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-plane-tickets",
+      userId: "123",
+      sourceEventId: "event-plane-tickets",
+      rawText: "Buying plane tickets tomorrow morning",
+      normalizedText: "Buying plane tickets tomorrow morning",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-plane-tickets" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Buying plane tickets for tomorrow morning.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Buying plane tickets",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: "tomorrow",
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: "morning",
+                sourceText: "tomorrow morning"
+              },
+              reason: "The user asked for tomorrow morning."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-plane-tickets-refine",
+      userId: "123",
+      sourceEventId: "event-plane-tickets-refine",
+      rawText: "I mean 10am",
+      normalizedText: "I mean 10am",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:05:00.000Z"
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-plane-tickets-refine",
+        planningInboxTextOverride: {
+          text: "Move the scheduled Buying plane tickets block to 10am."
+        }
+      },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.86,
+          summary: "Moved Buying plane tickets to 10am.",
+          actions: [
+            {
+              type: "move_schedule_block",
+              blockRef: {
+                alias: "schedule_block_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 10,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "10am"
+              },
+              reason: "The user clarified the time."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("updated_schedule");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-21T17:00:00.000Z");
+  });
+
+  it("marks an existing task as done through the mutation path", async () => {
+    const store = getDefaultInboxProcessingStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-journal-task",
+      userId: "123",
+      sourceEventId: "event-journal-task",
+      rawText: "Journaling session",
+      normalizedText: "Journaling session",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+    await processInboxItem(
+      { inboxItemId: "inbox-journal-task" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Journaling session.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Journaling session",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task in the next slot."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-journal-done",
+      userId: "123",
+      sourceEventId: "event-journal-done",
+      rawText: "journal is done",
+      normalizedText: "journal is done",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-journal-done",
+        planningInboxTextOverride: {
+          text: "Mark the journaling session as done."
+        }
+      },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.91,
+          summary: "Marked the journaling session as done.",
+          actions: [
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              reason: "The user said the journaling session is done."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("completed_tasks");
+    expect(listTasksForTests()[0]).toMatchObject({
+      lastInboxItemId: "inbox-journal-done",
+      lifecycleState: "done",
+      externalCalendarEventId: null,
+      externalCalendarId: null
+    });
+    expect(listTasksForTests()[0]?.completedAt).toBeTruthy();
+    expect(result.followUpMessage).toBe("Marked 'Journaling session' as done.");
+  });
+
   it("moves an existing scheduled task by updating the same calendar event", async () => {
     const store = getDefaultInboxProcessingStore();
 
@@ -348,7 +548,8 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: "2026-03-19T16:00:00.000Z"
     });
     await processInboxItem(
       { inboxItemId: "inbox-task" },
@@ -395,7 +596,8 @@ describe("process inbox item service", () => {
       rawText: "move it to 3pm",
       normalizedText: "move it to 3pm",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: "2026-03-19T17:00:00.000Z"
     });
 
     const result = await processInboxItem(
@@ -429,7 +631,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-18T22:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-20T22:00:00.000Z");
     expect("updatedBlock" in result ? result.updatedBlock.id : "").toBe(listTasksForTests()[0]?.externalCalendarEventId);
     expect(listTasksForTests()[0]).toMatchObject({
       lastInboxItemId: "inbox-move",
@@ -463,7 +665,8 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: "2026-03-19T16:00:00.000Z"
     });
 
     await processInboxItem(
@@ -538,7 +741,8 @@ describe("process inbox item service", () => {
       rawText: "move it to 3pm",
       normalizedText: "move it to 3pm",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
+      createdAt: "2026-03-19T17:00:00.000Z"
     });
 
     const result = await processInboxItem(
@@ -602,7 +806,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-18T22:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-20T22:00:00.000Z");
   });
 
   it("marks invalid model output references for clarification", async () => {
@@ -647,6 +851,109 @@ describe("process inbox item service", () => {
 
     expect(result.outcome).toBe("needs_clarification");
     expect(listTasksForTests()).toHaveLength(0);
+  });
+
+  it("does not leak internal clarification reasons to the user", async () => {
+    seedInboxItemForProcessingTests({
+      id: "inbox-safe-clarify",
+      userId: "123",
+      sourceEventId: "event-safe-clarify",
+      rawText: "schedule both",
+      normalizedText: "schedule both",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-safe-clarify" },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.3,
+          summary: "Captured and scheduled tasks.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "9am"
+              },
+              reason: "Schedule the task."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect("reason" in result ? result.reason : "").toBe(
+      "Model returned invalid or mixed schedule references for newly created tasks."
+    );
+    expect(result.followUpMessage).toBe(
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+    );
+  });
+
+  it("rejects mixed completion and creation actions instead of partially applying them", async () => {
+    seedInboxItemForProcessingTests({
+      id: "inbox-mixed-complete-create",
+      userId: "123",
+      sourceEventId: "event-mixed-complete-create",
+      rawText: "journal is done, make a new coding task",
+      normalizedText: "journal is done, make a new coding task",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-mixed-complete-create" },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.4,
+          summary: "Mark the journal task as done and create a coding task.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Coding session",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              reason: "The user said journal is done."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect(listTasksForTests()).toHaveLength(0);
+    expect("reason" in result ? result.reason : "").toBe(
+      "Model returned an unsupported mix of completion and creation actions."
+    );
   });
 
   it("resets processing state and records a failed planner run when calendar creation fails", async () => {

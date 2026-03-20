@@ -141,4 +141,83 @@ describe("mutation reply renderer", () => {
     expect(reply).toContain("Mar 20");
     expect(reply).toContain("9:00 AM");
   });
+
+  it("renders completed task replies from persisted outcomes", () => {
+    const reply = renderMutationReply({
+      outcome: "completed_tasks",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "123",
+        sourceEventId: "event-1",
+        rawText: "journal is done",
+        normalizedText: "journal is done",
+        processingStatus: "planned",
+        linkedTaskIds: ["task-1"]
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "123",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.9
+      },
+      completedTasks: [
+        {
+          id: "task-1",
+          userId: "123",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Journaling session",
+          lifecycleState: "done",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: "2026-03-18T12:00:00.000Z",
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: "2026-03-18T12:00:00.000Z",
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        }
+      ],
+      followUpMessage: ""
+    });
+
+    expect(reply).toBe("Marked 'Journaling session' as done.");
+  });
+
+  it("uses the stored follow-up message for clarification replies", () => {
+    const reply = renderMutationReply({
+      outcome: "needs_clarification",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "123",
+        sourceEventId: "event-1",
+        rawText: "do it",
+        normalizedText: "do it",
+        processingStatus: "needs_clarification",
+        linkedTaskIds: []
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "123",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.9
+      },
+      reason: "Model returned invalid or mixed schedule references for newly created tasks.",
+      followUpMessage: "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+    });
+
+    expect(reply).toBe(
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+    );
+  });
 });
