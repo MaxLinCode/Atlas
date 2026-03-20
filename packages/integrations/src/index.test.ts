@@ -5,6 +5,7 @@ import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@a
 import {
   buildGoogleCalendarOAuthUrl,
   createGoogleCalendarAdapter,
+  editTelegramMessage,
   exchangeGoogleOAuthCode,
   fetchGoogleCalendarIdentity,
   refreshGoogleOAuthToken,
@@ -15,6 +16,7 @@ import {
   routeTurnWithResponses,
   summarizeConversationMemoryWithResponses,
   resetCalendarAdapterForTests,
+  sendTelegramChatAction,
   sendTelegramMessage
 } from "./index";
 
@@ -826,5 +828,138 @@ describe("integrations", () => {
         fetchMock
       )
     ).rejects.toThrow("Telegram sendMessage failed with status 400: Bad Request: chat not found.");
+  });
+
+  it("sends Telegram chat actions through the Bot API", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: true
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      sendTelegramChatAction(
+        {
+          chatId: "999",
+          action: "typing"
+        },
+        fetchMock
+      )
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.telegram.org/bottest-telegram-token/sendChatAction",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+  });
+
+  it("includes Telegram error descriptions when sendChatAction fails", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: false,
+          description: "Bad Request: chat not found"
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      sendTelegramChatAction(
+        {
+          chatId: "999",
+          action: "typing"
+        },
+        fetchMock
+      )
+    ).rejects.toThrow("Telegram sendChatAction failed with status 400: Bad Request: chat not found.");
+  });
+
+  it("edits Telegram messages through the Bot API", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            message_id: 88,
+            date: 1_700_000_000,
+            chat: {
+              id: "999",
+              type: "private"
+            },
+            text: "Final reply"
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const result = await editTelegramMessage(
+      {
+        chatId: "999",
+        messageId: 88,
+        text: "Final reply"
+      },
+      fetchMock
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.telegram.org/bottest-telegram-token/editMessageText",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+    expect(result.result.text).toBe("Final reply");
+  });
+
+  it("includes Telegram error descriptions when editMessageText fails", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          ok: false,
+          description: "Bad Request: message can't be edited"
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      editTelegramMessage(
+        {
+          chatId: "999",
+          messageId: 88,
+          text: "Final reply"
+        },
+        fetchMock
+      )
+    ).rejects.toThrow(
+      "Telegram editMessageText failed with status 400: Bad Request: message can't be edited."
+    );
   });
 });
