@@ -23,11 +23,14 @@ import {
   type PersistedInboxItem
 } from "@atlas/db";
 import {
+  editTelegramMessage,
   recoverConfirmedMutationWithResponses,
+  sendTelegramChatAction,
   summarizeConversationMemoryWithResponses,
   sendTelegramMessage,
   type ConversationMemorySummaryInput,
   type ConversationMemorySummaryOutput,
+  type TelegramChatAction,
   type TelegramSendMessageResponse
 } from "@atlas/integrations";
 
@@ -57,6 +60,8 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   deliveryStore?: OutgoingTelegramDeliveryStore;
   primeProcessingStore?: (inboxItem: PersistedInboxItem) => void | Promise<void>;
   sender?: typeof sendTelegramMessage;
+  editor?: typeof editTelegramMessage;
+  chatActionSender?: typeof sendTelegramChatAction;
   turnRouter?: (input: TurnRouterInput) => Promise<TurnRouterResult>;
   conversationResponder?: (input: BuildConversationResponseInput) => Promise<BuildConversationResponseResult>;
   conversationHistoryStore?: ConversationHistoryStore;
@@ -225,6 +230,21 @@ export async function handleTelegramWebhook(
     normalizedText: normalizedMessage.normalizedText,
     recentTurns
   });
+  const immediateFeedback = buildImmediateRouteFeedback(routedWithContext.route);
+
+  const placeholderDelivery = await sendImmediateRouteFeedback(
+    {
+      userId: normalizedMessage.user.telegramUserId,
+      chatId: normalizedMessage.chatId,
+      inboxItemId: ingress.inboxItem.id,
+      feedback: immediateFeedback
+    },
+    {
+      sender: dependencies.sender ?? sendTelegramMessage,
+      chatActionSender: dependencies.chatActionSender ?? sendTelegramChatAction,
+      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
+    }
+  );
 
   if (!routedWithContext.writesAllowed) {
     if (routedWithContext.route === "mutation" || routedWithContext.route === "confirmed_mutation") {
@@ -239,7 +259,7 @@ export async function handleTelegramWebhook(
       memorySummary
     });
 
-    const outboundDelivery = await sendFollowUpMessage(
+    const outboundDelivery = await finalizeFollowUpMessage(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
@@ -247,6 +267,8 @@ export async function handleTelegramWebhook(
         text: conversationResponse.reply
       },
       {
+        editor: dependencies.editor ?? editTelegramMessage,
+        placeholderDelivery,
         sender: dependencies.sender ?? sendTelegramMessage,
         ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
       }
@@ -288,6 +310,8 @@ export async function handleTelegramWebhook(
           text: recoveredMutation.userReplyMessage
         },
         {
+          editor: dependencies.editor ?? editTelegramMessage,
+          placeholderDelivery,
           sender: dependencies.sender ?? sendTelegramMessage,
           ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
           body: {
@@ -325,7 +349,7 @@ export async function handleTelegramWebhook(
         ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
       }
     );
-    const outboundDelivery = await sendFollowUpMessage(
+    const outboundDelivery = await finalizeFollowUpMessage(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
@@ -333,6 +357,8 @@ export async function handleTelegramWebhook(
         text: processing.followUpMessage
       },
       {
+        editor: dependencies.editor ?? editTelegramMessage,
+        placeholderDelivery,
         sender: dependencies.sender ?? sendTelegramMessage,
         ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
       }
@@ -365,7 +391,7 @@ export async function handleTelegramWebhook(
       ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
     }
   );
-  const outboundDelivery = await sendFollowUpMessage(
+  const outboundDelivery = await finalizeFollowUpMessage(
     {
       userId: normalizedMessage.user.telegramUserId,
       chatId: normalizedMessage.chatId,
@@ -373,6 +399,8 @@ export async function handleTelegramWebhook(
       text: processing.followUpMessage
     },
     {
+      editor: dependencies.editor ?? editTelegramMessage,
+      placeholderDelivery,
       sender: dependencies.sender ?? sendTelegramMessage,
       ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
     }
@@ -403,9 +431,30 @@ type SendFollowUpMessageInput = {
   persistedText?: string;
 };
 
+type ImmediateRouteFeedback = {
+  text: string;
+  chatAction: TelegramChatAction;
+};
+
+type SendImmediateRouteFeedbackInput = {
+  userId: string;
+  chatId: string;
+  inboxItemId: string;
+  feedback: ImmediateRouteFeedback;
+};
+
 type SendFollowUpMessageDependencies = {
   sender: typeof sendTelegramMessage;
   deliveryStore?: OutgoingTelegramDeliveryStore;
+};
+
+type SendImmediateRouteFeedbackDependencies = SendFollowUpMessageDependencies & {
+  chatActionSender: typeof sendTelegramChatAction;
+};
+
+type FinalizeFollowUpMessageDependencies = SendFollowUpMessageDependencies & {
+  editor: typeof editTelegramMessage;
+  placeholderDelivery: Awaited<ReturnType<typeof sendFollowUpMessage>>;
 };
 
 type ReplyWithTextInput = SendFollowUpMessageInput;
@@ -415,9 +464,12 @@ type ReplyWithTextDependencies = SendFollowUpMessageDependencies & {
 
 async function replyWithText(
   input: ReplyWithTextInput,
-  dependencies: ReplyWithTextDependencies
+  dependencies: ReplyWithTextDependencies | (ReplyWithTextDependencies & FinalizeFollowUpMessageDependencies)
 ) {
-  const outboundDelivery = await sendFollowUpMessage(input, dependencies);
+  const outboundDelivery =
+    "placeholderDelivery" in dependencies
+      ? await finalizeFollowUpMessage(input, dependencies)
+      : await sendFollowUpMessage(input, dependencies);
 
   return {
     status: 200,
@@ -517,21 +569,198 @@ async function sendFollowUpMessage(
   };
 }
 
+async function sendImmediateRouteFeedback(
+  input: SendImmediateRouteFeedbackInput,
+  dependencies: SendImmediateRouteFeedbackDependencies
+) {
+  await dependencies
+    .chatActionSender({
+      chatId: input.chatId,
+      action: input.feedback.chatAction
+    })
+    .catch(() => null);
+
+  return sendFollowUpMessage(
+    {
+      userId: input.userId,
+      chatId: input.chatId,
+      inboxItemId: input.inboxItemId,
+      text: input.feedback.text
+    },
+    dependencies
+  );
+}
+
+async function finalizeFollowUpMessage(
+  input: SendFollowUpMessageInput,
+  dependencies: FinalizeFollowUpMessageDependencies
+) {
+  if (dependencies.placeholderDelivery.status === "sent" && dependencies.placeholderDelivery.message) {
+    return editExistingFollowUpMessage(
+      input,
+      dependencies.placeholderDelivery.message.message_id,
+      dependencies
+    );
+  }
+
+  if (dependencies.placeholderDelivery.status === "failed") {
+    return sendFailedPlaceholderRecoveryMessage(input, dependencies);
+  }
+
+  return dependencies.placeholderDelivery;
+}
+
+async function editExistingFollowUpMessage(
+  input: SendFollowUpMessageInput,
+  messageId: number,
+  dependencies: FinalizeFollowUpMessageDependencies
+) {
+  const idempotencyKey =
+    input.idempotencyKey ??
+    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+
+  if (!idempotencyKey) {
+    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+  }
+
+  try {
+    const editedMessage = await dependencies.editor({
+      chatId: input.chatId,
+      messageId,
+      text: input.text
+    });
+
+    await updateOutgoingTelegramMessage(
+      {
+        idempotencyKey,
+        payload: buildOutgoingEventPayload(input, editedMessage, dependencies.placeholderDelivery.attempts, {
+          editTargetMessageId: messageId,
+          edited: true
+        }),
+        retryState: "sent"
+      },
+      dependencies.deliveryStore
+    );
+
+    return {
+      status: "edited",
+      attempts: dependencies.placeholderDelivery.attempts,
+      idempotencyKey,
+      message: editedMessage.result
+    };
+  } catch (error) {
+    return sendFailedPlaceholderRecoveryMessage(input, dependencies, error);
+  }
+}
+
+async function sendFailedPlaceholderRecoveryMessage(
+  input: SendFollowUpMessageInput,
+  dependencies: FinalizeFollowUpMessageDependencies,
+  cause?: unknown
+) {
+  const idempotencyKey =
+    input.idempotencyKey ??
+    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+
+  if (!idempotencyKey) {
+    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+  }
+
+  let attempts = 0;
+  let lastError = cause instanceof Error ? cause : null;
+
+  while (attempts < 2) {
+    attempts += 1;
+
+    try {
+      const sentMessage = await dependencies.sender({
+        chatId: input.chatId,
+        text: input.text
+      });
+
+      await updateOutgoingTelegramMessage(
+        {
+          idempotencyKey,
+          payload: buildOutgoingEventPayload(input, sentMessage, dependencies.placeholderDelivery.attempts + attempts, {
+            edited: false,
+            replacedPlaceholder: true
+          }),
+          retryState: "sent"
+        },
+        dependencies.deliveryStore
+      );
+
+      return {
+        status: "sent",
+        attempts,
+        idempotencyKey,
+        message: sentMessage.result
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Failed to send Telegram follow-up message.");
+    }
+  }
+
+  await updateOutgoingTelegramMessage(
+    {
+      idempotencyKey,
+      payload: {
+        chatId: input.chatId,
+        text: input.text,
+        attempts: dependencies.placeholderDelivery.attempts + attempts,
+        error: lastError?.message ?? "Unknown Telegram delivery error."
+      },
+      retryState: "failed"
+    },
+    dependencies.deliveryStore
+  );
+
+  return {
+    status: "failed",
+    attempts,
+    idempotencyKey,
+    error: lastError?.message ?? "Unknown Telegram delivery error."
+  };
+}
+
 function buildOutgoingEventPayload(
   input: SendFollowUpMessageInput,
   sentMessage: TelegramSendMessageResponse,
-  attempts: number
+  attempts: number,
+  metadata?: Record<string, unknown>
 ) {
   return {
     chatId: input.chatId,
     text: input.persistedText ?? input.text,
     attempts,
-    telegram: sentMessage
+    telegram: sentMessage,
+    ...(metadata ?? {})
   };
 }
 
 function buildLazyLinkReplyIdempotencyKey(updateId: number) {
   return `telegram:lazy-link:${updateId}`;
+}
+
+function buildImmediateRouteFeedback(route: TurnRouterResult["route"]): ImmediateRouteFeedback {
+  switch (route) {
+    case "mutation":
+      return {
+        text: "Checking your schedule",
+        chatAction: "typing"
+      };
+    case "confirmed_mutation":
+      return {
+        text: "Applying that",
+        chatAction: "typing"
+      };
+    case "conversation":
+    case "conversation_then_mutation":
+      return {
+        text: "Thinking",
+        chatAction: "typing"
+      };
+  }
 }
 
 function buildGoogleCalendarConnectReply(connectLink: string) {

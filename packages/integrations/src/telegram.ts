@@ -5,6 +5,19 @@ export type SendTelegramMessageInput = {
   text: string;
 };
 
+export type EditTelegramMessageInput = {
+  chatId: string;
+  messageId: number;
+  text: string;
+};
+
+export type TelegramChatAction = "typing";
+
+export type SendTelegramChatActionInput = {
+  chatId: string;
+  action: TelegramChatAction;
+};
+
 export type TelegramSendMessageResponse = {
   ok: boolean;
   result: {
@@ -42,6 +55,65 @@ export async function sendTelegramMessage(
       errorDescription
         ? `Telegram sendMessage failed with status ${response.status}: ${errorDescription}.`
         : `Telegram sendMessage failed with status ${response.status}.`
+    );
+  }
+
+  return parseTelegramSendMessageResponse(await response.json());
+}
+
+export async function sendTelegramChatAction(
+  input: SendTelegramChatActionInput,
+  fetchImpl: typeof fetch = fetch
+): Promise<void> {
+  const config = getConfig();
+  const response = await fetchImpl(`https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendChatAction`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      chat_id: input.chatId,
+      action: input.action
+    })
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null);
+    const errorDescription = getTelegramErrorDescription(errorPayload);
+
+    throw new Error(
+      errorDescription
+        ? `Telegram sendChatAction failed with status ${response.status}: ${errorDescription}.`
+        : `Telegram sendChatAction failed with status ${response.status}.`
+    );
+  }
+}
+
+export async function editTelegramMessage(
+  input: EditTelegramMessageInput,
+  fetchImpl: typeof fetch = fetch
+): Promise<TelegramSendMessageResponse> {
+  const config = getConfig();
+  const response = await fetchImpl(`https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/editMessageText`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      chat_id: input.chatId,
+      message_id: input.messageId,
+      text: input.text
+    })
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null);
+    const errorDescription = getTelegramErrorDescription(errorPayload);
+
+    throw new Error(
+      errorDescription
+        ? `Telegram editMessageText failed with status ${response.status}: ${errorDescription}.`
+        : `Telegram editMessageText failed with status ${response.status}.`
     );
   }
 

@@ -21,10 +21,13 @@ import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
-const { sendTelegramMessageMock, routeTurnWithResponsesMock } = vi.hoisted(() => ({
+const { editTelegramMessageMock, sendTelegramMessageMock, sendTelegramChatActionMock, routeTurnWithResponsesMock } =
+  vi.hoisted(() => ({
+    editTelegramMessageMock: vi.fn(),
   sendTelegramMessageMock: vi.fn(),
+  sendTelegramChatActionMock: vi.fn(),
   routeTurnWithResponsesMock: vi.fn()
-}));
+  }));
 
 vi.mock("@atlas/integrations", async () => {
   const actual = await vi.importActual<typeof import("@atlas/integrations")>("@atlas/integrations");
@@ -62,7 +65,9 @@ vi.mock("@atlas/integrations", async () => {
         }
       ]
     }),
+    editTelegramMessage: editTelegramMessageMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
+    sendTelegramChatAction: sendTelegramChatActionMock,
     sendTelegramMessage: sendTelegramMessageMock
   };
 });
@@ -122,7 +127,9 @@ beforeEach(async () => {
   process.env.GOOGLE_LINK_TOKEN_SECRET = "google-link-secret";
   process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
   resetCalendarAdapterForTests();
+  editTelegramMessageMock.mockReset();
   sendTelegramMessageMock.mockReset();
+  sendTelegramChatActionMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
@@ -140,6 +147,19 @@ beforeEach(async () => {
       text: "Captured and scheduled Review launch checklist."
     }
   });
+  editTelegramMessageMock.mockImplementation(async ({ chatId, messageId, text }) => ({
+    ok: true,
+    result: {
+      message_id: messageId,
+      date: 1_700_000_001,
+      chat: {
+        id: chatId,
+        type: "private"
+      },
+      text
+    }
+  }));
+  sendTelegramChatActionMock.mockResolvedValue(undefined);
   resetIncomingTelegramIngressStoreForTests();
   resetInboxProcessingStoreForTests();
   resetGoogleCalendarConnectionStoreForTests();
@@ -422,7 +442,7 @@ describe("telegram webhook route", () => {
         outcome: "planned"
       },
       outboundDelivery: {
-        status: "sent",
+        status: "edited",
         attempts: 1
       }
     });
@@ -440,9 +460,18 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
+    expect(sendTelegramChatActionMock).toHaveBeenCalledWith({
+      chatId: "999",
+      action: "typing"
+    });
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
+      text: "Checking your schedule"
+    });
+    expect(editTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      messageId: 88,
       text: expect.stringContaining("Scheduled 'Review launch checklist'")
     });
   });
@@ -489,7 +518,7 @@ describe("telegram webhook route", () => {
         outcome: "planned"
       },
       outboundDelivery: {
-        status: "sent",
+        status: "edited",
         attempts: 1
       }
     });
@@ -497,6 +526,7 @@ describe("telegram webhook route", () => {
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
+    expect(editTelegramMessageMock).toHaveBeenCalledTimes(1);
   });
 
   it("treats confirmed mutation turns as write-capable when recovery finds one concrete proposal", async () => {
@@ -628,8 +658,14 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
-    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Applying that"
+    });
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
         text: expect.stringContaining("Scheduled 'Dentist reminder'")
       })
     );
@@ -695,6 +731,7 @@ describe("telegram webhook route", () => {
       }
     );
     sendTelegramMessageMock.mockClear();
+    editTelegramMessageMock.mockClear();
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -752,8 +789,10 @@ describe("telegram webhook route", () => {
         })
       })
     );
-    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
         text: expect.stringContaining("Moved it to")
       })
     );
@@ -818,6 +857,7 @@ describe("telegram webhook route", () => {
       }
     );
     sendTelegramMessageMock.mockClear();
+    editTelegramMessageMock.mockClear();
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -885,8 +925,10 @@ describe("telegram webhook route", () => {
       externalCalendarEventId: null,
       externalCalendarId: null
     });
-    expect(sendTelegramMessageMock).toHaveBeenCalledWith(
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
         text: "Marked 'Journaling session' as done."
       })
     );
@@ -949,6 +991,17 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Applying that"
+    });
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
+        text: "I have two recent proposals in view. Which one do you want me to apply?"
+      })
+    );
   });
 
   it("keeps conversation turns non-writing", async () => {
@@ -1116,7 +1169,7 @@ describe("telegram webhook route", () => {
           reply: "Let's sort the week by deadline and energy first."
         },
         outboundDelivery: {
-          status: "sent",
+          status: "edited",
           attempts: 1
         }
       });
@@ -1200,8 +1253,15 @@ describe("telegram webhook route", () => {
       });
       expect(sendTelegramMessageMock).toHaveBeenCalledWith({
         chatId: "999",
-        text: "Let's sort the week by deadline and energy first."
+        text: "Thinking"
       });
+      expect(editTelegramMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: "999",
+          messageId: 88,
+          text: "Let's sort the week by deadline and energy first."
+        })
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -1256,7 +1316,7 @@ describe("telegram webhook route", () => {
         reply: "We can explore tomorrow morning options first, then I can make the change after you confirm."
       },
       outboundDelivery: {
-        status: "sent",
+        status: "edited",
         attempts: 1
       }
     });
@@ -1281,8 +1341,15 @@ describe("telegram webhook route", () => {
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
-      text: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+      text: "Thinking"
     });
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
+        text: "We can explore tomorrow morning options first, then I can make the change after you confirm."
+      })
+    );
   });
 
   it("falls back to recent turns when summary generation fails", async () => {
@@ -1341,6 +1408,10 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Thinking"
+    });
   });
 
   it("keeps write-adjacent conversation replies hedged instead of making hard system claims", async () => {
@@ -1394,13 +1465,25 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Thinking"
+    });
+    expect(editTelegramMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "999",
+        messageId: 88,
+        text:
+          "From our recent exchange, it sounds like you mean the dentist reminder, but I am not treating that as confirmed state."
+      })
+    );
   });
 
   it("retries once when Telegram follow-up delivery fails before succeeding", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
     sendTelegramMessageMock
       .mockRejectedValueOnce(new Error("temporary network error"))
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         ok: true,
         result: {
           message_id: 89,
@@ -1443,11 +1526,12 @@ describe("telegram webhook route", () => {
     expect(response.body).toMatchObject({
       accepted: true,
       outboundDelivery: {
-        status: "sent",
+        status: "edited",
         attempts: 2
       }
     });
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(2);
+    expect(editTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
   });
 
@@ -1493,7 +1577,7 @@ describe("telegram webhook route", () => {
         error: "telegram unavailable"
       }
     });
-    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(4);
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(listOutgoingBotEventsForTests()[0]?.retryState).toBe("failed");
   });
