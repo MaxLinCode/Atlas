@@ -57,6 +57,7 @@ export async function processInboxItem(
   }
 
   await store.markInboxProcessing(parsed.inboxItemId);
+  const referenceTime = requireInboxReferenceTime(context.inboxItem);
 
   const planningContext = buildInboxPlanningContext({
     inboxItem: input.planningInboxTextOverride
@@ -69,7 +70,7 @@ export async function processInboxItem(
     userProfile: context.userProfile,
     tasks: context.tasks,
     scheduleBlocks: context.scheduleBlocks,
-    now: context.inboxItem.createdAt ?? new Date().toISOString()
+    referenceTime
   });
 
   let planning: InboxPlanningOutput;
@@ -313,7 +314,11 @@ async function applyExistingTaskScheduleActions(
 
   const existingTaskIds: string[] = [];
   const scheduleBlocks: ScheduleBlock[] = [];
-  let existingBlocks = await buildRuntimeScheduleBlocks(input.context, input.calendar);
+  let existingBlocks = await buildRuntimeScheduleBlocks(
+    input.context,
+    input.calendar,
+    input.planningContext.referenceTime
+  );
 
   for (const action of createScheduleActions) {
     const task = resolveTaskReference(input.planningContext, action.taskRef);
@@ -341,7 +346,8 @@ async function applyExistingTaskScheduleActions(
       openTasks: [task],
       userProfile: input.context.userProfile,
       existingBlocks,
-      scheduleConstraint: action.scheduleConstraint
+      scheduleConstraint: action.scheduleConstraint,
+      referenceTime: input.planningContext.referenceTime
     });
     const [scheduledBlock] = proposal.inserts;
 
@@ -392,12 +398,17 @@ async function applyMoveAction(
     return saveClarification(input, `Could not resolve schedule block alias ${action.blockRef.alias}.`);
   }
 
-  const existingBlocks = await buildRuntimeScheduleBlocks(input.context, input.calendar);
+  const existingBlocks = await buildRuntimeScheduleBlocks(
+    input.context,
+    input.calendar,
+    input.planningContext.referenceTime
+  );
   const adjustment = buildScheduleAdjustment({
     block,
     userProfile: input.context.userProfile,
     scheduleConstraint: action.scheduleConstraint,
-    existingBlocks
+    existingBlocks,
+    referenceTime: input.planningContext.referenceTime
   });
 
   const task = input.context.tasks.find((candidate) => candidate.id === block.taskId);
@@ -539,7 +550,11 @@ async function buildScheduleBlocksForCreatedTasks(
   calendar: ExternalCalendarAdapter
 ) {
   const blocks: ScheduleBlock[] = [];
-  let existingBlocks = await buildRuntimeScheduleBlocks(context, calendar);
+  let existingBlocks = await buildRuntimeScheduleBlocks(
+    context,
+    calendar,
+    requireInboxReferenceTime(context.inboxItem)
+  );
 
   for (const action of createScheduleActions) {
     if (action.taskRef.kind !== "created_task") {
@@ -561,7 +576,8 @@ async function buildScheduleBlocksForCreatedTasks(
       openTasks: [task],
       userProfile: context.userProfile,
       existingBlocks,
-      scheduleConstraint: action.scheduleConstraint
+      scheduleConstraint: action.scheduleConstraint,
+      referenceTime: requireInboxReferenceTime(context.inboxItem)
     });
     const [scheduledBlock] = proposal.inserts;
 
@@ -668,7 +684,8 @@ async function scheduleTaskWithCalendar(input: {
 
 async function buildRuntimeScheduleBlocks(
   context: ApplyPlanningResultInput["context"],
-  calendar: ExternalCalendarAdapter
+  calendar: ExternalCalendarAdapter,
+  referenceTime: string
 ) {
   const existingBlocks = [...context.scheduleBlocks];
 
@@ -676,9 +693,14 @@ async function buildRuntimeScheduleBlocks(
     return existingBlocks;
   }
 
+  const busyWindowStart = new Date(referenceTime);
+  const busyWindowEnd = new Date(
+    busyWindowStart.getTime() + CALENDAR_BUSY_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000
+  );
+
   const busyPeriods = await calendar.listBusyPeriods({
-    startAt: new Date().toISOString(),
-    endAt: new Date(Date.now() + CALENDAR_BUSY_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+    startAt: busyWindowStart.toISOString(),
+    endAt: busyWindowEnd.toISOString(),
     externalCalendarId: context.googleCalendarConnection.selectedCalendarId
   });
 
@@ -915,6 +937,14 @@ function formatClarificationTime(iso: string, timeZone: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(iso));
+}
+
+function requireInboxReferenceTime(inboxItem: ApplyPlanningResultInput["context"]["inboxItem"]) {
+  if (!inboxItem.createdAt) {
+    throw new Error(`Inbox item ${inboxItem.id} is missing createdAt for scheduling reference time.`);
+  }
+
+  return inboxItem.createdAt;
 }
 
 function buildPlannerRun(

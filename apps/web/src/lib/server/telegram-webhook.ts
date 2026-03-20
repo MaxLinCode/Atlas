@@ -41,7 +41,7 @@ import {
   type BuildConversationResponseResult
 } from "./conversation-response";
 import {
-  routeTelegramTurn,
+  routeMessageTurn,
   type TurnRouterInput,
   type TurnRouterResult
 } from "./turn-router";
@@ -225,7 +225,7 @@ export async function handleTelegramWebhook(
     RECENT_CONVERSATION_TURN_LIMIT,
     dependencies.conversationHistoryStore
   );
-  const routedWithContext = await (dependencies.turnRouter ?? routeTelegramTurn)({
+  const routedWithContext = await (dependencies.turnRouter ?? routeMessageTurn)({
     rawText: normalizedMessage.rawText,
     normalizedText: normalizedMessage.normalizedText,
     recentTurns

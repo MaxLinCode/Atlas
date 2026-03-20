@@ -78,8 +78,10 @@ beforeAll(() => {
   }
 
   process.env.DATABASE_URL ??= "postgresql://manual:manual@localhost:5432/manual_eval";
+  process.env.APP_BASE_URL ??= "http://localhost:3000";
   process.env.TELEGRAM_BOT_TOKEN ??= "manual-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET ??= "manual-telegram-webhook-secret";
+  process.env.TELEGRAM_ALLOWED_USER_IDS ??= "123";
 });
 
 describe.sequential("manual router confirmation eval", () => {

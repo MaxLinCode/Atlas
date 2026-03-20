@@ -45,7 +45,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 
 ## Handoff notes
 
-- Atlas should be a planning assistant first and a mutation engine second, but in v1 Telegram use is gated behind an active Google Calendar connection.
+- Atlas should be a planning assistant first and a mutation engine second, but in v1 chat-bot use is gated behind an active Google Calendar connection.
 - Schedule-forward remains a core product opinion: when work becomes actionable, Atlas should bias toward proposing or placing time on the schedule.
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
 - Real Google Calendar integration is now landed in the main mutation path, including OAuth linkage, real event writes, busy-time-aware scheduling inputs, and bounded reconciliation.
@@ -68,7 +68,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - Telegram webhook ingress is now protected by a required `TELEGRAM_ALLOWED_USER_IDS` allowlist; blocked users are rejected before inbox persistence, planning, or outbound delivery, and app config fails fast when that env var is missing.
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
-- Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
+- Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent chat history as canonical memory.
 - Existing-task mutation turns need a narrow app-owned task candidate matching step before confirmed-mutation recovery or planner application when the user names a task informally, such as `journal` for `Journaling session`.
 - Keep that candidate matching deterministic and small-scope:
   - build candidates from persisted non-archived tasks, not summaries
@@ -156,7 +156,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - The first `TurnRouter` slice is now landed:
   - routing is app-owned in `apps/web`
   - the router is model-assisted through `packages/integrations`
-  - inbound Telegram turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
+- inbound chat turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
   - ingress is still persisted canonically before route selection
   - `mutation` and `confirmed_mutation` enter the write-capable structured mutation path
   - `conversation` and `conversation_then_mutation` remain non-writing
@@ -174,6 +174,9 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - A live local router-confirmation eval harness is now available:
   - `pnpm eval:router-confirmation` calls the real OpenAI Responses API against curated short-horizon confirmation fixtures
   - this is intended for manual prompt verification of `confirmed_mutation` behavior, not deterministic CI coverage
+- A live local confirmed-mutation recovery eval harness is now available:
+  - `pnpm eval:confirmed-mutation-recovery` calls the real OpenAI Responses API against curated recovery fixtures for short-horizon confirmation and completion recovery
+  - this is intended for manual prompt verification of recovery output quality, not deterministic CI coverage
 - A live local conversation-context eval harness is now available:
   - `pnpm eval:conversation-context` calls the real OpenAI Responses API against curated recent-turn continuity fixtures
   - this is intended for manual prompt verification of context use and hedged conversation behavior, not deterministic CI coverage
@@ -186,7 +189,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - the conversation path still does not write task or schedule state
   - the conversation path must not claim that side effects happened
 - The main limitation in conversation mode is now context grounding:
-- the conversation path now loads a bounded recent-turn window from persisted Telegram transport records before routing, while summaries are only generated when they add value for continuity or clarification rather than by default
+- the conversation path now loads a bounded recent-turn window from persisted messaging transport records before routing, while summaries are only generated when they add value for continuity or clarification rather than by default
 - it derives a request-scoped working summary for conversational continuity on non-writing turns only when the recent transcript or ambiguity makes it helpful
 - this continuity layer is intentionally non-authoritative and must not be treated as canonical Atlas memory or mutation state
 - The conversation response path remains app-owned:
@@ -272,6 +275,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 
 - Keep route handlers thin. New behavior should land in app-layer services, `packages/core`, or `packages/db`, not directly in Next.js routes.
 - Extend the existing core and repository modules before creating new abstractions. Avoid catch-all helpers or conversation-memory utilities.
-- Keep conversational awareness grounded in persisted tasks, user profiles, planner runs, and explicit schedule linkage. Telegram transcripts are not a source of truth for mutations.
+- Keep conversational awareness grounded in persisted tasks, user profiles, planner runs, and explicit schedule linkage. Chat transcripts are not a source of truth for mutations.
 - Validate structured mutation output at the boundary before any task or schedule mutation, and keep model references explicit rather than id-guessing.
 - When adding scheduling behavior, preserve the MVP promise: conversationally helpful, schedule-forward, and safe at the mutation boundary.

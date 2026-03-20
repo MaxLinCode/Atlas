@@ -89,7 +89,7 @@ Example:
 This layer prevents the assistant from losing track of the current workflow without treating the full chat as durable state.
 
 For the conversation-first MVP, this layer may be informed by recent conversation plus persisted task and audit state.
-For mutation work and follow-up handling, it should be reconstructed from persisted task state, current commitment linkage, and planner/audit state rather than loosely replayed Telegram messages.
+For mutation work and follow-up handling, it should be reconstructed from persisted task state, current commitment linkage, and planner/audit state rather than loosely replayed chat messages.
 When prompting the model for mutation mode, existing tasks or schedule-linked records should still be represented with app-generated symbolic aliases or explicit application references rather than raw database ids.
 
 ### Schedule state
@@ -165,5 +165,5 @@ This mode is optimized for validated task, scheduling, completion, archive, and 
 
 - `packages/core` should define the schemas and product rules for router-aware and mode-aware context.
 - `packages/db` should persist durable user preferences, active task state, task state, and audit records.
-- `packages/integrations` should not own user memory semantics; it should only transport model or Telegram inputs and outputs.
+- `packages/integrations` should not own user memory semantics; it should only transport model or messaging-platform inputs and outputs.
 - `apps/web` should orchestrate retrieval of the relevant context for each turn, route the turn, and choose the correct model path without embedding product logic in route handlers.

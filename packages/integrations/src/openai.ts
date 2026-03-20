@@ -10,12 +10,18 @@ import {
   turnRoutingOutputSchema,
   conversationTurnSchema,
   confirmedMutationRecoveryInputSchema,
+  confirmedMutationRecoveryResponseFormatSchema,
   confirmedMutationRecoveryOutputSchema,
   type TurnRoutingInput,
   type TurnRoutingOutput,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput
 } from "@atlas/core";
+import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
+import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
+import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
+import { inboxPlannerSystemPrompt } from "./prompts/planner";
+import { turnRouterSystemPrompt } from "./prompts/turn-router";
 
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
@@ -74,7 +80,7 @@ export async function planInboxItemWithResponses(
         content: [
           {
             type: "input_text",
-            text: buildSystemPrompt()
+            text: inboxPlannerSystemPrompt
           }
         ]
       },
@@ -110,7 +116,7 @@ export async function routeTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: buildTurnRouterSystemPrompt()
+            text: turnRouterSystemPrompt
           }
         ]
       },
@@ -146,7 +152,7 @@ export async function recoverConfirmedMutationWithResponses(
         content: [
           {
             type: "input_text",
-            text: buildConfirmedMutationRecoverySystemPrompt()
+            text: confirmedMutationRecoverySystemPrompt
           }
         ]
       },
@@ -161,11 +167,18 @@ export async function recoverConfirmedMutationWithResponses(
       }
     ],
     text: {
-      format: zodTextFormat(confirmedMutationRecoveryOutputSchema, "atlas_confirmed_mutation_recovery_output")
+      format: zodTextFormat(
+        confirmedMutationRecoveryResponseFormatSchema,
+        "atlas_confirmed_mutation_recovery_output"
+      )
     }
   });
 
-  return confirmedMutationRecoveryOutputSchema.parse(response.output_parsed);
+  return confirmedMutationRecoveryOutputSchema.parse(
+    normalizeConfirmedMutationRecoveryOutput(
+      confirmedMutationRecoveryResponseFormatSchema.parse(response.output_parsed)
+    )
+  );
 }
 
 export async function respondToConversationTurnWithResponses(
@@ -182,7 +195,7 @@ export async function respondToConversationTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: buildConversationResponseSystemPrompt()
+            text: conversationResponseSystemPrompt
           }
         ]
       },
@@ -218,7 +231,7 @@ export async function summarizeConversationMemoryWithResponses(
         content: [
           {
             type: "input_text",
-            text: buildConversationMemorySummarySystemPrompt()
+            text: conversationMemorySummarySystemPrompt
           }
         ]
       },
@@ -240,137 +253,24 @@ export async function summarizeConversationMemoryWithResponses(
   return conversationMemorySummaryOutputSchema.parse(response.output_parsed);
 }
 
-function buildSystemPrompt() {
-  return [
-    "You are Atlas, a Telegram-first planning assistant.",
-    "A user sends freeform inbox messages, and you must turn them into structured planning actions that the application will validate and apply.",
-    "Return only a structured planning result.",
-    "The planner does not write to the database directly.",
-    "Do not reference database ids.",
-    "Only use symbolic aliases that appear in the provided context for existing items, or aliases created in your own create_task actions.",
-    "The planner may return action objects like: create_task, create_schedule_block, move_schedule_block, complete_task, or clarify.",
-    "The planner receives the latest inbox message, user profile or scheduling preferences, existing tasks, existing schedule blocks, and symbolic aliases for existing tasks and schedule blocks.",
-    "Core rules:",
-    "Recognize when a message introduces new tasks, schedules tasks, or refers to existing scheduled work.",
-    "Return the smallest valid action set with concise reasons.",
-    "Never return raw database ids, only provided symbolic aliases.",
-    "Do not invent aliases that were not provided in the context or created in your own create_task actions.",
-    "Do not assume an existing task alias or schedule_block alias unless the message clearly refers to that item.",
-    "Action selection:",
-    "Use create_task when the inbox item introduces new work.",
-    "If the user asks to schedule new work, use create_task and create_schedule_block for that work, unless clarification is required.",
-    "Use create_schedule_block to schedule either a created task alias or an existing task alias.",
-    "Use move_schedule_block only for an existing schedule_block alias from the provided context, and only when a single existing block is clearly referenced.",
-    "Use complete_task when the user clearly says an existing task is done or completed.",
-    "Temporal encoding rules:",
-    "Emit temporal intent, not computed day counts or calendar offsets.",
-    "Use context.now and the user's timezone only to interpret the phrase semantics safely.",
-    "Use dayReference='today', weekday=null, weekOffset=null for same-day phrases.",
-    "Use dayReference='tomorrow', weekday=null, weekOffset=null for tomorrow phrases.",
-    "Use dayReference='weekday' with a lowercase weekday and weekOffset for named weekday phrases.",
-    "Use weekOffset=0 for Friday or this Friday, weekOffset=1 for next Friday, and weekOffset=2 for next next Friday.",
-    "For time-only phrases like at 3pm, leave dayReference, weekday, and weekOffset null.",
-    "Use explicitHour and minute for exact times.",
-    "Use preferredWindow only for broad phrases like morning, afternoon, or evening, and leave explicitHour null in those cases.",
-    "If the temporal phrase cannot be represented safely by the current schema, return exactly one clarify action.",
-    "Examples:",
-    "tomorrow at 3pm -> dayReference='tomorrow', weekday=null, weekOffset=null, explicitHour=15, minute=0.",
-    "Friday morning -> dayReference='weekday', weekday='friday', weekOffset=0, explicitHour=null, preferredWindow='morning'.",
-    "at 3pm -> dayReference=null, weekday=null, weekOffset=null, explicitHour=15, minute=0.",
-    "If context.now is Wednesday, March 18, 2026 in America/Los_Angeles, then Friday at 10am -> dayReference='weekday', weekday='friday', weekOffset=0, explicitHour=10, minute=0.",
-    "If context.now is Wednesday, March 18, 2026 in America/Los_Angeles, then next Friday at 10am -> dayReference='weekday', weekday='friday', weekOffset=1, explicitHour=10, minute=0.",
-    "If the user says 'journal is done' and the provided task context includes one journaling task alias, emit exactly one complete_task action for that existing task alias.",
-    "Do not emit conflicting actions for the same work item.",
-    "Do not mix incompatible action types unless the request is truly a safe combined plan.",
-    "Clarification:",
-    "If the request is ambiguous, missing a safe target, under-specified, conditional, or should not mutate state, return exactly one clarify action.",
-    "Do not mix clarify with mutating actions.",
-    "If a request mixes new work and existing work in a way that is ambiguous, prefer clarify.",
-    "If the request is conditional, such as if tomorrow is slammed push X to Friday, prefer clarify unless the application explicitly supports conditional planning branches.",
-    "Safety:",
-    "Do not return schedule actions without a complete task model.",
-    "Do not convert conditional language into multiple concrete schedule mutations.",
-    "Do not overconfidently use existing aliases when the message also introduces new tasks.",
-    "Do not emit multiple conflicting schedule actions for the same item.",
-    "Do not include any user-facing reply text in this output. The application renders mutation replies after it knows the persisted outcome.",
-    "Return only valid structured actions that the application can safely validate and apply."
-  ].join(" ");
-}
+function normalizeConfirmedMutationRecoveryOutput(
+  output: z.infer<typeof confirmedMutationRecoveryResponseFormatSchema>
+) {
+  if (output.outcome === "needs_clarification") {
+    return {
+      ...output,
+      recoveredText: null
+    };
+  }
 
-function buildTurnRouterSystemPrompt() {
-  return [
-    "You are Atlas's turn router for Telegram.",
-    "Select exactly one route for the current turn: conversation, mutation, conversation_then_mutation, or confirmed_mutation.",
-    "Definitions:",
-    "conversation: reflective discussion, prioritization, advice, planning dialogue, meta questions, or broad proposals without immediate writes.",
-    "mutation: clear, direct, and sufficiently specified request to capture, schedule, reschedule, complete, archive, or otherwise update Atlas task or schedule state now.",
-    "Do not choose mutation when the write request is partial, ambiguous, conditional, mixed with discussion, or missing key details needed to complete the update safely.",
-    "conversation_then_mutation: a turn that includes a possible write but requires discussion, clarification, or later confirmation before any mutation.",
-    "This includes mixed discussion-plus-action turns, partial scheduling asks, underspecified capture requests, and ambiguous update requests.",
-    "confirmed_mutation: the current turn confirms or concretely refines one recent proposed write strongly enough that Atlas may enter the structured mutation path now.",
-    "Use recent turns as short-horizon confirmation context only.",
-    "Choose confirmed_mutation only when recent context contains one concrete recoverable proposal and the latest turn clearly confirms or refines it, such as yes, sure, do it, 3pm is fine, Friday works, or push it 1 hour later.",
-    "Do not choose confirmed_mutation when there are multiple plausible proposals, the prior proposal was still vague, or the latest turn adds ambiguity.",
-    "Safety rules:",
-    "When uncertain between confirmed_mutation and conversation_then_mutation, choose conversation_then_mutation.",
-    "When uncertain between mutation and conversation_then_mutation, choose conversation_then_mutation.",
-    "Do not assume writes happened in conversation routes.",
-    "Examples:",
-    "Input: 'create car maintenance appt' -> conversation_then_mutation",
-    "Input: 'schedule oil change for Friday at 2pm' -> mutation",
-    "Recent turns mention a journaling task. Input: 'journal is done' -> mutation",
-    "Input: 'should I do the oil change this week or next week?' -> conversation",
-    "Input: 'I might move this to Friday, what do you think?' -> conversation_then_mutation",
-    "Recent assistant proposal: 'Would you like me to schedule it at 3pm?' Current input: 'Yes' -> confirmed_mutation",
-    "Recent proposal: 'I can move it to Friday at 3pm.' Current input: 'Friday works' -> confirmed_mutation",
-    "Recent assistant proposal: 'I could do 3pm or 4pm.' Current input: 'Yes' -> conversation_then_mutation",
-    "Return only the structured routing output."
-  ].join(" ");
-}
+  if (!output.recoveredText?.trim()) {
+    return {
+      outcome: "needs_clarification" as const,
+      recoveredText: null,
+      reason: output.reason,
+      userReplyMessage: output.userReplyMessage
+    };
+  }
 
-function buildConversationResponseSystemPrompt() {
-  return [
-    "You are Atlas, a Telegram-first planning assistant.",
-    "You are responding on the non-writing conversation path.",
-    "The provided recent turns and memory summary are continuity context only, not authoritative Atlas state.",
-    "Reply in natural language as Atlas.",
-    "Be helpful, concise, and planning-oriented.",
-    "Do not make hard claims that any task, schedule, or reminder definitely exists or was created, updated, moved, completed, or archived.",
-    "Use cautious phrasing when inferring from conversation context, such as it sounds like, if you mean, or from our recent exchange.",
-    "If the route is conversation_then_mutation, discuss the request first and make clear that any actual change would require later confirmation.",
-    "If the referent is still unclear, ask a narrow clarifying question.",
-    "Prefer actionable planning guidance, prioritization help, or a concrete next step.",
-    "Return only the structured response."
-  ].join(" ");
-}
-
-function buildConversationMemorySummarySystemPrompt() {
-  return [
-    "You are Atlas, building a short working summary of a recent Telegram exchange.",
-    "Summarize only what appears in the provided recent turns.",
-    "Keep the summary compact, neutral, and request-scoped.",
-    "Capture likely referents, tentative plans, unresolved questions, and recent suggestions that will help the next conversation turn.",
-    "Do not invent system state.",
-    "Do not claim any write succeeded unless the conversation explicitly states that outcome.",
-    "This summary is continuity context only, not authoritative Atlas memory.",
-    "Return only the structured response."
-  ].join(" ");
-}
-
-function buildConfirmedMutationRecoverySystemPrompt() {
-  return [
-    "You are Atlas, reconstructing a concrete write-ready mutation request from short-horizon confirmation context.",
-    "The latest user turn may be a confirmation or refinement of one recent proposed write.",
-    "The latest user turn may also report completion of one recent task that is clear from the provided context.",
-    "Use only the provided latest turn, recent turns, and any optional working summary.",
-    "Return 'recovered' only when the recent context supports exactly one concrete mutation that Atlas may safely pass into the existing structured mutation path now.",
-    "The recovered text should be a concise natural-language request that restates the intended write directly.",
-    "If the latest turn only confirms a vague or multi-option proposal, or if there are multiple plausible proposals, return needs_clarification.",
-    "Do not invent task identity or scheduling details that are not supported by the provided context.",
-    "Transcript is short-horizon confirmation context only, not canonical state.",
-    "If one recent task referent is clear and the latest turn says it is done or completed, recover a direct completion request such as 'Mark the journaling session as done.'",
-    "If outcome is 'recovered', set recoveredText to the concrete write-ready request and userReplyMessage to a brief natural confirmation of the action.",
-    "If outcome is 'needs_clarification', set recoveredText to null and userReplyMessage to a helpful clarifying question for the user.",
-    "Return only the structured response."
-  ].join(" ");
+  return output;
 }

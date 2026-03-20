@@ -21,9 +21,9 @@ Use it to keep webhook, schema, repository, and planner work aligned on one ques
 - Classification: canonical record
 - Represents: the persisted captured brain dump or conversational scheduling input after ingress normalization
 - Source of truth for: what Atlas accepted from the user for downstream processing and later conversational resolution
-- Created by: ingress flow after Telegram validation and before planner extraction mutates downstream task state
+- Created by: ingress flow after transport validation and before planner extraction mutates downstream task state
 - Allowed mutations: processing status and links to created task records
-- Must not be confused with: raw Telegram payload history, extracted tasks, or planner output
+- Must not be confused with: raw transport payload history, extracted tasks, or planner output
 
 Notes:
 - `raw_text` preserves the accepted user content.
@@ -59,7 +59,7 @@ Notes:
 - Source of truth for: not active runtime truth
 - Created by: earlier scheduler logic and transitional migration paths
 - Allowed mutations: not relevant to the lean external-calendar-backed task model
-- Must not be confused with: Telegram reminders, calendar events, or a task itself
+- Must not be confused with: bot reminders, calendar events, or a task itself
 
 Notes:
 - `schedule_blocks` are no longer the active persisted scheduling record for runtime reads and writes.
@@ -102,7 +102,7 @@ Notes:
 - Classification: operational record
 - Represents: inbound or outbound bot transport events plus idempotency context
 - Source of truth for: webhook deduplication, delivery bookkeeping, and retry-safe transport history
-- Created by: Telegram ingress and future outbound delivery flows
+- Created by: messaging ingress and future outbound delivery flows
 - Allowed mutations: retry-state or delivery-state style operational updates
 - Must not be confused with: inbox capture state, task state, or schedule state
 
@@ -143,7 +143,7 @@ Notes:
 ### `google_calendar_link_handoffs`
 
 - Classification: operational record
-- Represents: one-time Telegram-to-browser handoff records used to begin Google account linking safely
+- Represents: one-time chat-to-browser handoff records used to begin Google account linking safely
 - Source of truth for: replay protection before the app creates a short-lived link session cookie
 - Created by: app-owned Google connect-link issuance
 - Allowed mutations: one-time consumption and expiration cleanup
@@ -191,13 +191,13 @@ Notes:
 
 ## Webhook-first rules
 
-- A Telegram update is transport input, not canonical product state by itself.
+- A messaging-platform update is transport input, not canonical product state by itself.
 - Ingress should persist operational transport state in `bot_events` for linked users that enter normal processing.
 - Ingress should persist canonical capture state in `inbox_items` before extraction creates or mutates downstream task state for linked users.
 - The v1 unlinked-user Google connect gate is an explicit pre-ingress exception: Atlas may reply with a connect link and avoid persisting the inbound message entirely.
 - Planner output may create or update `tasks`, but it must not overwrite the meaning of the original `inbox_items`.
 - Scheduler output and calendar sync should update the task row's current commitment snapshot directly.
-- Conversational schedule moves should resolve against persisted Atlas state instead of treating Telegram history as the scheduler's source of truth.
+- Conversational schedule moves should resolve against persisted Atlas state instead of treating chat history as the scheduler's source of truth.
 
 ## Current schema vs MVP truth
 

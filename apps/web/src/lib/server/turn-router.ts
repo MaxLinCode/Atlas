@@ -16,7 +16,7 @@ export type TurnRouterDependencies = {
   classifyTurn?: (input: TurnRouterInput) => Promise<TurnRoutingOutput>;
 };
 
-export async function routeTelegramTurn(
+export async function routeMessageTurn(
   input: TurnRouterInput,
   dependencies: TurnRouterDependencies = {}
 ): Promise<TurnRouterResult> {

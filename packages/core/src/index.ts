@@ -371,8 +371,9 @@ export const scheduleConstraintSchema = z.object({
   dayReference: z.enum(["today", "tomorrow", "weekday"]).nullable(),
   weekday: weekdaySchema.nullable(),
   weekOffset: z.number().int().min(0).max(8).nullable(),
+  relativeMinutes: z.number().int().positive().max(7 * 24 * 60).nullable().optional(),
   explicitHour: z.number().int().min(0).max(23).nullable(),
-  minute: z.number().int().min(0).max(59),
+  minute: z.number().int().min(0).max(59).nullable().default(null),
   preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
   sourceText: z.string().min(1)
 }).superRefine((constraint, ctx) => {
@@ -407,6 +408,50 @@ export const scheduleConstraintSchema = z.object({
       path: ["weekOffset"]
     });
   }
+
+  if (constraint.relativeMinutes != null) {
+    if (
+      constraint.dayReference !== null ||
+      constraint.weekday !== null ||
+      constraint.weekOffset !== null ||
+      constraint.explicitHour !== null ||
+      constraint.minute !== null ||
+      constraint.preferredWindow !== null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "relativeMinutes cannot be combined with absolute date or time fields.",
+        path: ["relativeMinutes"]
+      });
+    }
+
+    return;
+  }
+
+  if (constraint.explicitHour === null && constraint.preferredWindow === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "explicitHour or preferredWindow is required when relativeMinutes is null.",
+      path: ["explicitHour"]
+    });
+  }
+
+  if (constraint.explicitHour !== null && constraint.minute === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "minute is required when explicitHour is provided.",
+      path: ["minute"]
+    });
+  }
+
+  if (constraint.explicitHour === null && constraint.preferredWindow === null && constraint.minute !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "minute must be null unless explicitHour is provided.",
+      path: ["minute"]
+    });
+  }
+
 });
 
 export const taskReferenceSchema = z.discriminatedUnion("kind", [
@@ -435,14 +480,14 @@ export const createTaskPlanningActionSchema = z.object({
 export const createScheduleBlockPlanningActionSchema = z.object({
   type: z.literal("create_schedule_block"),
   taskRef: taskReferenceSchema,
-  scheduleConstraint: scheduleConstraintSchema,
+  scheduleConstraint: scheduleConstraintSchema.nullable(),
   reason: z.string().min(1)
 });
 
 export const moveScheduleBlockPlanningActionSchema = z.object({
   type: z.literal("move_schedule_block"),
   blockRef: scheduleBlockReferenceSchema,
-  scheduleConstraint: scheduleConstraintSchema,
+  scheduleConstraint: scheduleConstraintSchema.nullable(),
   reason: z.string().min(1)
 });
 
@@ -487,7 +532,7 @@ export const inboxPlanningContextSchema = z.object({
   userProfile: userProfileSchema,
   tasks: z.array(inboxPlanningTaskContextSchema),
   scheduleBlocks: z.array(inboxPlanningScheduleBlockContextSchema),
-  now: z.string().datetime().optional()
+  referenceTime: z.string().datetime()
 });
 
 export const conversationTurnSchema = z.object({
@@ -521,20 +566,27 @@ export const confirmedMutationRecoveryInputSchema = z.object({
   memorySummary: z.string().nullable()
 });
 
-export const confirmedMutationRecoveryOutputSchema = z.object({
+export const confirmedMutationRecoveryResponseFormatSchema = z.object({
   outcome: z.enum(["recovered", "needs_clarification"]),
   recoveredText: z.string().nullable(),
   reason: z.string().min(1),
   userReplyMessage: z.string().min(1)
-}).refine((data) => {
-  if (data.outcome === "recovered") {
-    return typeof data.recoveredText === "string" && data.recoveredText.length > 0;
-  }
-
-  return data.recoveredText === null;
-}, {
-  message: "recoveredText is required for 'recovered' and must be null for 'needs_clarification'"
 });
+
+export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("recovered"),
+    recoveredText: z.string().min(1),
+    reason: z.string().min(1),
+    userReplyMessage: z.string().min(1)
+  }),
+  z.object({
+    outcome: z.literal("needs_clarification"),
+    recoveredText: z.null(),
+    reason: z.string().min(1),
+    userReplyMessage: z.string().min(1)
+  })
+]);
 
 export const scheduleProposalInputSchema = z.object({
   userId: z.string(),
@@ -542,7 +594,7 @@ export const scheduleProposalInputSchema = z.object({
   userProfile: userProfileSchema,
   existingBlocks: z.array(scheduleBlockSchema),
   scheduleConstraint: scheduleConstraintSchema.nullable().optional(),
-  now: z.string().datetime().optional()
+  referenceTime: z.string().datetime()
 });
 
 export const scheduleProposalOutputSchema = z.object({
@@ -649,7 +701,7 @@ export function buildInboxPlanningContext(input: {
   userProfile: UserProfile;
   tasks: Task[];
   scheduleBlocks?: ScheduleBlock[];
-  now?: string;
+  referenceTime: string;
 }): InboxPlanningContext {
   const scheduleBlocks = input.scheduleBlocks ?? buildScheduleBlocksFromTasks(input.tasks);
 
@@ -665,7 +717,7 @@ export function buildInboxPlanningContext(input: {
       scheduleBlock,
       taskTitle: input.tasks.find((task) => task.id === scheduleBlock.taskId)?.title ?? "Scheduled task"
     })),
-    ...(input.now ? { now: input.now } : {})
+    referenceTime: input.referenceTime
   });
 }
 
@@ -693,7 +745,7 @@ export function resolveScheduleBlockReference(
 export async function buildScheduleProposal(input: ScheduleProposalInput) {
   const parsed = scheduleProposalInputSchema.parse(input);
   const profile = parsed.userProfile;
-  const now = new Date(parsed.now ?? new Date().toISOString());
+  const referenceTime = new Date(parsed.referenceTime);
 
   const inserts = parsed.openTasks.map((task, index) =>
     scheduleBlockSchema.parse({
@@ -701,14 +753,14 @@ export async function buildScheduleProposal(input: ScheduleProposalInput) {
       userId: task.userId,
       taskId: task.id,
       startAt: computeStartAt({
-        now,
+        referenceTime,
         profile,
         existingBlocks: parsed.existingBlocks,
         constraint: parsed.scheduleConstraint ?? null,
         slotOffset: index
       }).toISOString(),
       endAt: computeEndAt({
-        now,
+        referenceTime,
         profile,
         existingBlocks: parsed.existingBlocks,
         constraint: parsed.scheduleConstraint ?? null,
@@ -732,15 +784,15 @@ export async function buildScheduleProposal(input: ScheduleProposalInput) {
 export function buildScheduleAdjustment(input: {
   block: ScheduleBlock;
   userProfile: UserProfile;
-  scheduleConstraint: ScheduleConstraint;
+  scheduleConstraint: ScheduleConstraint | null;
   existingBlocks: ScheduleBlock[];
-  now?: string;
+  referenceTime: string;
 }) {
-  const now = new Date(input.now ?? new Date().toISOString());
+  const referenceTime = new Date(input.referenceTime);
   const durationMinutes =
     Math.max(15, Math.round((Date.parse(input.block.endAt) - Date.parse(input.block.startAt)) / 60000)) || 60;
   const startAt = computeStartAt({
-    now,
+    referenceTime,
     profile: input.userProfile,
     existingBlocks: input.existingBlocks.filter((block) => block.id !== input.block.id),
     constraint: input.scheduleConstraint,
@@ -761,7 +813,7 @@ export function buildScheduleAdjustment(input: {
 }
 
 type ComputeStartAtInput = {
-  now: Date;
+  referenceTime: Date;
   profile: UserProfile;
   existingBlocks: ScheduleBlock[];
   constraint: ScheduleConstraint | null;
@@ -770,10 +822,18 @@ type ComputeStartAtInput = {
 };
 
 function computeStartAt(input: ComputeStartAtInput) {
-  const start = new Date(input.now);
+  const start = new Date(input.referenceTime);
   start.setUTCSeconds(0, 0);
 
   if (input.constraint) {
+    if (input.constraint.relativeMinutes != null) {
+      return advanceForConflicts(
+        new Date(start.getTime() + input.constraint.relativeMinutes * 60_000),
+        input.profile.focusBlockMinutes,
+        input.existingBlocks
+      );
+    }
+
     const hour = input.constraint.explicitHour ?? preferredWindowHour(input.constraint.preferredWindow);
     const localDate = resolveConstraintLocalDate(
       start,
@@ -789,7 +849,7 @@ function computeStartAt(input: ComputeStartAtInput) {
         month: localDate.month,
         day: localDate.day,
         hour,
-        minute: input.constraint.minute
+        minute: input.constraint.minute ?? 0
       }),
       input.profile.focusBlockMinutes,
       input.existingBlocks
@@ -806,7 +866,7 @@ function computeStartAt(input: ComputeStartAtInput) {
     minute: 0
   });
 
-  if (candidate <= input.now) {
+  if (candidate <= input.referenceTime) {
     const nextLocalDate = addDaysToLocalDate(localDate, 1);
     candidate = buildDateInTimeZone({
       timeZone: input.profile.timezone,

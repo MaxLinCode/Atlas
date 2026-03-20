@@ -22,16 +22,16 @@ Atlas now operates in two complementary modes:
 
 Every turn begins in conversation mode. Mutation mode runs only on clear user intent or after Atlas proposes a concrete change and the user confirms it.
 
-## Telegram bot contract
+## Messaging Bot Contract
 
 ### Role
 
-Telegram is the MVP interaction surface for planning conversation, reminders, and follow-up accountability.
+The messaging bot is the MVP interaction surface for planning conversation, reminders, and follow-up accountability.
 
 ### Accepts
 
 - Freeform user messages
-- Telegram delivery metadata needed to identify the sender and conversation
+- Delivery metadata needed to identify the sender and conversation
 
 ### Produces
 
@@ -48,14 +48,14 @@ Telegram is the MVP interaction surface for planning conversation, reminders, an
 
 ### Allowed decisions
 
-- Transport-level normalization of Telegram payload shape
+- Transport-level normalization of messaging payload shape
 - Delivery retry behavior at the transport boundary if needed
 
 ### Forbidden decisions
 
 - Deciding task structure
 - Mutating schedule state
-- Treating Telegram chat history as canonical product memory
+- Treating chat history as canonical product memory
 - Embedding business rules in bot transport handlers
 
 ## Vercel app and API contract
@@ -66,7 +66,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Accepts
 
-- Webhook events from Telegram
+- Webhook events from the messaging transport
 - Scheduled or cron-triggered reminder runs
 - Internal admin or debug requests if those surfaces exist
 
@@ -144,7 +144,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 ### Forbidden decisions
 
 - Direct database writes
-- Direct Telegram delivery
+- Direct transport delivery
 - Framework-specific routing concerns
 
 ## Model layer contract
@@ -229,7 +229,7 @@ Neon Postgres is the canonical persistence layer for Atlas.
 
 ## Shared contract rules
 
-- An inbound Telegram message must be persisted as an inbox item before Atlas mutates downstream task state.
+- An inbound chat message must be persisted as an inbox item before Atlas mutates downstream task state.
 - Conversation mode may use recent transcript plus relevant state, but transcript is not canonical state for mutations.
 - The app should own `TurnRouter` and select `ConversationPath` or `MutationPath` explicitly rather than relying on one catch-all model prompt.
 - Mutation mode output must be validated against app-owned schemas before any record is created or updated from it.

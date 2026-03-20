@@ -79,7 +79,7 @@ describe("process inbox item service", () => {
     expect(result.outcome).toBe("planned");
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listPlannerRunsForTests()[0]?.modelInput).toMatchObject({
-      now: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z"
     });
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(listTasksForTests()[0]).toMatchObject({
@@ -272,6 +272,62 @@ describe("process inbox item service", () => {
     expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toContain("T22:00:00.000Z");
   });
 
+  it("schedules relative-minute requests from the inbox timestamp", async () => {
+    seedInboxItemForProcessingTests({
+      id: "inbox-relative-1",
+      userId: "123",
+      sourceEventId: "event-relative-1",
+      rawText: "add schedule my car maintenance to my cal in like 15 min",
+      normalizedText: "add schedule my car maintenance to my cal in like 15 min",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T01:02:00.000Z"
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-relative-1"
+      },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled car maintenance in 15 minutes.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                relativeMinutes: 15,
+                explicitHour: null,
+                minute: null,
+                preferredWindow: null,
+                sourceText: "in like 15 min"
+              },
+              reason: "The user asked for a relative start time."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("planned");
+    expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toBe("2026-03-20T01:17:00.000Z");
+  });
+
   it("allows an app-owned planning text override for confirmed mutation recovery", async () => {
     const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
       confidence: 0.9,
@@ -438,6 +494,58 @@ describe("process inbox item service", () => {
 
     expect(result.outcome).toBe("updated_schedule");
     expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-21T17:00:00.000Z");
+  });
+
+  it("uses the default open slot when the planner delegates slot choice", async () => {
+    const store = getDefaultInboxProcessingStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-pick-slot",
+      userId: "123",
+      sourceEventId: "event-pick-slot",
+      rawText: "Schedule the oil change for me and just pick an opening",
+      normalizedText: "Schedule the oil change for me and just pick an opening",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-pick-slot" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.88,
+          summary: "Schedule the oil change using the next open slot.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Oil change",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: null,
+              reason: "The user delegated slot choice to Atlas."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("planned");
+    if (result.outcome !== "planned") {
+      throw new Error("Expected a planned result.");
+    }
+
+    expect(result.scheduleBlocks[0]?.startAt).toBe("2026-03-21T16:00:00.000Z");
   });
 
   it("marks an existing task as done through the mutation path", async () => {
@@ -631,7 +739,7 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-20T22:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-19T22:00:00.000Z");
     expect("updatedBlock" in result ? result.updatedBlock.id : "").toBe(listTasksForTests()[0]?.externalCalendarEventId);
     expect(listTasksForTests()[0]).toMatchObject({
       lastInboxItemId: "inbox-move",
@@ -806,7 +914,98 @@ describe("process inbox item service", () => {
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-20T22:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-19T22:00:00.000Z");
+  });
+
+  it("anchors busy-period lookup to the inbox reference time", async () => {
+    const store = getDefaultInboxProcessingStore();
+    const listBusyPeriods = vi.fn(async () => []);
+
+    await getDefaultGoogleCalendarConnectionStore().upsertConnection({
+      userId: "123",
+      providerAccountId: "google-user-1",
+      email: "max@example.com",
+      selectedCalendarId: "primary",
+      selectedCalendarName: "Primary",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      tokenExpiresAt: null,
+      scopes: ["scope-a"],
+      syncCursor: null,
+      lastSyncedAt: null,
+      revokedAt: null
+    });
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-reference-busy",
+      userId: "123",
+      sourceEventId: "event-reference-busy",
+      rawText: "Review launch checklist",
+      normalizedText: "Review launch checklist",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-19T16:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-reference-busy" },
+      {
+        store,
+        calendar: {
+          provider: "google-calendar",
+          createEvent: async (input) => ({
+            externalCalendarEventId: "event-1",
+            externalCalendarId: input.externalCalendarId ?? "primary",
+            scheduledStartAt: input.startAt,
+            scheduledEndAt: input.endAt
+          }),
+          updateEvent: async (input) => ({
+            externalCalendarEventId: input.externalCalendarEventId,
+            externalCalendarId: input.externalCalendarId ?? "primary",
+            scheduledStartAt: input.startAt,
+            scheduledEndAt: input.endAt
+          }),
+          getEvent: async () => null,
+          listBusyPeriods
+        },
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Captured and scheduled Review launch checklist.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Review launch checklist",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task in the next slot."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(listBusyPeriods).toHaveBeenCalledWith({
+      startAt: "2026-03-19T16:00:00.000Z",
+      endAt: "2026-04-02T16:00:00.000Z",
+      externalCalendarId: "primary"
+    });
   });
 
   it("marks invalid model output references for clarification", async () => {

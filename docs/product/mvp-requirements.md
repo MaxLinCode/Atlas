@@ -17,7 +17,7 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 
 ### 1. Conversational planning interface
 
-- User can send any freeform message to the Telegram bot.
+- User can send any freeform message to the messaging bot.
 - The system accepts and stores the message without requiring structure, formatting, or immediate follow-up questions.
 - The inbox is optimized for capture speed, not clean intake.
 - The assistant should support fluid planning conversation, including discussion, prioritization help, reflective planning, and meta questions about how Atlas should be used.
@@ -42,17 +42,18 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 
 - Atlas should proactively suggest scheduled time when conversation surfaces actionable work.
 - Extracted tasks should be assigned a simple planned time whenever Atlas can do so safely.
+- If the user delegates timing choice to Atlas, the system should prefer choosing a reasonable open slot instead of asking for an exact time too early.
 - Scheduling is allowed to be basic and rule-driven rather than smart.
 - MVP scheduling may use simple user-defined availability or a minimal default schedule.
 - The system should treat the connected external calendar as the canonical source of scheduled time.
 - The scheduler does not need to optimize deeply for workload, energy, context, or productivity patterns.
-- The user may also send follow-up scheduling requests or schedule adjustments in Telegram, and the system should resolve those requests from persisted Atlas state rather than broad recent-chat inference.
+- The user may also send follow-up scheduling requests or schedule adjustments in chat, and the system should resolve those requests from persisted Atlas state rather than broad recent-chat inference.
 - Atlas may answer conversational planning turns without taking any side effects, but when it does schedule or reschedule work, those mutations should remain safe and explainable.
 - Atlas may offer smarter conversational rearrangement proposals, but broader schedule rewrites should require explicit confirmation rather than being applied automatically.
 
 ### 4. Lightweight reminders and follow-through
 
-- The system sends Telegram reminders for scheduled tasks.
+- The system sends bot reminders for scheduled tasks.
 - Reminder behavior should be basic and predictable, not highly adaptive.
 - A scheduled task should support at least one reminder before or at its planned time.
 - Reminder messaging should focus on prompting action, not coaching or replanning.
@@ -82,6 +83,7 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 - Atlas should be schedule-forward: when work is actionable, it should bias toward proposing or placing time on the schedule.
 - Scheduling in MVP is allowed to be simple, manual-feeling, and limited, as long as it works consistently.
 - Conversational scheduling must stay anchored to persisted tasks, explicit schedule linkage, and planner state rather than implicit chat-history memory.
+- Broad but usable timing preferences such as "morning" or "not too early" should usually be enough for Atlas to propose or choose a slot.
 - Atlas should be able to answer meta questions about how it should be used without forcing those turns through task extraction.
 - Reminder functionality should be straightforward and understandable rather than adaptive.
 - Every Atlas task should immediately seek scheduled time; unscheduled backlog is not the normal operating model.
@@ -92,11 +94,11 @@ The goal of this version is to prove that Atlas can feel like a useful planning 
 
 ## Acceptance Criteria
 
-- A user can send a messy message in Telegram and have it saved successfully every time.
+- A user can send a messy message in chat and have it saved successfully every time.
 - The assistant can respond usefully to a planning conversation even when no task or schedule mutation is needed.
 - A non-trivial portion of brain-dump messages produce usable tasks or concrete planning suggestions without manual cleanup.
 - When actionable work is identified, the default path should attempt to propose or apply a scheduled time automatically when safe.
-- The user receives a Telegram reminder tied to that scheduled task.
+- The user receives a bot reminder tied to that scheduled task.
 - After a scheduled block ends, Atlas can follow up, keep one unresolved task in `awaiting_followup`, and let the user resolve it by completing, rescheduling, or archiving it.
 - The full loop works without requiring subtasks or advanced autonomous replanning.
 

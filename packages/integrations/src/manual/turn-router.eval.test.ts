@@ -24,46 +24,55 @@ const ASSISTANT_CONFIRMATION_TURNS: ConversationTurn[] = [
 
 const TURN_ROUTER_EVAL_CASES: TurnRouterEvalCase[] = [
   {
-      input: {
-        rawText: "create car maintenance appt",
-        normalizedText: "create car maintenance appt",
-        recentTurns: [],
-      },
+    input: {
+      rawText: "create car maintenance appt",
+      normalizedText: "create car maintenance appt",
+      recentTurns: []
+    },
     expectedRoute: "conversation_then_mutation",
     note: "Partial scheduling ask should clarify before any write."
   },
   {
-      input: {
-        rawText: "schedule oil change for Friday at 2pm",
-        normalizedText: "schedule oil change for Friday at 2pm",
-        recentTurns: [],
-      },
+    input: {
+      rawText: "schedule oil change for Friday at 2pm",
+      normalizedText: "schedule oil change for Friday at 2pm",
+      recentTurns: []
+    },
     expectedRoute: "mutation",
     note: "Concrete scheduling request should be write-ready."
   },
   {
-      input: {
-        rawText: "should I do the oil change this week or next week?",
-        normalizedText: "should I do the oil change this week or next week?",
-        recentTurns: [],
-      },
+    input: {
+      rawText: "should I do the oil change this week or next week?",
+      normalizedText: "should I do the oil change this week or next week?",
+      recentTurns: []
+    },
     expectedRoute: "conversation",
     note: "Planning discussion without an immediate write."
   },
   {
-      input: {
-        rawText: "I might move this to Friday, what do you think?",
-        normalizedText: "I might move this to Friday, what do you think?",
-        recentTurns: [],
-      },
+    input: {
+      rawText: "I might move this to Friday, what do you think?",
+      normalizedText: "I might move this to Friday, what do you think?",
+      recentTurns: []
+    },
     expectedRoute: "conversation_then_mutation",
     note: "Mixed discussion plus possible write should discuss first."
   },
   {
     input: {
+      rawText: "if tomorrow is slammed push deep work to Friday",
+      normalizedText: "if tomorrow is slammed push deep work to Friday",
+      recentTurns: []
+    },
+    expectedRoute: "conversation_then_mutation",
+    note: "Conditional requests should not be treated as write-ready."
+  },
+  {
+    input: {
       rawText: "Yes",
       normalizedText: "Yes",
-      recentTurns: ASSISTANT_CONFIRMATION_TURNS,
+      recentTurns: ASSISTANT_CONFIRMATION_TURNS
     },
     expectedRoute: "confirmed_mutation",
     note: "Short confirmation of one concrete recent proposal should be write-capable."
@@ -83,10 +92,30 @@ const TURN_ROUTER_EVAL_CASES: TurnRouterEvalCase[] = [
           text: "Friday works",
           createdAt: "2026-03-17T16:01:00.000Z"
         }
-      ],
+      ]
     },
     expectedRoute: "confirmed_mutation",
     note: "Concrete refinement of one recent proposal should be write-capable."
+  },
+  {
+    input: {
+      rawText: "Yes",
+      normalizedText: "Yes",
+      recentTurns: [
+        {
+          role: "assistant",
+          text: "I could reschedule the workout or add the grocery reminder first.",
+          createdAt: "2026-03-17T17:00:00.000Z"
+        },
+        {
+          role: "user",
+          text: "Yes",
+          createdAt: "2026-03-17T17:01:00.000Z"
+        }
+      ]
+    },
+    expectedRoute: "conversation_then_mutation",
+    note: "Vague confirmation after multiple possible actions should stay discuss-first."
   }
 ];
 
@@ -96,8 +125,10 @@ beforeAll(() => {
   }
 
   process.env.DATABASE_URL ??= "postgresql://manual:manual@localhost:5432/manual_eval";
+  process.env.APP_BASE_URL ??= "http://localhost:3000";
   process.env.TELEGRAM_BOT_TOKEN ??= "manual-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET ??= "manual-telegram-webhook-secret";
+  process.env.TELEGRAM_ALLOWED_USER_IDS ??= "123";
 });
 
 describe.sequential("manual turn router eval", () => {

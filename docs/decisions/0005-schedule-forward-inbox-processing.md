@@ -6,13 +6,13 @@ Accepted
 
 ## Context
 
-Atlas is a Telegram-first planning assistant, not a passive task bucket. The MVP already treats `inbox_items` as canonical captured input, but the original stubbed planner path was task-extraction-centric and did not define how conversational scheduling requests or schedule adjustments should be handled.
+Atlas is a chat-first planning assistant, not a passive task bucket. The MVP already treats `inbox_items` as canonical captured input, but the original stubbed planner path was task-extraction-centric and did not define how conversational scheduling requests or schedule adjustments should be handled.
 
 We need one durable rule for inbox processing that:
 
 - keeps capture fast and durable
 - turns safe task capture into time placement by default
-- supports follow-up scheduling messages without relying on broad Telegram chat-history inference
+- supports follow-up scheduling messages without relying on broad chat-history inference
 - keeps business logic split cleanly across app orchestration, core rules, and repository persistence
 
 ## Decision
@@ -23,7 +23,8 @@ Use a schedule-forward, model-driven inbox-processing model for MVP.
 - Every inbox item is processed from persisted Atlas state through a structured OpenAI Responses API planning step.
 - The model returns validated planning actions such as create task, create schedule block, move schedule block, or clarify.
 - When Atlas can safely extract a task, it should also try to place that task onto the internal schedule immediately.
-- Conversational scheduling changes must resolve from persisted Atlas state such as `tasks`, `schedule_blocks`, `user_profiles`, and `planner_runs`, not from broad recent Telegram history.
+- When the user delegates slot choice or gives a broad but usable timing preference, Atlas should prefer scheduling from availability or a sensible inferred time instead of immediately asking for an exact hour.
+- Conversational scheduling changes must resolve from persisted Atlas state such as `tasks`, `schedule_blocks`, `user_profiles`, and `planner_runs`, not from broad recent chat history.
 - Existing persisted records are exposed to the model only through app-generated symbolic aliases, not raw database ids.
 - `apps/web` owns orchestration for `process-inbox-item`.
 - `packages/core` owns validation, symbolic reference rules, ambiguity rules, and deterministic scheduling logic.
@@ -41,7 +42,7 @@ Use a schedule-forward, model-driven inbox-processing model for MVP.
 ## Guardrails
 
 - Do not move orchestration into route handlers.
-- Do not treat Telegram transcripts as durable memory.
+- Do not treat chat transcripts as durable memory.
 - Do not add speculative conversation-memory abstractions when persisted task and schedule state is sufficient.
 - Do not let the model write raw ids or mutate state directly.
 - Keep scheduling decisions explainable and reconstructable from stored state and planner runs.
