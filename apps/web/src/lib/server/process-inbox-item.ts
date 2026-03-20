@@ -151,12 +151,12 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
 
     return withRenderedFollowUp(
       await input.store.saveNeedsClarificationResult({
-      inboxItemId: input.context.inboxItem.id,
-      confidence: input.planning.confidence,
-      plannerRun: input.plannerRun,
-      reason: clarifyAction.reason,
-      followUpMessage: ""
-    }),
+        inboxItemId: input.context.inboxItem.id,
+        confidence: input.planning.confidence,
+        plannerRun: input.plannerRun,
+        reason: clarifyAction.reason,
+        followUpMessage: buildClarificationReply(clarifyAction.reason)
+      }),
       input.context.userProfile.timezone
     );
   }
@@ -322,6 +322,18 @@ async function applyExistingTaskScheduleActions(
       return saveClarification(input, `Could not resolve task alias ${action.taskRef.alias}.`);
     }
 
+    if (hasAmbiguousTaskTitle(input.context.tasks, task)) {
+      return saveClarification(
+        input,
+        buildAmbiguousTaskReply({
+          tasks: findActionableTasksWithSameTitle(input.context.tasks, task),
+          title: task.title,
+          actionPrompt: "update",
+          timeZone: input.context.userProfile.timezone
+        })
+      );
+    }
+
     existingTaskIds.push(task.id);
 
     const proposal = await buildScheduleProposal({
@@ -392,6 +404,18 @@ async function applyMoveAction(
 
   if (!task || task.externalCalendarId === null) {
     return saveClarification(input, `Could not resolve current scheduled task for alias ${action.blockRef.alias}.`);
+  }
+
+  if (hasAmbiguousScheduledTitle(input.context.tasks, input.context.scheduleBlocks, block.taskId)) {
+    return saveClarification(
+      input,
+      buildAmbiguousTaskReply({
+        tasks: findScheduledTasksWithSameTitle(input.context.tasks, input.context.scheduleBlocks, block.taskId),
+        title: task.title,
+        actionPrompt: "move",
+        timeZone: input.context.userProfile.timezone
+      })
+    );
   }
 
   const liveEvent = await input.calendar.getEvent({
@@ -479,6 +503,18 @@ async function applyCompletionActions(
 
     if (!task) {
       return saveClarification(input, `Could not resolve task alias ${action.taskRef.alias}.`);
+    }
+
+    if (hasAmbiguousTaskTitle(input.context.tasks, task)) {
+      return saveClarification(
+        input,
+        buildAmbiguousTaskReply({
+          tasks: findActionableTasksWithSameTitle(input.context.tasks, task),
+          title: task.title,
+          actionPrompt: "update",
+          timeZone: input.context.userProfile.timezone
+        })
+      );
     }
 
     taskIds.push(task.id);
@@ -773,6 +809,112 @@ function buildClarificationReply(reason: string) {
   }
 
   return reason;
+}
+
+function hasAmbiguousTaskTitle(tasks: Task[], task: Task) {
+  return findActionableTasksWithSameTitle(tasks, task).length > 1;
+}
+
+function hasAmbiguousScheduledTitle(tasks: Task[], scheduleBlocks: ScheduleBlock[], taskId: string) {
+  const task = tasks.find((candidate) => candidate.id === taskId);
+
+  if (!task) {
+    return false;
+  }
+
+  const normalizedTitle = normalizeTaskTitle(task.title);
+  let matchingScheduledCount = 0;
+
+  for (const block of scheduleBlocks) {
+    const scheduledTask = tasks.find((candidate) => candidate.id === block.taskId);
+
+    if (scheduledTask && normalizeTaskTitle(scheduledTask.title) === normalizedTitle) {
+      matchingScheduledCount += 1;
+    }
+  }
+
+  return matchingScheduledCount > 1;
+}
+
+function findActionableTasksWithSameTitle(tasks: Task[], task: Task) {
+  const normalizedTitle = normalizeTaskTitle(task.title);
+
+  return tasks.filter(
+    (candidate) => isTaskActionable(candidate) && normalizeTaskTitle(candidate.title) === normalizedTitle
+  );
+}
+
+function findScheduledTasksWithSameTitle(tasks: Task[], scheduleBlocks: ScheduleBlock[], taskId: string) {
+  const task = tasks.find((candidate) => candidate.id === taskId);
+
+  if (!task) {
+    return [];
+  }
+
+  const normalizedTitle = normalizeTaskTitle(task.title);
+
+  return scheduleBlocks.flatMap((block) => {
+    const scheduledTask = tasks.find((candidate) => candidate.id === block.taskId);
+
+    if (
+      scheduledTask &&
+      normalizeTaskTitle(scheduledTask.title) === normalizedTitle
+    ) {
+      return [scheduledTask];
+    }
+
+    return [];
+  });
+}
+
+function normalizeTaskTitle(title: string) {
+  return title.trim().toLocaleLowerCase();
+}
+
+function isTaskActionable(task: Task) {
+  return task.lifecycleState !== "done" && task.lifecycleState !== "archived";
+}
+
+function buildAmbiguousTaskReply(input: {
+  tasks: Task[];
+  title: string;
+  actionPrompt: "update" | "move";
+  timeZone: string;
+}) {
+  const header =
+    input.actionPrompt === "move"
+      ? `I found multiple scheduled tasks named '${input.title}'. Tell me which one you want me to move:`
+      : `I found multiple tasks named '${input.title}'. Tell me which one you want me to update:`;
+
+  return `${header}\n${input.tasks
+    .map((task, index) => `${index + 1}. ${describeTaskOption(task, input.timeZone)}`)
+    .join("\n")}`;
+}
+
+function describeTaskOption(task: Task, timeZone: string) {
+  if (task.scheduledStartAt) {
+    return `scheduled for ${formatClarificationTime(task.scheduledStartAt, timeZone)}`;
+  }
+
+  if (task.lifecycleState === "pending_schedule") {
+    return "not scheduled yet";
+  }
+
+  if (task.lifecycleState === "awaiting_followup") {
+    return "waiting for follow-up";
+  }
+
+  return task.lifecycleState.replaceAll("_", " ");
+}
+
+function formatClarificationTime(iso: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(iso));
 }
 
 function buildPlannerRun(

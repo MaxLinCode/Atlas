@@ -956,6 +956,366 @@ describe("process inbox item service", () => {
     );
   });
 
+  it("returns a non-empty clarification reply when the planner explicitly asks to clarify", async () => {
+    seedInboxItemForProcessingTests({
+      id: "inbox-archive-clarify",
+      userId: "123",
+      sourceEventId: "event-archive-clarify",
+      rawText: "archive that",
+      normalizedText: "archive that",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-archive-clarify" },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.32,
+          summary: "Need clarification before archiving.",
+          actions: [
+            {
+              type: "clarify",
+              reason: "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect(result.followUpMessage).toBe(
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+    );
+  });
+
+  it("asks for clarification when multiple existing tasks share the same title", async () => {
+    const store = getDefaultInboxProcessingStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-duplicate-1",
+      userId: "123",
+      sourceEventId: "event-duplicate-1",
+      rawText: "Car maintenance",
+      normalizedText: "Car maintenance",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-duplicate-1" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Car maintenance.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-duplicate-2",
+      userId: "123",
+      sourceEventId: "event-duplicate-2",
+      rawText: "Car maintenance",
+      normalizedText: "Car maintenance",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T17:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-duplicate-2" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Car maintenance.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 10,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-duplicate-complete",
+      userId: "123",
+      sourceEventId: "event-duplicate-complete",
+      rawText: "car maintenance is done",
+      normalizedText: "car maintenance is done",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T18:00:00.000Z"
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-duplicate-complete",
+        planningInboxTextOverride: {
+          text: "Mark car maintenance as done."
+        }
+      },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.61,
+          summary: "Mark the existing car maintenance task as done.",
+          actions: [
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              reason: "The user said car maintenance is done."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect(result.followUpMessage).toContain("I found multiple tasks named 'Car maintenance'");
+    expect(result.followUpMessage).toContain("1. scheduled for");
+    expect(result.followUpMessage).toContain("2. scheduled for");
+  });
+
+  it("does not ask for clarification when duplicate titles only exist on closed tasks", async () => {
+    const store = getDefaultInboxProcessingStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-car-open",
+      userId: "123",
+      sourceEventId: "event-car-open",
+      rawText: "Car maintenance",
+      normalizedText: "Car maintenance",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-car-open" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Car maintenance.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 9,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-car-closed",
+      userId: "123",
+      sourceEventId: "event-car-closed",
+      rawText: "Car maintenance is done",
+      normalizedText: "Car maintenance is done",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T17:00:00.000Z"
+    });
+
+    await processInboxItem(
+      {
+        inboxItemId: "inbox-car-closed",
+        planningInboxTextOverride: {
+          text: "Mark car maintenance as done."
+        }
+      },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.71,
+          summary: "Marked the remaining car maintenance task as done.",
+          actions: [
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_1"
+              },
+              reason: "The user said car maintenance is done."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-car-second-open",
+      userId: "123",
+      sourceEventId: "event-car-second-open",
+      rawText: "Car maintenance",
+      normalizedText: "Car maintenance",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T18:00:00.000Z"
+    });
+
+    await processInboxItem(
+      { inboxItemId: "inbox-car-second-open" },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.9,
+          summary: "Scheduled Car maintenance.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Car maintenance",
+              priority: "medium",
+              urgency: "medium"
+            },
+            {
+              type: "create_schedule_block",
+              taskRef: {
+                kind: "created_task",
+                alias: "new_task_1"
+              },
+              scheduleConstraint: {
+                dayReference: null,
+                weekday: null,
+                weekOffset: null,
+                explicitHour: 10,
+                minute: 0,
+                preferredWindow: null,
+                sourceText: "default next slot"
+              },
+              reason: "Schedule the new task."
+            }
+          ]
+        })
+      }
+    );
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-car-complete-open",
+      userId: "123",
+      sourceEventId: "event-car-complete-open",
+      rawText: "Car maintenance is done",
+      normalizedText: "Car maintenance is done",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T19:00:00.000Z"
+    });
+
+    const result = await processInboxItem(
+      {
+        inboxItemId: "inbox-car-complete-open",
+        planningInboxTextOverride: {
+          text: "Mark car maintenance as done."
+        }
+      },
+      {
+        store,
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.71,
+          summary: "Marked the remaining car maintenance task as done.",
+          actions: [
+            {
+              type: "complete_task",
+              taskRef: {
+                kind: "existing_task",
+                alias: "existing_task_2"
+              },
+              reason: "The user said car maintenance is done."
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("completed_tasks");
+    expect(result.followUpMessage).toBe("Marked 'Car maintenance' as done.");
+  });
+
   it("resets processing state and records a failed planner run when calendar creation fails", async () => {
     const store = getDefaultInboxProcessingStore();
 
