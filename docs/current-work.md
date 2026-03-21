@@ -3,10 +3,18 @@
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
-Current implementation focus: stabilize the newly locked-down Google Calendar path after the security hardening pass so Atlas safely links one Google account per user, treats Google Calendar as scheduled-time authority, keeps `tasks` as the fast local projection, and preserves the locked follow-up/reschedule runtime on top of that task model.
+Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. The active branch restructures the OpenAI prompts into explicit prompt assets, expands live eval coverage around ambiguous routing and confirmed-mutation recovery, shifts product language from Telegram-first to chat-first at the prompt and docs layer, and threads `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor.
 
 ## Near-term milestones
 
+- Finish the prompt-asset cleanup and eval loop:
+  - keep each model prompt scoped to one job with explicit sections and output requirements
+  - expand live eval fixtures around ambiguous referents, vague confirmations, and partial scheduling requests
+  - use eval results to drive prompt revisions before considering model upgrades
+- Preserve deterministic time handling across mutation mode:
+  - keep planner interpretation, schedule generation, move logic, and busy-period lookup anchored to `referenceTime`
+  - continue removing remaining wall-clock assumptions from scheduling paths and tests
+- Carry the chat-first framing through remaining docs and app copy where the behavior is generic rather than transport-specific
 - Harden Google Calendar integration for launch review:
   - validate the new one-time `/google-calendar/connect` handoff and short-lived link-session flow in real deployment
   - finish disconnect UX and revoked-account operator visibility
@@ -135,6 +143,21 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - unsupported mixes of move and create actions
   - unresolved symbolic aliases
   - duplicate schedule actions for the same existing task
+- Verification completed on this branch:
+  - `pnpm typecheck`
+  - `pnpm test` except for the Postgres-backed integration package, which remains blocked in this environment by local `5432` connection restrictions
+  - `pnpm eval:planner`
+  - `pnpm eval:turn-router`
+  - `pnpm eval:router-confirmation`
+  - `pnpm eval:conversation-context`
+  - `pnpm eval:confirmed-mutation-recovery`
+- Prompt/runtime work completed on this branch:
+  - OpenAI prompts now live in `packages/integrations/src/prompts` as explicit per-role prompt assets instead of one dense file-local string block
+  - planner, router, conversation, memory-summary, and confirmed-mutation-recovery prompts now have expanded failure-boundary examples and tighter output-shape guidance
+  - confirmed-mutation recovery now uses a permissive response-format schema plus a stricter runtime discriminated-union parse
+  - schedule actions may now delegate slot choice with `scheduleConstraint: null`, and broad-but-usable timing like `morning but not too early` should map to schedulable intent instead of forcing exact-time clarification
+  - scheduling now uses inbox-item `createdAt` / `referenceTime` consistently in planner context, schedule computation, move handling, and busy-calendar lookup
+  - Postgres ingress persistence now preserves caller-supplied `createdAt`, keeping deterministic scheduling tests aligned across in-memory and Postgres stores
 - Verification completed on this branch:
   - `pnpm --filter @atlas/core typecheck`
   - `pnpm --filter @atlas/db typecheck`
