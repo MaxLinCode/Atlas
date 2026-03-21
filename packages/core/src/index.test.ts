@@ -598,6 +598,127 @@ describe("core package", () => {
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T01:17:00.000Z");
   });
 
+  it("builds schedule proposals from explicit time blocks without falling back to the default duration", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Quick check-in",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      referenceTime: "2026-03-20T16:00:00.000Z",
+      scheduleConstraint: {
+        dayReference: "today",
+        weekday: null,
+        weekOffset: null,
+        relativeMinutes: null,
+        explicitHour: 11,
+        minute: 5,
+        endExplicitHour: 11,
+        endMinute: 9,
+        preferredWindow: null,
+        sourceText: "today from 11:05 to 11:09"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-20T18:05:00.000Z");
+    expect(result.inserts[0]?.endAt).toBe("2026-03-20T18:09:00.000Z");
+  });
+
+  it("uses the explicit block duration when checking conflicts for schedule proposals", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Quick check-in",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [
+        scheduleBlockSchema.parse({
+          id: "block-1",
+          userId: "user_1",
+          taskId: "task-a",
+          startAt: "2026-03-20T18:00:00.000Z",
+          endAt: "2026-03-20T18:05:00.000Z",
+          confidence: 0.8,
+          reason: "Existing block",
+          rescheduleCount: 0,
+          externalCalendarId: "primary"
+        }),
+        scheduleBlockSchema.parse({
+          id: "block-2",
+          userId: "user_1",
+          taskId: "task-b",
+          startAt: "2026-03-20T18:09:00.000Z",
+          endAt: "2026-03-20T19:00:00.000Z",
+          confidence: 0.8,
+          reason: "Existing block",
+          rescheduleCount: 0,
+          externalCalendarId: "primary"
+        })
+      ],
+      referenceTime: "2026-03-20T16:00:00.000Z",
+      scheduleConstraint: {
+        dayReference: "today",
+        weekday: null,
+        weekOffset: null,
+        relativeMinutes: null,
+        explicitHour: 11,
+        minute: 5,
+        endExplicitHour: 11,
+        endMinute: 9,
+        preferredWindow: null,
+        sourceText: "today from 11:05 to 11:09"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-20T18:05:00.000Z");
+    expect(result.inserts[0]?.endAt).toBe("2026-03-20T18:09:00.000Z");
+  });
+
   it("builds schedule adjustments from structured move requests", () => {
     const result = buildScheduleAdjustment({
       block: scheduleBlockSchema.parse({
@@ -658,6 +779,40 @@ describe("core package", () => {
     });
 
     expect(result.newStartAt).toBe("2026-03-20T17:00:00.000Z");
+  });
+
+  it("preserves explicit move-block durations from the structured constraint", () => {
+    const result = buildScheduleAdjustment({
+      block: scheduleBlockSchema.parse({
+        id: "event-1",
+        userId: "user-1",
+        taskId: "task-1",
+        startAt: "2026-03-20T18:00:00.000Z",
+        endAt: "2026-03-20T19:00:00.000Z",
+        confidence: 0.8,
+        reason: "Existing slot",
+        rescheduleCount: 0,
+        externalCalendarId: "primary"
+      }),
+      userProfile: buildDefaultUserProfile("user-1"),
+      scheduleConstraint: {
+        dayReference: null,
+        weekday: null,
+        weekOffset: null,
+        relativeMinutes: null,
+        explicitHour: 11,
+        minute: 5,
+        endExplicitHour: 11,
+        endMinute: 9,
+        preferredWindow: null,
+        sourceText: "11:05 to 11:09"
+      },
+      existingBlocks: [],
+      referenceTime: "2026-03-20T16:00:00.000Z"
+    });
+
+    expect(result.newStartAt).toBe("2026-03-20T18:05:00.000Z");
+    expect(result.newEndAt).toBe("2026-03-20T18:09:00.000Z");
   });
 
   it("interprets preferred-window scheduling in the user's timezone near UTC day boundaries", async () => {

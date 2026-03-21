@@ -382,6 +382,8 @@ export const scheduleConstraintSchema = z.object({
   relativeMinutes: z.number().int().positive().max(7 * 24 * 60).nullable().optional(),
   explicitHour: z.number().int().min(0).max(23).nullable(),
   minute: z.number().int().min(0).max(59).nullable().default(null),
+  endExplicitHour: z.number().int().min(0).max(23).nullable().optional(),
+  endMinute: z.number().int().min(0).max(59).nullable().optional(),
   preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
   sourceText: z.string().min(1)
 }).superRefine((constraint, ctx) => {
@@ -424,6 +426,8 @@ export const scheduleConstraintSchema = z.object({
       constraint.weekOffset !== null ||
       constraint.explicitHour !== null ||
       constraint.minute !== null ||
+      constraint.endExplicitHour != null ||
+      constraint.endMinute != null ||
       constraint.preferredWindow !== null
     ) {
       ctx.addIssue({
@@ -452,12 +456,62 @@ export const scheduleConstraintSchema = z.object({
     });
   }
 
+  if (constraint.explicitHour === null && constraint.endExplicitHour != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endExplicitHour requires explicitHour.",
+      path: ["endExplicitHour"]
+    });
+  }
+
+  if (constraint.endExplicitHour != null && constraint.endMinute == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endMinute is required when endExplicitHour is provided.",
+      path: ["endMinute"]
+    });
+  }
+
+  if (constraint.endExplicitHour == null && constraint.endMinute != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endMinute must be null unless endExplicitHour is provided.",
+      path: ["endMinute"]
+    });
+  }
+
   if (constraint.explicitHour === null && constraint.preferredWindow === null && constraint.minute !== null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "minute must be null unless explicitHour is provided.",
       path: ["minute"]
     });
+  }
+
+  if (constraint.preferredWindow !== null && constraint.endExplicitHour != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endExplicitHour must be null when preferredWindow is used.",
+      path: ["endExplicitHour"]
+    });
+  }
+
+  if (
+    constraint.explicitHour !== null &&
+    constraint.minute !== null &&
+    constraint.endExplicitHour != null &&
+    constraint.endMinute != null
+  ) {
+    const startMinutes = constraint.explicitHour * 60 + constraint.minute;
+    const endMinutes = constraint.endExplicitHour * 60 + constraint.endMinute;
+
+    if (endMinutes <= startMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "end time must be after the start time on the same day.",
+        path: ["endExplicitHour"]
+      });
+    }
   }
 
 });
@@ -469,6 +523,8 @@ export const scheduleConstraintResponseFormatSchema = z.object({
   relativeMinutes: z.number().int().positive().max(7 * 24 * 60).nullable().optional(),
   explicitHour: z.number().int().min(0).max(23).nullable(),
   minute: z.number().int().min(0).max(59).nullable(),
+  endExplicitHour: z.number().int().min(0).max(23).nullable().optional(),
+  endMinute: z.number().int().min(0).max(59).nullable().optional(),
   preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
   sourceText: z.string().min(1)
 });
@@ -857,8 +913,8 @@ export function buildScheduleAdjustment(input: {
   referenceTime: string;
 }) {
   const referenceTime = new Date(input.referenceTime);
-  const durationMinutes =
-    Math.max(15, Math.round((Date.parse(input.block.endAt) - Date.parse(input.block.startAt)) / 60000)) || 60;
+  const existingDurationMinutes = Math.round((Date.parse(input.block.endAt) - Date.parse(input.block.startAt)) / 60000);
+  const durationMinutes = computeConstraintDurationMinutes(input.scheduleConstraint) ?? (existingDurationMinutes || 60);
   const startAt = computeStartAt({
     referenceTime,
     profile: input.userProfile,
@@ -889,9 +945,23 @@ type ComputeStartAtInput = {
   slotOffset: number;
 };
 
+function computeConstraintDurationMinutes(constraint: ScheduleConstraint | null) {
+  if (
+    constraint?.explicitHour == null ||
+    constraint.minute == null ||
+    constraint.endExplicitHour == null ||
+    constraint.endMinute == null
+  ) {
+    return null;
+  }
+
+  return constraint.endExplicitHour * 60 + constraint.endMinute - (constraint.explicitHour * 60 + constraint.minute);
+}
+
 function computeStartAt(input: ComputeStartAtInput) {
   const start = new Date(input.referenceTime);
   start.setUTCSeconds(0, 0);
+  const constraintDurationMinutes = computeConstraintDurationMinutes(input.constraint);
 
   if (input.constraint) {
     if (input.constraint.relativeMinutes != null) {
@@ -919,7 +989,7 @@ function computeStartAt(input: ComputeStartAtInput) {
         hour,
         minute: input.constraint.minute ?? 0
       }),
-      input.profile.focusBlockMinutes,
+      constraintDurationMinutes ?? input.profile.focusBlockMinutes,
       input.existingBlocks
     );
   }
@@ -951,7 +1021,8 @@ function computeStartAt(input: ComputeStartAtInput) {
 
 function computeEndAt(input: ComputeStartAtInput) {
   const start = computeStartAt(input);
-  return new Date(start.getTime() + input.profile.focusBlockMinutes * 60_000);
+  const durationMinutes = computeConstraintDurationMinutes(input.constraint) ?? input.profile.focusBlockMinutes;
+  return new Date(start.getTime() + durationMinutes * 60_000);
 }
 
 function advanceForConflicts(start: Date, durationMinutes: number, existingBlocks: ScheduleBlock[]) {
