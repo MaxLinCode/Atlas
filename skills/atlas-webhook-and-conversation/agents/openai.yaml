@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Webhook and Conversation"
+  short_description: "Keep webhook and chat flows clean."
+  default_prompt: "Use $atlas-webhook-and-conversation to change Atlas webhook or conversation-turn handling."

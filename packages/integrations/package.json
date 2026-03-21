@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "eval:all": "vitest run --config vitest.manual.config.ts src/manual/all.eval.test.ts",
     "eval:confirmed-mutation-recovery": "vitest run --config vitest.manual.config.ts src/manual/confirmed-mutation-recovery.eval.test.ts",
     "eval:conversation-context": "vitest run --config vitest.manual.config.ts src/manual/conversation-context.eval.test.ts",
     "eval:planner": "vitest run --config vitest.manual.config.ts src/manual/planner.eval.test.ts",

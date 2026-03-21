@@ -1189,6 +1189,43 @@ describe("process inbox item service", () => {
     );
   });
 
+  it("does not leak internal planner validation reasons to the user", async () => {
+    seedInboxItemForProcessingTests({
+      id: "inbox-internal-reason",
+      userId: "123",
+      sourceEventId: "event-internal-reason",
+      rawText: "Pick an open spot for that",
+      normalizedText: "Pick an open spot for that",
+      processingStatus: "received",
+      linkedTaskIds: []
+    });
+
+    const result = await processInboxItem(
+      { inboxItemId: "inbox-internal-reason" },
+      {
+        calendar: getDefaultCalendarAdapter(),
+        planner: async () => ({
+          confidence: 0.25,
+          summary: "Need clarification.",
+          actions: [
+            {
+              type: "create_task",
+              alias: "new_task_1",
+              title: "Oil change",
+              priority: "medium",
+              urgency: "medium"
+            }
+          ]
+        })
+      }
+    );
+
+    expect(result.outcome).toBe("needs_clarification");
+    expect(result.followUpMessage).toBe(
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+    );
+  });
+
   it("asks for clarification when multiple existing tasks share the same title", async () => {
     const store = getDefaultInboxProcessingStore();
 

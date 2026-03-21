@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Planning Changes"
+  short_description: "Protect planner and scheduling behavior."
+  default_prompt: "Use $atlas-planning-change to update Atlas planning or scheduling behavior safely."

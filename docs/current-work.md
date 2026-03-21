@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
-Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. The active branch restructures the OpenAI prompts into explicit prompt assets, expands live eval coverage around ambiguous routing and confirmed-mutation recovery, shifts product language from Telegram-first to chat-first at the prompt and docs layer, and threads `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor.
+Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. The active branch restructures the OpenAI prompts into explicit prompt assets, expands live eval coverage around ambiguous routing and confirmed-mutation recovery, adds a consolidated `pnpm eval:all` loop plus suite-specific eval reports for prompt iteration, shifts product language from Telegram-first to chat-first at the prompt and docs layer, and threads `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor. Atlas also now carries repo-local Codex skills under `skills/` so workflow guidance can evolve with the codebase instead of living only in global agent defaults.
 
 ## Near-term milestones
 

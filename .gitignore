@@ -8,3 +8,6 @@ coverage
 .env.local
 .env.*.local
 *.tsbuildinfo
+packages/integrations/*.manual-eval-report.json
+packages/integrations/manual-eval-report.json
+packages/integrations/*.prompt-improvement.md

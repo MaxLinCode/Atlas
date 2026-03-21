@@ -822,15 +822,30 @@ function saveClarification(input: ApplyPlanningResultInput, reason: string) {
 }
 
 function buildClarificationReply(reason: string) {
-  if (
-    reason.startsWith("Model returned") ||
-    reason.startsWith("Could not resolve") ||
-    reason.startsWith("Expected ")
-  ) {
+  if (!isSafeUserFacingClarificationReason(reason)) {
     return "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.";
   }
 
   return reason;
+}
+
+function isSafeUserFacingClarificationReason(reason: string) {
+  if (
+    reason.startsWith("Model returned") ||
+    reason.startsWith("Could not resolve") ||
+    reason.startsWith("Expected ") ||
+    reason.startsWith("Each created task must") ||
+    reason.startsWith("Model did not provide") ||
+    reason.startsWith("Please connect Google Calendar before") ||
+    reason.startsWith("The linked Google Calendar event changed outside Atlas.") ||
+    reason.startsWith("I couldn't safely apply that update.")
+  ) {
+    return reason.startsWith("Please connect Google Calendar before") ||
+      reason.startsWith("The linked Google Calendar event changed outside Atlas.") ||
+      reason.startsWith("I couldn't safely apply that update.");
+  }
+
+  return true;
 }
 
 function hasAmbiguousTaskTitle(tasks: Task[], task: Task) {

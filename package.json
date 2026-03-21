@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm --filter @atlas/web dev",
     "build": "pnpm -r build",
+    "eval:all": "pnpm --filter @atlas/integrations eval:all",
     "eval:confirmed-mutation-recovery": "pnpm --filter @atlas/integrations eval:confirmed-mutation-recovery",
     "eval:conversation-context": "pnpm --filter @atlas/integrations eval:conversation-context",
     "eval:planner": "pnpm --filter @atlas/integrations eval:planner",
