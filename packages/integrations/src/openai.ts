@@ -287,12 +287,19 @@ function normalizePlanningOutput(
     actions: output.actions.map((action) => {
       switch (action.type) {
         case "create_task":
+          if (!action.alias || !action.title) {
+            return {
+              type: "clarify" as const,
+              reason: "Model returned an incomplete create_task action."
+            };
+          }
+
           return {
             type: action.type,
             alias: action.alias,
             title: action.title,
-            priority: action.priority,
-            urgency: action.urgency
+            priority: action.priority ?? "medium",
+            urgency: action.urgency ?? "medium"
           };
         case "create_schedule_block":
           return {

@@ -501,6 +501,56 @@ describe("integrations", () => {
     ).rejects.toThrow();
   });
 
+  it("defaults missing create_task priority and urgency to medium", async () => {
+    const result = await planInboxItemWithResponses(
+      {
+        inboxItem: {
+          id: "inbox-1",
+          userId: "123",
+          sourceEventId: "event-1",
+          rawText: "Schedule a tax task",
+          normalizedText: "Schedule a tax task",
+          processingStatus: "received",
+          linkedTaskIds: [],
+          createdAt: "2026-03-13T08:00:00.000Z"
+        },
+        userProfile: buildDefaultUserProfile("123"),
+        tasks: [],
+        scheduleBlocks: [],
+        referenceTime: "2026-03-13T08:00:00.000Z"
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              confidence: 0.91,
+              summary: "Create and schedule a tax task.",
+              actions: [
+                {
+                  type: "create_task",
+                  alias: "new_task_1",
+                  title: "Submit taxes",
+                  priority: null,
+                  urgency: null
+                }
+              ]
+            }
+          })
+        }
+      }
+    );
+
+    expect(result.actions).toEqual([
+      {
+        type: "create_task",
+        alias: "new_task_1",
+        title: "Submit taxes",
+        priority: "medium",
+        urgency: "medium"
+      }
+    ]);
+  });
+
   it("parses structured turn routing output from the Responses API client", async () => {
     const result = await routeTurnWithResponses(
       {
