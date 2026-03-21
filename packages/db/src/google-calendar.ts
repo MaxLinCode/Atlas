@@ -739,6 +739,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
         calendarSyncUpdatedAt: row.calendarSyncUpdatedAt?.toISOString() ?? null,
         rescheduleCount: row.rescheduleCount,
         lastFollowupAt: row.lastFollowupAt?.toISOString() ?? null,
+        followupReminderSentAt: row.followupReminderSentAt?.toISOString() ?? null,
         completedAt: row.completedAt?.toISOString() ?? null,
         archivedAt: row.archivedAt?.toISOString() ?? null,
         priority: row.priority as Task["priority"],

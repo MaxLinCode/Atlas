@@ -58,6 +58,18 @@ export type ConversationTurn = {
   createdAt: string;
 };
 
+export type FollowUpBundleContext = {
+  kind: "initial" | "reminder";
+  taskIds: string[];
+  items: Array<{
+    number: number;
+    taskId: string;
+    title: string;
+  }>;
+  text: string;
+  createdAt: string;
+};
+
 export type IncomingTelegramMessageRecordResult =
   | {
       status: "recorded";
@@ -91,6 +103,7 @@ export interface OutgoingTelegramDeliveryStore {
 
 export interface ConversationHistoryStore {
   listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]>;
+  getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null>;
 }
 
 class InMemoryTelegramBotEventStore
@@ -154,6 +167,27 @@ class InMemoryTelegramBotEventStore
       events: Array.from(this.eventsByKey.values()).filter((event) => event.userId === userId),
       limit
     });
+  }
+
+  async getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null> {
+    const latest = Array.from(this.eventsByKey.values())
+      .filter(
+        (event) =>
+          event.userId === userId &&
+          event.direction === "outgoing" &&
+          event.retryState === "sent" &&
+          isFollowUpBundlePayload(event.payload)
+      )
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+
+    if (!latest || !isFollowUpBundlePayload(latest.payload)) {
+      return null;
+    }
+
+    return {
+      ...latest.payload,
+      createdAt: latest.createdAt
+    };
   }
 
   reset() {
@@ -314,6 +348,31 @@ export class PostgresTelegramBotEventStore
     });
   }
 
+  async getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null> {
+    const rows = await this.db
+      .select({
+        payload: botEvents.payload,
+        createdAt: botEvents.createdAt
+      })
+      .from(botEvents)
+      .where(
+        sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`
+      )
+      .orderBy(sql`${botEvents.createdAt} desc`)
+      .limit(20);
+
+    const latest = rows.find((row) => isFollowUpBundlePayload(row.payload));
+
+    if (!latest || !isFollowUpBundlePayload(latest.payload)) {
+      return null;
+    }
+
+    return {
+      ...latest.payload,
+      createdAt: latest.createdAt.toISOString()
+    };
+  }
+
   async close() {
     await this.client.end();
   }
@@ -379,6 +438,13 @@ export async function listRecentConversationTurns(
   store: ConversationHistoryStore = getDefaultStore()
 ) {
   return store.listRecentConversationTurns(userId, limit);
+}
+
+export async function getLatestFollowUpBundleContext(
+  userId: string,
+  store: ConversationHistoryStore = getDefaultStore()
+) {
+  return store.getLatestFollowUpBundleContext(userId);
 }
 
 export async function updateOutgoingTelegramMessage(
@@ -478,6 +544,21 @@ function shouldExcludeConversationEvent(eventType: string | undefined, text: str
   return (
     text.includes("[redacted Google Calendar connect link]") ||
     text.includes("I need access to your Google Calendar first. Connect here:")
+  );
+}
+
+function isFollowUpBundlePayload(payload: unknown): payload is Omit<FollowUpBundleContext, "createdAt"> {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+
+  return (
+    (candidate.kind === "initial" || candidate.kind === "reminder") &&
+    Array.isArray(candidate.taskIds) &&
+    Array.isArray(candidate.items) &&
+    typeof candidate.text === "string"
   );
 }
 

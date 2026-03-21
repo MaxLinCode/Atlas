@@ -59,6 +59,7 @@ export const tasks = pgTable(
     calendarSyncUpdatedAt: timestamp("calendar_sync_updated_at", { withTimezone: true }),
     rescheduleCount: integer("reschedule_count").notNull().default(0),
     lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
+    followupReminderSentAt: timestamp("followup_reminder_sent_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     priority: varchar("priority", { length: 16 }).notNull(),

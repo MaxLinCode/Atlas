@@ -21,6 +21,7 @@ import {
   inboxPlanningOutputSchema,
   isTelegramUserAllowed,
   isTaskFollowupDue,
+  isTaskFollowupReminderDue,
   normalizeTelegramText,
   normalizeTelegramUpdate,
   processInboxItem,
@@ -179,6 +180,7 @@ describe("core package", () => {
       calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
+      followupReminderSentAt: null,
       completedAt: null,
       archivedAt: null,
       priority: "medium",
@@ -887,6 +889,7 @@ describe("core package", () => {
       calendarSyncUpdatedAt: null,
       rescheduleCount: 0,
       lastFollowupAt: null,
+      followupReminderSentAt: null,
       completedAt: null,
       archivedAt: null,
       priority: "medium",
@@ -895,6 +898,36 @@ describe("core package", () => {
 
     expect(isTaskFollowupDue(task, "2026-03-15T16:59:00.000Z")).toBe(false);
     expect(isTaskFollowupDue(task, "2026-03-15T17:00:00.000Z")).toBe(true);
+  });
+
+  it("marks awaiting followup tasks as reminder due only once after two hours", () => {
+    const task = taskSchema.parse({
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-1",
+      lastInboxItemId: "inbox-1",
+      title: "Review launch checklist",
+      lifecycleState: "awaiting_followup",
+      externalCalendarEventId: "event-1",
+      externalCalendarId: "primary",
+      scheduledStartAt: "2026-03-15T16:00:00.000Z",
+      scheduledEndAt: "2026-03-15T17:00:00.000Z",
+      calendarSyncStatus: "in_sync",
+      calendarSyncUpdatedAt: null,
+      rescheduleCount: 0,
+      lastFollowupAt: "2026-03-15T17:00:00.000Z",
+      followupReminderSentAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium",
+      urgency: "medium"
+    });
+
+    expect(isTaskFollowupReminderDue(task, "2026-03-15T18:59:00.000Z")).toBe(false);
+    expect(isTaskFollowupReminderDue(task, "2026-03-15T19:00:00.000Z")).toBe(true);
+    expect(
+      isTaskFollowupReminderDue({ ...task, followupReminderSentAt: "2026-03-15T19:00:00.000Z" }, "2026-03-15T21:00:00.000Z")
+    ).toBe(false);
   });
 
   it("normalizes Telegram text and webhook metadata", () => {

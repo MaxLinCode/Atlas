@@ -40,6 +40,7 @@ describe("mutation reply renderer", () => {
           calendarSyncUpdatedAt: "2026-03-18T12:00:00.000Z",
           rescheduleCount: 0,
           lastFollowupAt: null,
+          followupReminderSentAt: null,
           completedAt: null,
           archivedAt: null,
           priority: "medium",
@@ -60,6 +61,7 @@ describe("mutation reply renderer", () => {
           calendarSyncUpdatedAt: "2026-03-18T12:00:00.000Z",
           rescheduleCount: 0,
           lastFollowupAt: null,
+          followupReminderSentAt: null,
           completedAt: null,
           archivedAt: null,
           priority: "medium",
@@ -179,6 +181,7 @@ describe("mutation reply renderer", () => {
           calendarSyncUpdatedAt: "2026-03-18T12:00:00.000Z",
           rescheduleCount: 0,
           lastFollowupAt: null,
+          followupReminderSentAt: null,
           completedAt: "2026-03-18T12:00:00.000Z",
           archivedAt: null,
           priority: "medium",
@@ -219,5 +222,55 @@ describe("mutation reply renderer", () => {
     expect(reply).toBe(
       "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
     );
+  });
+
+  it("renders archived task replies from persisted outcomes", () => {
+    const reply = renderMutationReply({
+      outcome: "archived_tasks",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "123",
+        sourceEventId: "event-1",
+        rawText: "archive it",
+        normalizedText: "archive it",
+        processingStatus: "planned",
+        linkedTaskIds: ["task-1"]
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "123",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 1
+      },
+      archivedTasks: [
+        {
+          id: "task-1",
+          userId: "123",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Journaling session",
+          lifecycleState: "archived",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: "2026-03-18T12:00:00.000Z",
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: "2026-03-18T12:00:00.000Z",
+          priority: "medium",
+          urgency: "medium"
+        }
+      ],
+      followUpMessage: ""
+    });
+
+    expect(reply).toBe("Archived 'Journaling session'.");
   });
 });

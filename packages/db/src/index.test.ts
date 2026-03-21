@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   decryptCalendarCredential,
   encryptCalendarCredential,
+  getDefaultFollowUpRuntimeStore,
+  getLatestFollowUpBundleContext,
   getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
   getRepositoryHealth,
@@ -129,6 +131,46 @@ describe("db package", () => {
     });
   });
 
+  it("reads the latest sent followup bundle context from outgoing bot events", async () => {
+    resetIncomingTelegramIngressStoreForTests();
+
+    await recordOutgoingTelegramMessageIfNew({
+      userId: "123",
+      eventType: "telegram_followup_message",
+      idempotencyKey: "telegram:followup:bundle-1",
+      payload: {
+        kind: "initial",
+        taskIds: ["task-1", "task-2"],
+        items: [
+          { number: 1, taskId: "task-1", title: "Review launch checklist" },
+          { number: 2, taskId: "task-2", title: "Send update" }
+        ],
+        text: "Checking in"
+      },
+      retryState: "sending"
+    });
+    await updateOutgoingTelegramMessage({
+      idempotencyKey: "telegram:followup:bundle-1",
+      payload: {
+        kind: "initial",
+        taskIds: ["task-1", "task-2"],
+        items: [
+          { number: 1, taskId: "task-1", title: "Review launch checklist" },
+          { number: 2, taskId: "task-2", title: "Send update" }
+        ],
+        text: "Checking in",
+        attempts: 1
+      },
+      retryState: "sent"
+    });
+
+    await expect(getLatestFollowUpBundleContext("123")).resolves.toMatchObject({
+      kind: "initial",
+      taskIds: ["task-1", "task-2"],
+      items: [{ number: 1, taskId: "task-1" }, { number: 2, taskId: "task-2" }]
+    });
+  });
+
   it("lists recent conversation turns in ascending order and excludes unsent assistant messages", async () => {
     resetIncomingTelegramIngressStoreForTests();
 
@@ -191,6 +233,90 @@ describe("db package", () => {
       "user:Second user turn",
       "assistant:Sent assistant turn"
     ]);
+  });
+
+  it("tracks due followups and reminder timestamps on tasks", async () => {
+    resetInboxProcessingStoreForTests();
+    const store = getDefaultInboxProcessingStore();
+    const followUpStore = getDefaultFollowUpRuntimeStore();
+
+    seedInboxItemForProcessingTests({
+      id: "inbox-1",
+      userId: "123",
+      sourceEventId: "event-1",
+      rawText: "schedule it",
+      normalizedText: "schedule it",
+      processingStatus: "received",
+      linkedTaskIds: [],
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+
+    await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-1",
+      confidence: 1,
+      plannerRun: {
+        userId: "123",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 1
+      },
+      tasks: [
+        {
+          alias: "task_1",
+          task: {
+            userId: "123",
+            sourceInboxItemId: "inbox-1",
+            lastInboxItemId: "inbox-1",
+            title: "Review launch checklist",
+            lifecycleState: "pending_schedule",
+            externalCalendarEventId: null,
+            externalCalendarId: null,
+            scheduledStartAt: null,
+            scheduledEndAt: null,
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
+            rescheduleCount: 0,
+            lastFollowupAt: null,
+            followupReminderSentAt: null,
+            completedAt: null,
+            archivedAt: null,
+            priority: "medium",
+            urgency: "medium"
+          }
+        }
+      ],
+      scheduleBlocks: [
+        {
+          id: "event-1",
+          userId: "123",
+          taskId: "task_1",
+          startAt: "2026-03-20T16:00:00.000Z",
+          endAt: "2026-03-20T17:00:00.000Z",
+          confidence: 1,
+          reason: "test",
+          rescheduleCount: 0,
+          externalCalendarId: "primary"
+        }
+      ],
+      followUpMessage: "Scheduled it."
+    });
+
+    const due = await followUpStore.listDueFollowUpTasks("2026-03-20T17:00:00.000Z");
+    expect(due).toHaveLength(1);
+    expect(due[0]?.dueType).toBe("initial");
+
+    await followUpStore.markFollowUpSent([due[0]!.id], "2026-03-20T17:00:00.000Z");
+    await expect(followUpStore.listOutstandingFollowUpTasks("123")).resolves.toMatchObject([
+      {
+        lifecycleState: "awaiting_followup",
+        lastFollowupAt: "2026-03-20T17:00:00.000Z"
+      }
+    ]);
+
+    await followUpStore.markFollowUpReminderSent([due[0]!.id], "2026-03-20T19:00:00.000Z");
+    await expect(followUpStore.listDueFollowUpTasks("2026-03-20T19:00:00.000Z")).resolves.toHaveLength(0);
   });
 
   it("limits recent conversation turns to the last six items", async () => {
@@ -367,6 +493,7 @@ describe("db package", () => {
             calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
+            followupReminderSentAt: null,
             completedAt: null,
             archivedAt: null,
             priority: "medium",
@@ -455,6 +582,7 @@ describe("db package", () => {
             calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
+            followupReminderSentAt: null,
             completedAt: null,
             archivedAt: null,
             priority: "medium",
@@ -553,6 +681,7 @@ describe("db package", () => {
             calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
+            followupReminderSentAt: null,
             completedAt: null,
             archivedAt: null,
             priority: "medium",
@@ -666,6 +795,7 @@ describe("db package", () => {
             calendarSyncUpdatedAt: null,
             rescheduleCount: 0,
             lastFollowupAt: null,
+            followupReminderSentAt: null,
             completedAt: null,
             archivedAt: null,
             priority: "medium",

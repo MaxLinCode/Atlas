@@ -106,6 +106,102 @@ function buildRequest(body: unknown, secret = "test-webhook-secret") {
   });
 }
 
+async function seedOutstandingFollowUpBundle(titles: string[]) {
+  const store = getDefaultInboxProcessingStore();
+
+  seedInboxItemForProcessingTests({
+    id: "inbox-seed",
+    userId: "123",
+    sourceEventId: "seed-event",
+    rawText: "schedule it",
+    normalizedText: "schedule it",
+    processingStatus: "received",
+    linkedTaskIds: [],
+    createdAt: "2026-03-20T16:00:00.000Z"
+  });
+
+  await store.saveTaskCaptureResult({
+    inboxItemId: "inbox-seed",
+    confidence: 1,
+    plannerRun: {
+      id: "ignored",
+      userId: "123",
+      inboxItemId: "inbox-seed",
+      version: "test",
+      modelInput: {},
+      modelOutput: {},
+      confidence: 1
+    } as never,
+    tasks: titles.map((title, index) => ({
+      alias: `task_${index + 1}`,
+      task: {
+        userId: "123",
+        sourceInboxItemId: "inbox-seed",
+        lastInboxItemId: "inbox-seed",
+        title,
+        lifecycleState: "pending_schedule",
+        externalCalendarEventId: null,
+        externalCalendarId: null,
+        scheduledStartAt: null,
+        scheduledEndAt: null,
+        calendarSyncStatus: "in_sync",
+        calendarSyncUpdatedAt: null,
+        rescheduleCount: 0,
+        lastFollowupAt: null,
+        followupReminderSentAt: null,
+        completedAt: null,
+        archivedAt: null,
+        priority: "medium",
+        urgency: "medium"
+      }
+    })),
+    scheduleBlocks: titles.map((_, index) => ({
+      id: `event-${index + 1}`,
+      userId: "123",
+      taskId: `task_${index + 1}`,
+      startAt: "2026-03-20T16:00:00.000Z",
+      endAt: "2026-03-20T17:00:00.000Z",
+      confidence: 1,
+      reason: "test",
+      rescheduleCount: 0,
+      externalCalendarId: "primary"
+    })),
+    followUpMessage: "Scheduled it."
+  });
+
+  const taskIds = listTasksForTests().map((task) => task.id);
+  await (store as any).markFollowUpSent(taskIds, "2026-03-20T17:00:00.000Z");
+
+  await recordOutgoingTelegramMessageIfNew({
+    userId: "123",
+    eventType: "telegram_followup_message",
+    idempotencyKey: "telegram:followup:bundle-seed",
+    payload: {
+      kind: "initial",
+      taskIds,
+      items: taskIds.map((taskId, index) => ({ number: index + 1, taskId, title: titles[index] ?? `Task ${index + 1}` })),
+      text: titles.map((title, index) => `${index + 1}. ${title}`).join("\n")
+    },
+    retryState: "sending"
+  });
+  await updateOutgoingTelegramMessage({
+    idempotencyKey: "telegram:followup:bundle-seed",
+    payload: {
+      kind: "initial",
+      taskIds,
+      items: taskIds.map((taskId, index) => ({ number: index + 1, taskId, title: titles[index] ?? `Task ${index + 1}` })),
+      text: titles.map((title, index) => `${index + 1}. ${title}`).join("\n"),
+      attempts: 1
+    },
+    retryState: "sent"
+  });
+
+  return {
+    store,
+    taskIds
+  };
+}
+
 afterEach(() => {
   restoreEnv("DATABASE_URL");
   restoreEnv("OPENAI_API_KEY");
@@ -237,6 +333,152 @@ describe("telegram webhook route", () => {
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
+  });
+
+  it("binds numbered followup replies and marks the selected task done", async () => {
+    const { store } = await seedOutstandingFollowUpBundle(["Review launch checklist"]);
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 41,
+        message: {
+          message_id: 6,
+          date: 1_700_000_000,
+          text: "1 done",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" }
+        }
+      }),
+      {
+        store,
+        followUpStore: store as any,
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("completed_tasks");
+    expect(listTasksForTests()[0]).toMatchObject({
+      lifecycleState: "done"
+    });
+  });
+
+  it("accepts short natural-language followup replies that reference bundle numbers", async () => {
+    const { store, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 142,
+        message: {
+          message_id: 107,
+          date: 1_700_000_000,
+          text: "finished 2",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" }
+        }
+      }),
+      {
+        store,
+        followUpStore: store as any,
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("completed_tasks");
+    expect(listTasksForTests().find((task) => task.id === taskIds[0])).toMatchObject({
+      lifecycleState: "awaiting_followup"
+    });
+    expect(listTasksForTests().find((task) => task.id === taskIds[1])).toMatchObject({
+      lifecycleState: "done"
+    });
+  });
+
+  it("accepts ordinal followup archive replies", async () => {
+    const { store, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 143,
+        message: {
+          message_id: 108,
+          date: 1_700_000_000,
+          text: "archive the second one",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" }
+        }
+      }),
+      {
+        store,
+        followUpStore: store as any,
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("archived_tasks");
+    expect(listTasksForTests().find((task) => task.id === taskIds[0])).toMatchObject({
+      lifecycleState: "awaiting_followup"
+    });
+    expect(listTasksForTests().find((task) => task.id === taskIds[1])).toMatchObject({
+      lifecycleState: "archived"
+    });
+  });
+
+  it("asks for clarification on ambiguous followup replies with multiple unresolved items", async () => {
+    const { store } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 42,
+        message: {
+          message_id: 7,
+          date: 1_700_000_000,
+          text: "done",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" }
+        }
+      }),
+      {
+        store,
+        followUpStore: store as any,
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Which one do you mean? Reply with the number or numbers."
+    });
+  });
+
+  it("lets mixed-intent messages fall through to the normal router even with outstanding followups", async () => {
+    const { store } = await seedOutstandingFollowUpBundle(["Review launch checklist", "Send investor update"]);
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 144,
+        message: {
+          message_id: 109,
+          date: 1_700_000_000,
+          text: "1 done and schedule dentist tomorrow",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" }
+        }
+      }),
+      {
+        store,
+        followUpStore: store as any,
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeTurnWithResponsesMock).toHaveBeenCalledTimes(1);
+    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("planned");
+    expect(listTasksForTests().filter((task) => task.lifecycleState === "done")).toHaveLength(0);
   });
 
   it("also gates /start for unlinked users", async () => {
