@@ -53,6 +53,10 @@ Current implementation focus: harden the model-driven planning layer now that th
   - once planner contracts, runtime handlers, and tests no longer depend on `schedule_blocks`, drop the table and its remaining migration/test scaffolding
 - Expand Postgres integration coverage for ambiguous scheduling cases, clarification flows, and outbound reply loops.
 - Preserve safe scheduling and rescheduling over explicit state boundaries in mutation mode.
+- TODO: fix scheduler handling for explicit narrow time blocks so requests like `11:05` to `11:09` preserve the requested duration instead of defaulting to the profile focus block.
+- TODO: remove `schedule_blocks` once planner/runtime contracts, repositories, migrations, and tests are fully task-first.
+- TODO: fix multi-task schedule proposal generation so newly proposed inserts are considered during the same batch and Atlas cannot emit overlapping new blocks when scheduling more than one open task.
+- TODO: when a user asks for an explicit time that is already in the past, clarify that the requested time has already passed instead of silently placing it in the past or rolling it forward.
 
 ## Handoff notes
 
