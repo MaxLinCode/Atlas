@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Feature Delivery"
+  short_description: "Ship Atlas changes with repo rules."
+  default_prompt: "Use $atlas-feature-delivery to implement this Atlas feature within the repo workflow."

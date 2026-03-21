@@ -15,6 +15,7 @@ Atlas is a chat-first brain-dump scheduler MVP. A user sends freeform text, the 
 
 - `pnpm dev`: run the Next.js app locally
 - `pnpm build`: build all workspaces
+- `pnpm eval:all`: run the full live OpenAI prompt-eval loop and write a consolidated report to `packages/integrations/manual-eval-report.json`
 - `pnpm eval:confirmed-mutation-recovery`: run the live OpenAI confirmed-mutation recovery eval fixture set against the current prompt
 - `pnpm eval:conversation-context`: run the live OpenAI conversation-context eval fixture set against the current prompt
 - `pnpm eval:planner`: run the live OpenAI planner eval fixture set against the current prompt
@@ -87,6 +88,22 @@ This repo is designed for human-plus-agent collaboration.
 - Every bug fix should add a regression test near the affected behavior.
 - Update `docs/current-work.md` when priorities or handoff context changes.
 - Capture architectural changes in `docs/decisions/`.
+
+## Repo-local Skills
+
+Atlas includes repo-specific Codex skills under [`skills/`](./skills). These are versioned with the repo so they can evolve with Atlas architecture, workflow rules, and testing expectations rather than living as global defaults.
+
+Current skills:
+
+- `atlas-feature-delivery`
+- `atlas-planning-change`
+- `atlas-webhook-and-conversation`
+- `atlas-schema-and-migration`
+- `atlas-openai-contracts-and-evals`
+- `atlas-google-calendar-flow`
+- `atlas-reviewer`
+
+Use these when working inside Atlas and the task matches the skill name. Keep the repo copy as the source of truth.
 
 ## MVP flow
 

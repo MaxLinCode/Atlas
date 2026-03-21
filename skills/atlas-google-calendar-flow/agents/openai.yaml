@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Google Calendar Flow"
+  short_description: "Guard linked-calendar runtime behavior."
+  default_prompt: "Use $atlas-google-calendar-flow to change Atlas Google Calendar linking, writes, or reconciliation."

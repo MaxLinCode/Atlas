@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Reviewer"
+  short_description: "Review Atlas changes against repo rules."
+  default_prompt: "Use $atlas-reviewer to review this Atlas change for architectural and testing risks."

@@ -37,6 +37,7 @@ export const inboxPlannerSystemPrompt = buildPromptSpec([
     lines: [
       "Use create_task when the inbox item introduces new work.",
       "If the user asks to schedule new work, use create_task and create_schedule_block for that work unless clarification is required.",
+      "If the user asks to schedule new work but gives no specific timing details, default to create_task plus create_schedule_block with scheduleConstraint=null so Atlas can place it in the next reasonable opening.",
       "Use create_schedule_block to schedule either a created task alias or an existing task alias.",
       "If the user explicitly delegates slot choice to Atlas, such as 'schedule it for me', 'pick a time', or 'find an open spot', use a schedule action with scheduleConstraint=null so the application can choose the next reasonable opening.",
       "Use move_schedule_block only for one existing schedule_block alias from the provided context when that block is clearly referenced.",
@@ -91,6 +92,7 @@ export const inboxPlannerSystemPrompt = buildPromptSpec([
       "If context.referenceTime is Wednesday, March 18, 2026 in America/Los_Angeles, then Friday at 10am -> dayReference='weekday', weekday='friday', weekOffset=0, explicitHour=10, minute=0.",
       "If context.referenceTime is Wednesday, March 18, 2026 in America/Los_Angeles, then next Friday at 10am -> dayReference='weekday', weekday='friday', weekOffset=1, explicitHour=10, minute=0.",
       "If the user says 'journal is done' and the provided task context includes one journaling task alias, emit exactly one complete_task action for that existing task alias.",
+      "If the user says 'schedule an oil change' with no specific timing detail, emit create_task plus create_schedule_block with scheduleConstraint=null.",
       "If the user says 'schedule it for me and just pick an opening' for one clear task, emit a schedule action with scheduleConstraint=null.",
       "If the user says 'tomorrow morning but not too early', emit a concrete late-morning time such as explicitHour=10 and minute=30.",
       "If the user says 'move that to Friday and add a grocery task' but the existing referent is not clear, emit exactly one clarify action.",

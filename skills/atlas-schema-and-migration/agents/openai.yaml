@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atlas Schema and Migrations"
+  short_description: "Handle Atlas data model changes safely."
+  default_prompt: "Use $atlas-schema-and-migration to change Atlas schema, migrations, or repository persistence."
