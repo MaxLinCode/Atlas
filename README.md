@@ -1,6 +1,6 @@
 # Atlas
 
-Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, the system turns it into structured tasks, places them onto a simple internal schedule, and follows up with Telegram reminders.
+Atlas is a chat-first brain-dump scheduler MVP. A user sends freeform text, the system turns it into structured tasks, places them onto a simple internal schedule, and follows up through its messaging bot surface.
 
 ## Repo shape
 
@@ -15,7 +15,10 @@ Atlas is a Telegram-first brain-dump scheduler MVP. A user sends freeform text, 
 
 - `pnpm dev`: run the Next.js app locally
 - `pnpm build`: build all workspaces
+- `pnpm eval:confirmed-mutation-recovery`: run the live OpenAI confirmed-mutation recovery eval fixture set against the current prompt
+- `pnpm eval:conversation-context`: run the live OpenAI conversation-context eval fixture set against the current prompt
 - `pnpm eval:planner`: run the live OpenAI planner eval fixture set against the current prompt
+- `pnpm eval:router-confirmation`: run the live OpenAI router-confirmation eval fixture set against the current prompt
 - `pnpm eval:turn-router`: run the live OpenAI turn-router eval fixture set against the current prompt
 - `pnpm lint`: lint all workspaces
 - `pnpm typecheck`: run TypeScript checks across the repo
@@ -87,8 +90,8 @@ This repo is designed for human-plus-agent collaboration.
 
 ## MVP flow
 
-1. Telegram webhook receives a freeform message.
+1. The current messaging webhook receives a freeform message.
 2. If the sender is allowlisted but does not have an active Google Calendar connection, the app replies with a signed Google connect link and stops before ingress persistence.
 3. Linked users enter the normal flow: the app persists the inbox item, loads relevant task, schedule, and user-profile context, and sends a structured planning request through the OpenAI Responses API.
 4. Validated planning actions create or update tasks and schedule blocks through the repository layer.
-5. Telegram sends reminders tied to scheduled tasks.
+5. The messaging bot sends reminders tied to scheduled tasks.

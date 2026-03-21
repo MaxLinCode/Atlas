@@ -93,6 +93,7 @@ if (!databaseUrl) {
                   dayReference: null,
                   weekday: null,
                   weekOffset: null,
+                  relativeMinutes: null,
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
@@ -111,7 +112,7 @@ if (!databaseUrl) {
         select title, lifecycle_state, external_calendar_event_id, external_calendar_id, scheduled_start_at, scheduled_end_at
         from tasks
       `;
-      const insertedPlannerRuns = await sql`select version, model_input->>'now' as now from planner_runs`;
+      const insertedPlannerRuns = await sql`select version, model_input->>'referenceTime' as reference_time from planner_runs`;
       const updatedInbox = await sql`select processing_status from inbox_items where id = ${ingress.inboxItem.id}`;
 
       expect(insertedTasks).toHaveLength(1);
@@ -124,7 +125,7 @@ if (!databaseUrl) {
       expect(insertedTasks[0]?.scheduled_start_at).toBeTruthy();
       expect(insertedTasks[0]?.scheduled_end_at).toBeTruthy();
       expect(insertedPlannerRuns).toHaveLength(1);
-      expect(insertedPlannerRuns[0]?.now).toBeTruthy();
+      expect(insertedPlannerRuns[0]?.reference_time).toBeTruthy();
       expect(updatedInbox[0]?.processing_status).toBe("planned");
     });
 
@@ -138,7 +139,8 @@ if (!databaseUrl) {
             update_id: 50
           },
           rawText: "Review launch checklist",
-          normalizedText: "Review launch checklist"
+          normalizedText: "Review launch checklist",
+          createdAt: "2026-03-19T16:00:00.000Z"
         },
         ingressStore
       );
@@ -176,6 +178,7 @@ if (!databaseUrl) {
                   dayReference: null,
                   weekday: null,
                   weekOffset: null,
+                  relativeMinutes: null,
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
@@ -197,7 +200,8 @@ if (!databaseUrl) {
             update_id: 51
           },
           rawText: "move it to 3pm",
-          normalizedText: "move it to 3pm"
+          normalizedText: "move it to 3pm",
+          createdAt: "2026-03-19T17:00:00.000Z"
         },
         ingressStore
       );
@@ -227,6 +231,7 @@ if (!databaseUrl) {
                   dayReference: null,
                   weekday: null,
                   weekOffset: null,
+                  relativeMinutes: null,
                   explicitHour: 15,
                   minute: 0,
                   preferredWindow: null,
@@ -248,7 +253,7 @@ if (!databaseUrl) {
       expect(updatedTasks[0]?.reschedule_count).toBe(1);
       expect(updatedTasks[0]?.external_calendar_event_id).toBeTruthy();
       expect(new Date(updatedTasks[0]?.scheduled_start_at as string | Date).toISOString()).toBe(
-        "2026-03-18T22:00:00.000Z"
+        "2026-03-19T22:00:00.000Z"
       );
     });
 

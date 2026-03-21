@@ -268,7 +268,8 @@ describe("core package", () => {
         linkedTaskIds: []
       },
       userProfile: buildDefaultUserProfile("123"),
-      tasks: [task]
+      tasks: [task],
+      referenceTime: "2026-03-14T16:00:00.000Z"
     });
 
     expect(context.tasks[0]?.alias).toBe("existing_task_1");
@@ -446,6 +447,26 @@ describe("core package", () => {
     expect(recoveryResult.success).toBe(true);
   });
 
+  it("accepts null schedule constraints for delegated slot choice", () => {
+    const result = inboxPlanningOutputSchema.safeParse({
+      confidence: 0.82,
+      summary: "Schedule the task using the next reasonable opening.",
+      actions: [
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "existing_task",
+            alias: "existing_task_1"
+          },
+          scheduleConstraint: null,
+          reason: "The user asked Atlas to choose the time."
+        }
+      ]
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts needs_clarification recovery outputs", () => {
     const clarificationResult = confirmedMutationRecoveryOutputSchema.safeParse({
       outcome: "needs_clarification",
@@ -484,11 +505,12 @@ describe("core package", () => {
       ],
       userProfile: buildDefaultUserProfile("user_1"),
       existingBlocks: [],
-      now: "2026-03-13T08:00:00.000Z",
+      referenceTime: "2026-03-13T08:00:00.000Z",
       scheduleConstraint: {
         dayReference: "tomorrow",
         weekday: null,
         weekOffset: null,
+        relativeMinutes: null,
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
@@ -497,6 +519,81 @@ describe("core package", () => {
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-14T22:00:00.000Z");
+  });
+
+  it("accepts relative-minute schedule constraints", () => {
+    const result = inboxPlanningOutputSchema.safeParse({
+      confidence: 0.9,
+      summary: "Schedule car maintenance in 15 minutes.",
+      actions: [
+        {
+          type: "create_schedule_block",
+          taskRef: {
+            kind: "existing_task",
+            alias: "existing_task_1"
+          },
+          scheduleConstraint: {
+            dayReference: null,
+            weekday: null,
+            weekOffset: null,
+            relativeMinutes: 15,
+            explicitHour: null,
+            minute: null,
+            preferredWindow: null,
+            sourceText: "in like 15 min"
+          },
+          reason: "The user asked for a relative start time."
+        }
+      ]
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("builds schedule proposals from relative-minute requests", async () => {
+    const profile = buildDefaultUserProfile("user_1");
+    profile.timezone = "America/Los_Angeles";
+
+    const result = await buildScheduleProposal({
+      userId: "user_1",
+      openTasks: [
+        taskSchema.parse({
+          id: "task-1",
+          userId: "user_1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Car maintenance",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        })
+      ],
+      userProfile: profile,
+      existingBlocks: [],
+      referenceTime: "2026-03-20T01:02:00.000Z",
+      scheduleConstraint: {
+        dayReference: null,
+        weekday: null,
+        weekOffset: null,
+        relativeMinutes: 15,
+        explicitHour: null,
+        minute: null,
+        preferredWindow: null,
+        sourceText: "in like 15 min"
+      }
+    });
+
+    expect(result.inserts[0]?.startAt).toBe("2026-03-20T01:17:00.000Z");
   });
 
   it("builds schedule adjustments from structured move requests", () => {
@@ -517,13 +614,14 @@ describe("core package", () => {
         dayReference: null,
         weekday: null,
         weekOffset: null,
+        relativeMinutes: null,
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
         sourceText: "at 3pm"
       },
       existingBlocks: [],
-      now: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z"
     });
 
     expect(result.newStartAt).toBe("2026-03-13T22:00:00.000Z");
@@ -547,13 +645,14 @@ describe("core package", () => {
         dayReference: null,
         weekday: null,
         weekOffset: null,
+        relativeMinutes: null,
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
         sourceText: "10am"
       },
       existingBlocks: [],
-      now: "2026-03-19T16:00:00.000Z"
+      referenceTime: "2026-03-19T16:00:00.000Z"
     });
 
     expect(result.newStartAt).toBe("2026-03-20T17:00:00.000Z");
@@ -589,13 +688,14 @@ describe("core package", () => {
       ],
       userProfile: profile,
       existingBlocks: [],
-      now: "2026-03-19T06:00:00.000Z",
+      referenceTime: "2026-03-19T06:00:00.000Z",
       scheduleConstraint: {
         dayReference: "weekday",
         weekday: "friday",
         weekOffset: 0,
+        relativeMinutes: null,
         explicitHour: null,
-        minute: 0,
+        minute: null,
         preferredWindow: "morning",
         sourceText: "Friday morning"
       }
@@ -604,7 +704,7 @@ describe("core package", () => {
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T16:00:00.000Z");
   });
 
-  it("resolves weekday scheduling from now in the user's timezone", async () => {
+  it("resolves weekday scheduling from the reference time in the user's timezone", async () => {
     const profile = buildDefaultUserProfile("user_1");
     profile.timezone = "America/Los_Angeles";
 
@@ -634,11 +734,12 @@ describe("core package", () => {
       ],
       userProfile: profile,
       existingBlocks: [],
-      now: "2026-03-18T16:00:00.000Z",
+      referenceTime: "2026-03-18T16:00:00.000Z",
       scheduleConstraint: {
         dayReference: "weekday",
         weekday: "friday",
         weekOffset: 0,
+        relativeMinutes: null,
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
@@ -664,6 +765,7 @@ describe("core package", () => {
             dayReference: "weekday",
             weekday: null,
             weekOffset: null,
+            relativeMinutes: null,
             explicitHour: 10,
             minute: 0,
             preferredWindow: null,
@@ -707,11 +809,12 @@ describe("core package", () => {
       ],
       userProfile: profile,
       existingBlocks: [],
-      now: "2026-03-18T16:00:00.000Z",
+      referenceTime: "2026-03-18T16:00:00.000Z",
       scheduleConstraint: {
         dayReference: "weekday",
         weekday: "friday",
         weekOffset: 1,
+        relativeMinutes: null,
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
@@ -752,11 +855,12 @@ describe("core package", () => {
       ],
       userProfile: profile,
       existingBlocks: [],
-      now: "2026-03-18T16:00:00.000Z",
+      referenceTime: "2026-03-18T16:00:00.000Z",
       scheduleConstraint: {
         dayReference: "weekday",
         weekday: "friday",
         weekOffset: 2,
+        relativeMinutes: null,
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,

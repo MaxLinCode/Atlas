@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { routeTelegramTurn } from "./turn-router";
+import { routeMessageTurn } from "./turn-router";
 
 describe("turn router", () => {
   it("routes mutation turns as write-capable", async () => {
-    const result = await routeTelegramTurn(
+    const result = await routeMessageTurn(
       {
         rawText: "Schedule review tomorrow at 9",
         normalizedText: "Schedule review tomorrow at 9",
@@ -25,7 +25,7 @@ describe("turn router", () => {
   });
 
   it("routes conversation turns as non-writing", async () => {
-    const result = await routeTelegramTurn(
+    const result = await routeMessageTurn(
       {
         rawText: "Can you help me prioritize this week?",
         normalizedText: "Can you help me prioritize this week?",
@@ -46,7 +46,7 @@ describe("turn router", () => {
   });
 
   it("keeps mixed turns non-writing in the first slice", async () => {
-    const result = await routeTelegramTurn(
+    const result = await routeMessageTurn(
       {
         rawText: "I might move this to Friday, what do you think?",
         normalizedText: "I might move this to Friday, what do you think?",
@@ -67,7 +67,7 @@ describe("turn router", () => {
   });
 
   it("routes confirmed mutation turns as write-capable", async () => {
-    const result = await routeTelegramTurn(
+    const result = await routeMessageTurn(
       {
         rawText: "Yes",
         normalizedText: "Yes",

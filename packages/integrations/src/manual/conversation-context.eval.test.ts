@@ -64,9 +64,10 @@ const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     },
     assert: (reply, memorySummary) => {
       expect(memorySummary).toMatch(/dentist|reminder/i);
-      expect(reply).toMatch(/if you mean|sounds like|recent exchange|not treating/i);
+      expect(reply).toMatch(/if you mean|sounds like|recent exchange|confirmed state|from what we've discussed/i);
       expect(reply).not.toMatch(/\b(i|we) created\b/i);
       expect(reply).not.toMatch(/\bit already exists\b/i);
+      expect(reply).not.toMatch(/\bI haven't created\b/i);
     }
   },
   {
@@ -80,6 +81,20 @@ const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
       expect(memorySummary).toMatch(/week|deadlines|energy|priorit/i);
       expect(reply).toMatch(/priorit|deadline|energy|tomorrow/i);
     }
+  },
+  {
+    name: "unclear referent asks one narrow question",
+    input: {
+      route: "conversation",
+      normalizedText: "Can you move that?",
+      recentTurns: DENTIST_TURNS
+    },
+    assert: (reply, memorySummary) => {
+      expect(memorySummary).toMatch(/dentist|reminder/i);
+      expect(reply).toMatch(/if you mean|which|do you mean|sounds like/i);
+      expect(reply).toMatch(/\?|confirm/i);
+      expect(reply.split("?").filter(Boolean).length).toBeLessThanOrEqual(2);
+    }
   }
 ];
 
@@ -89,8 +104,10 @@ beforeAll(() => {
   }
 
   process.env.DATABASE_URL ??= "postgresql://manual:manual@localhost:5432/manual_eval";
+  process.env.APP_BASE_URL ??= "http://localhost:3000";
   process.env.TELEGRAM_BOT_TOKEN ??= "manual-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET ??= "manual-telegram-webhook-secret";
+  process.env.TELEGRAM_ALLOWED_USER_IDS ??= "123";
 });
 
 describe.sequential("manual conversation context eval", () => {

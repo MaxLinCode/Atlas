@@ -1134,7 +1134,10 @@ export function getDefaultInboxProcessingStore(): InboxProcessingStore {
 }
 
 export function seedInboxItemForProcessingTests(inboxItem: InboxItem) {
-  defaultInMemoryStore.seedInboxItem(inboxItem);
+  defaultInMemoryStore.seedInboxItem({
+    ...inboxItem,
+    createdAt: inboxItem.createdAt ?? new Date().toISOString()
+  });
 }
 
 export function resetInboxProcessingStoreForTests() {

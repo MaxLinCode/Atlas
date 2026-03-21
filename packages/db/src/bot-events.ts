@@ -31,6 +31,7 @@ export type IncomingTelegramMessage = {
   payload: unknown;
   rawText: string;
   normalizedText: string;
+  createdAt?: string;
 };
 
 export type OutgoingTelegramMessage = {
@@ -196,7 +197,8 @@ export class PostgresTelegramBotEventStore
           eventType: event.eventType,
           idempotencyKey: event.idempotencyKey,
           payload: event.payload,
-          retryState: event.retryState
+          retryState: event.retryState,
+          createdAt: new Date(event.createdAt)
         })
         .onConflictDoNothing({
           target: botEvents.idempotencyKey
@@ -218,7 +220,8 @@ export class PostgresTelegramBotEventStore
         rawText: inboxItem.rawText,
         normalizedText: inboxItem.normalizedText,
         processingStatus: inboxItem.processingStatus,
-        linkedTaskIds: inboxItem.linkedTaskIds
+        linkedTaskIds: inboxItem.linkedTaskIds,
+        createdAt: new Date(inboxItem.createdAt)
       });
 
       return {
@@ -239,7 +242,8 @@ export class PostgresTelegramBotEventStore
         eventType: event.eventType,
         idempotencyKey: event.idempotencyKey,
         payload: event.payload,
-        retryState: event.retryState
+        retryState: event.retryState,
+        createdAt: new Date(event.createdAt)
       })
       .onConflictDoNothing({
         target: botEvents.idempotencyKey
@@ -327,6 +331,7 @@ export async function recordIncomingTelegramMessageIfNew(
 ): Promise<IncomingTelegramMessageRecordResult> {
   const eventId = randomUUID();
   const inboxItemId = randomUUID();
+  const createdAt = input.createdAt ?? new Date().toISOString();
 
   return store.recordIncomingIfAbsent(
     {
@@ -337,7 +342,7 @@ export async function recordIncomingTelegramMessageIfNew(
       idempotencyKey: input.idempotencyKey,
       payload: input.payload,
       retryState: "received",
-      createdAt: new Date().toISOString()
+      createdAt
     },
     {
       id: inboxItemId,
@@ -347,7 +352,7 @@ export async function recordIncomingTelegramMessageIfNew(
       normalizedText: input.normalizedText,
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: new Date().toISOString()
+      createdAt
     }
   );
 }

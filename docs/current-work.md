@@ -3,10 +3,18 @@
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
-Current implementation focus: stabilize the newly locked-down Google Calendar path after the security hardening pass so Atlas safely links one Google account per user, treats Google Calendar as scheduled-time authority, keeps `tasks` as the fast local projection, and preserves the locked follow-up/reschedule runtime on top of that task model.
+Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. The active branch restructures the OpenAI prompts into explicit prompt assets, expands live eval coverage around ambiguous routing and confirmed-mutation recovery, shifts product language from Telegram-first to chat-first at the prompt and docs layer, and threads `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor.
 
 ## Near-term milestones
 
+- Finish the prompt-asset cleanup and eval loop:
+  - keep each model prompt scoped to one job with explicit sections and output requirements
+  - expand live eval fixtures around ambiguous referents, vague confirmations, and partial scheduling requests
+  - use eval results to drive prompt revisions before considering model upgrades
+- Preserve deterministic time handling across mutation mode:
+  - keep planner interpretation, schedule generation, move logic, and busy-period lookup anchored to `referenceTime`
+  - continue removing remaining wall-clock assumptions from scheduling paths and tests
+- Carry the chat-first framing through remaining docs and app copy where the behavior is generic rather than transport-specific
 - Harden Google Calendar integration for launch review:
   - validate the new one-time `/google-calendar/connect` handoff and short-lived link-session flow in real deployment
   - finish disconnect UX and revoked-account operator visibility
@@ -45,7 +53,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 
 ## Handoff notes
 
-- Atlas should be a planning assistant first and a mutation engine second, but in v1 Telegram use is gated behind an active Google Calendar connection.
+- Atlas should be a planning assistant first and a mutation engine second, but in v1 chat-bot use is gated behind an active Google Calendar connection.
 - Schedule-forward remains a core product opinion: when work becomes actionable, Atlas should bias toward proposing or placing time on the schedule.
 - The emerging direction is external-calendar-backed scheduling with Atlas retaining task and accountability ownership.
 - Real Google Calendar integration is now landed in the main mutation path, including OAuth linkage, real event writes, busy-time-aware scheduling inputs, and bounded reconciliation.
@@ -68,7 +76,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - Telegram webhook ingress is now protected by a required `TELEGRAM_ALLOWED_USER_IDS` allowlist; blocked users are rejected before inbox persistence, planning, or outbound delivery, and app config fails fast when that env var is missing.
 - `apps/web` should own orchestration for both conversation mode and mutation mode; `packages/core` should keep schemas and deterministic scheduling helpers for mutation mode; `packages/integrations` should own model and Telegram transport; `packages/db` should keep canonical persistence and audit state.
 - For pure conversation or simple new-capture turns, Atlas likely does not need to load the full task and schedule graph.
-- Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent Telegram history as canonical memory.
+- Conversation mode may use recent transcript plus relevant state, but conversational scheduling and existing-work mutations must still resolve from explicit Atlas state. Do not rely on broad recent chat history as canonical memory.
 - Existing-task mutation turns need a narrow app-owned task candidate matching step before confirmed-mutation recovery or planner application when the user names a task informally, such as `journal` for `Journaling session`.
 - Keep that candidate matching deterministic and small-scope:
   - build candidates from persisted non-archived tasks, not summaries
@@ -136,6 +144,21 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - unresolved symbolic aliases
   - duplicate schedule actions for the same existing task
 - Verification completed on this branch:
+  - `pnpm typecheck`
+  - `pnpm test` except for the Postgres-backed integration package, which remains blocked in this environment by local `5432` connection restrictions
+  - `pnpm eval:planner`
+  - `pnpm eval:turn-router`
+  - `pnpm eval:router-confirmation`
+  - `pnpm eval:conversation-context`
+  - `pnpm eval:confirmed-mutation-recovery`
+- Prompt/runtime work completed on this branch:
+  - OpenAI prompts now live in `packages/integrations/src/prompts` as explicit per-role prompt assets instead of one dense file-local string block
+  - planner, router, conversation, memory-summary, and confirmed-mutation-recovery prompts now have expanded failure-boundary examples and tighter output-shape guidance
+  - confirmed-mutation recovery now uses a permissive response-format schema plus a stricter runtime discriminated-union parse
+  - schedule actions may now delegate slot choice with `scheduleConstraint: null`, and broad-but-usable timing like `morning but not too early` should map to schedulable intent instead of forcing exact-time clarification
+  - scheduling now uses inbox-item `createdAt` / `referenceTime` consistently in planner context, schedule computation, move handling, and busy-calendar lookup
+  - Postgres ingress persistence now preserves caller-supplied `createdAt`, keeping deterministic scheduling tests aligned across in-memory and Postgres stores
+- Verification completed on this branch:
   - `pnpm --filter @atlas/core typecheck`
   - `pnpm --filter @atlas/db typecheck`
   - `pnpm --filter @atlas/web typecheck`
@@ -156,7 +179,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - The first `TurnRouter` slice is now landed:
   - routing is app-owned in `apps/web`
   - the router is model-assisted through `packages/integrations`
-  - inbound Telegram turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
+- inbound chat turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
   - ingress is still persisted canonically before route selection
   - `mutation` and `confirmed_mutation` enter the write-capable structured mutation path
   - `conversation` and `conversation_then_mutation` remain non-writing
@@ -174,6 +197,9 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 - A live local router-confirmation eval harness is now available:
   - `pnpm eval:router-confirmation` calls the real OpenAI Responses API against curated short-horizon confirmation fixtures
   - this is intended for manual prompt verification of `confirmed_mutation` behavior, not deterministic CI coverage
+- A live local confirmed-mutation recovery eval harness is now available:
+  - `pnpm eval:confirmed-mutation-recovery` calls the real OpenAI Responses API against curated recovery fixtures for short-horizon confirmation and completion recovery
+  - this is intended for manual prompt verification of recovery output quality, not deterministic CI coverage
 - A live local conversation-context eval harness is now available:
   - `pnpm eval:conversation-context` calls the real OpenAI Responses API against curated recent-turn continuity fixtures
   - this is intended for manual prompt verification of context use and hedged conversation behavior, not deterministic CI coverage
@@ -186,7 +212,7 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
   - the conversation path still does not write task or schedule state
   - the conversation path must not claim that side effects happened
 - The main limitation in conversation mode is now context grounding:
-- the conversation path now loads a bounded recent-turn window from persisted Telegram transport records before routing, while summaries are only generated when they add value for continuity or clarification rather than by default
+- the conversation path now loads a bounded recent-turn window from persisted messaging transport records before routing, while summaries are only generated when they add value for continuity or clarification rather than by default
 - it derives a request-scoped working summary for conversational continuity on non-writing turns only when the recent transcript or ambiguity makes it helpful
 - this continuity layer is intentionally non-authoritative and must not be treated as canonical Atlas memory or mutation state
 - The conversation response path remains app-owned:
@@ -272,6 +298,6 @@ Current implementation focus: stabilize the newly locked-down Google Calendar pa
 
 - Keep route handlers thin. New behavior should land in app-layer services, `packages/core`, or `packages/db`, not directly in Next.js routes.
 - Extend the existing core and repository modules before creating new abstractions. Avoid catch-all helpers or conversation-memory utilities.
-- Keep conversational awareness grounded in persisted tasks, user profiles, planner runs, and explicit schedule linkage. Telegram transcripts are not a source of truth for mutations.
+- Keep conversational awareness grounded in persisted tasks, user profiles, planner runs, and explicit schedule linkage. Chat transcripts are not a source of truth for mutations.
 - Validate structured mutation output at the boundary before any task or schedule mutation, and keep model references explicit rather than id-guessing.
 - When adding scheduling behavior, preserve the MVP promise: conversationally helpful, schedule-forward, and safe at the mutation boundary.

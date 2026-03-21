@@ -13,7 +13,7 @@ export default function HomePage() {
     <main style={{ padding: "3rem", maxWidth: "70rem", margin: "0 auto" }}>
       <h1 style={{ fontSize: "3rem", marginBottom: "1rem" }}>Atlas Admin</h1>
       <p style={{ maxWidth: "40rem", lineHeight: 1.6 }}>
-        Telegram is the product surface. This interface exists for operators,
+        The messaging bot is the product surface. This interface exists for operators,
         debugging, and schedule inspection.
       </p>
       <section

@@ -425,7 +425,7 @@ describe("integrations", () => {
         userProfile: buildDefaultUserProfile("123"),
         tasks: [],
         scheduleBlocks: [],
-        now: "2026-03-13T08:00:00.000Z"
+        referenceTime: "2026-03-13T08:00:00.000Z"
       },
       {
         responses: {

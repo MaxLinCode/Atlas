@@ -48,7 +48,8 @@ if (!databaseUrl) {
             update_id: 42
           },
           rawText: " Review   launch checklist ",
-          normalizedText: "Review launch checklist"
+          normalizedText: "Review launch checklist",
+          createdAt: "2026-03-19T16:00:00.000Z"
         },
         store
       );
@@ -89,7 +90,8 @@ if (!databaseUrl) {
             update_id: 42
           },
           rawText: " Review   launch checklist ",
-          normalizedText: "Review launch checklist"
+          normalizedText: "Review launch checklist",
+          createdAt: "2026-03-19T16:00:00.000Z"
         },
         store
       );

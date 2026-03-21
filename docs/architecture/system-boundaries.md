@@ -8,14 +8,14 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 ## Stack components
 
-- Telegram bot
+- Messaging bot transport
 - Vercel app and API layer
 - Core package
 - Model layer
 - External calendar integration
 - Neon Postgres database
 
-## Telegram bot
+## Messaging bot transport
 
 ### Owns
 
@@ -32,15 +32,15 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 ### Notes
 
-- Telegram is the planning conversation surface, not the product brain.
-- For linked users, Telegram payloads should be normalized and persisted before deeper processing decisions are made.
+- The messaging bot is the planning conversation surface, not the product brain.
+- For linked users, inbound chat payloads should be normalized and persisted before deeper processing decisions are made.
 - For unlinked allowlisted users in v1, the app may short-circuit with a Google connect reply before ingress persistence.
 
 ## Vercel app and API layer
 
 ### Owns
 
-- Webhook entrypoints for Telegram
+- Webhook entrypoints for the messaging transport
 - Protected cron or scheduled entrypoints
 - Request validation, authentication, and idempotency boundaries
 - Webhook hardening such as rate limiting, abuse protection, and failed-auth observability
@@ -62,7 +62,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 - Never log webhook secrets in route logs, error messages, or debugging output.
 - Keep public routes to the minimum required surface. Internal mutation or debug routes should be removed or disabled rather than left internet-reachable.
 - Google linking should use a one-time handoff plus a short-lived server-side link session before OAuth start; do not bind user identity to a bearer token on a public OAuth-start URL.
-- Because the Telegram webhook is publicly reachable, future hardening should include rate limiting or equivalent edge protections in addition to secret verification and idempotency.
+- Because the messaging webhook is publicly reachable, future hardening should include rate limiting or equivalent edge protections in addition to secret verification and idempotency.
 
 ## Core package
 
@@ -76,7 +76,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 ### Does not own
 
 - HTTP delivery concerns
-- Telegram transport behavior
+- Messaging transport behavior
 - Database writes by itself
 
 ### Notes
@@ -148,7 +148,7 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 ## Cross-component rules
 
 - Capture must succeed before deeper intelligence is attempted, except for the v1 unlinked-user Google connect gate which intentionally short-circuits before ingress persistence.
-- Telegram messages from linked users should become persisted inbox items before Atlas mutates task state.
+- Inbound chat messages from linked users should become persisted inbox items before Atlas mutates task state.
 - Not every message should be forced through mutation logic; conversation mode is the default path.
 - Model-produced mutation output must be validated against app-owned schemas before it becomes a task or schedule mutation.
 - Scheduled time should come from the external calendar, not from broad recent-chat inference.
@@ -158,9 +158,9 @@ Its goal is to prevent logic from drifting into the wrong layer and to keep futu
 
 ## MVP non-goals
 
-- Telegram as the source of truth for tasks
+- The messaging transcript as the source of truth for tasks
 - Unchecked model state mutations
 - Unscheduled-task backlog as the normal operating model
 - Forcing every message through mutation logic
 - Business logic spread across webhook handlers
-- Rich multi-surface clients beyond Telegram
+- Rich multi-surface clients beyond the current messaging transport

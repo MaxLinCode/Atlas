@@ -54,12 +54,15 @@ describe("db package", () => {
         update_id: 42
       },
       rawText: " Review   launch checklist ",
-      normalizedText: "Review launch checklist"
+      normalizedText: "Review launch checklist",
+      createdAt: "2026-03-19T16:00:00.000Z"
     });
 
     expect(result.status).toBe("recorded");
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
+    expect(listIncomingBotEventsForTests()[0]?.createdAt).toBe("2026-03-19T16:00:00.000Z");
+    expect(listInboxItemsForTests()[0]?.createdAt).toBe("2026-03-19T16:00:00.000Z");
   });
 
   it("deduplicates repeated outgoing Telegram message events", async () => {

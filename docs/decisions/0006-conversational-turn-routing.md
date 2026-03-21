@@ -6,23 +6,23 @@ Accepted
 
 ## Context
 
-Atlas is a Telegram-first planning assistant, not just a mutation pipeline. The current model-facing path is primarily structured inbox planning, which is useful for safe writes but too narrow for the broader conversational behavior Atlas needs for planning dialogue, reflective help, and natural schedule-forward proposals.
+Atlas is a chat-first planning assistant, not just a mutation pipeline. The current model-facing path is primarily structured inbox planning, which is useful for safe writes but too narrow for the broader conversational behavior Atlas needs for planning dialogue, reflective help, and natural schedule-forward proposals.
 
 We need one durable rule for model behavior that:
 
 - preserves a safe structured mutation path
 - allows broader conversational responses without forcing every turn through a write-oriented planner
 - keeps turn routing app-owned rather than hidden inside one catch-all prompt
-- permits a fast v1 path toward more conversational Telegram behavior without treating transcript as canonical product state
+- permits a fast v1 path toward more conversational messaging-bot behavior without treating transcript as canonical product state
 
 ## Decision
 
-Use a two-path, app-routed model behavior for Telegram turns.
+Use a two-path, app-routed model behavior for chat turns.
 
 - Atlas has two model-facing turn paths:
   - `ConversationPath` for natural-language planning dialogue, reflection, prioritization, meta-use, and schedule-forward proposals without required writes
   - `MutationPath` for validated structured mutation proposals and results
-- Every inbound Telegram turn is routed through an app-owned `TurnRouter`.
+- Every inbound chat turn is routed through an app-owned `TurnRouter`.
 - `TurnRouter` selects one of:
   - `conversation`
   - `mutation`
@@ -41,7 +41,7 @@ Use a two-path, app-routed model behavior for Telegram turns.
 
 ## Consequences
 
-- Atlas should feel more conversational and planning-assistant-first in Telegram.
+- Atlas should feel more conversational and planning-assistant-first in chat.
 - Some turns will require more than one model call because routing, conversation, and mutation are distinct responsibilities.
 - Mode-specific context construction becomes more important because router, conversation, and mutation prompts should not all receive the same context payload.
 - Transcript-inferred confirmation is acceptable as a v1 speed tradeoff, but it is not a permanent commitment to transcript as durable product memory.
@@ -57,6 +57,6 @@ Use a two-path, app-routed model behavior for Telegram turns.
 
 - Do not collapse conversation and mutation back into one catch-all model path.
 - Do not let the conversation path write product state directly.
-- Do not treat Telegram transcript as the source of truth for mutations.
+- Do not treat the chat transcript as the source of truth for mutations.
 - Do not let richer conversational proposals bypass the structured mutation path.
 - Keep turn routing, mutation validation, and persistence boundaries explicit in app-owned code.
