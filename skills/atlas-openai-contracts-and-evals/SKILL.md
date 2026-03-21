@@ -26,4 +26,27 @@ When editing:
    - `pnpm eval:confirmed-mutation-recovery`
    - `pnpm eval:conversation-context`
 
+Prompt iteration loop:
+
+1. Start with the narrowest failing eval for the touched prompt path.
+2. If the eval fails, inspect:
+   - the suite report under `packages/integrations/*.manual-eval-report.json`
+   - the generated prompt-improvement brief under `packages/integrations/*.prompt-improvement.md`
+3. Use the prompt-improvement brief as a starting point, not as authority:
+   - preserve the owning prompt's original role and contract
+   - prefer the smallest prompt edit that addresses the failure pattern
+   - do not weaken schema validation or runtime safety to make an eval pass
+4. Rerun the same targeted eval after each prompt change until the suite passes or a non-prompt issue becomes clear.
+5. After the targeted suite passes, run `pnpm eval:all` before finishing so the full prompt surface is revalidated together.
+
+Meta-prompt intent for generated prompt-improvement briefs:
+
+- diagnose why the current prompt failed
+- identify the smallest generalizable change
+- rewrite the full prompt, not just a patch fragment
+- avoid overfitting to one failure string
+- preserve the original product intent and safety boundary
+
+Use the generated brief to speed iteration, but always verify the actual prompt diff and resulting eval output yourself.
+
 Do not treat passing live evals as a substitute for deterministic tests. Use evals for prompt quality and contract tests for runtime safety.

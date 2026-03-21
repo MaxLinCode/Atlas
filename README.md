@@ -32,6 +32,33 @@ Atlas is a chat-first brain-dump scheduler MVP. A user sends freeform text, the 
 - `pnpm db:test:reset`: reset the local `atlas_test` database schema for integration reruns
 - `pnpm db:test:stop`: stop the local Homebrew Postgres test service
 
+## Prompt Improvement Loop
+
+Atlas treats prompt changes as product behavior changes. Use the live eval harness to iterate on prompts deliberately instead of editing blind.
+
+Recommended loop:
+
+1. Edit the owning prompt, schema, or parser in `packages/integrations` and `packages/core` together when the contract changes.
+2. Run the narrowest relevant live eval first:
+   - `pnpm eval:planner`
+   - `pnpm eval:turn-router`
+   - `pnpm eval:router-confirmation`
+   - `pnpm eval:conversation-context`
+   - `pnpm eval:confirmed-mutation-recovery`
+3. Inspect the suite-specific report written under `packages/integrations/*.manual-eval-report.json`.
+4. If the suite fails, inspect the generated prompt-improvement brief under `packages/integrations/*.prompt-improvement.md` and use it as the starting point for the next prompt revision.
+5. Tighten the prompt or contract based on the actual failing model output.
+6. Run `pnpm eval:all` before merging to confirm the full prompt surface still passes together.
+
+Notes:
+
+- `pnpm eval:all` writes the canonical consolidated report to `packages/integrations/manual-eval-report.json`.
+- Single-suite evals write suite-specific reports such as `packages/integrations/conversation-context.manual-eval-report.json`.
+- Failing suites also write suite-specific prompt-improvement briefs such as `packages/integrations/conversation-context.prompt-improvement.md`.
+- Generated eval reports are ignored by git and should not be committed.
+- Generated prompt-improvement briefs are also ignored by git and should not be committed.
+- Live evals help judge prompt quality, but they do not replace deterministic tests and schema validation.
+
 ## Local Integration DB
 
 Atlas supports an explicit local Postgres workflow for integration tests on macOS with Homebrew `postgresql@16`.

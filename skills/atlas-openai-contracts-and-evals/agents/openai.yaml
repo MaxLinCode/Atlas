@@ -1,4 +1,4 @@
 interface:
   display_name: "Atlas OpenAI Contracts and Evals"
   short_description: "Harden prompt outputs and eval loops."
-  default_prompt: "Use $atlas-openai-contracts-and-evals to update Atlas prompts, structured outputs, or eval fixtures."
+  default_prompt: "Use $atlas-openai-contracts-and-evals to update Atlas prompts, structured outputs, or eval fixtures, and follow the targeted eval -> prompt-improvement brief -> rerun -> eval:all loop."

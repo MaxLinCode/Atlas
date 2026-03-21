@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { runConversationContextEvalSuite } from "./conversation-context.eval-suite";
-import { ensureManualEvalEnv, writeSuiteEvalReport } from "./shared";
+import {
+  ensureManualEvalEnv,
+  writePromptImprovementBrief,
+  writeSuiteEvalReport
+} from "./shared";
 
 beforeAll(() => {
   ensureManualEvalEnv();
@@ -11,6 +15,8 @@ describe.sequential("manual conversation context eval", () => {
   it("checks curated continuity cases against the live OpenAI prompts", async () => {
     const suite = await runConversationContextEvalSuite();
     const reportPath = await writeSuiteEvalReport(suite);
+    const briefPath =
+      suite.failed > 0 ? await writePromptImprovementBrief(suite) : null;
 
     console.table(
       suite.cases.map((testCase) => ({
@@ -23,6 +29,9 @@ describe.sequential("manual conversation context eval", () => {
       }))
     );
     console.log(`Manual eval report written to ${reportPath}`);
+    if (briefPath) {
+      console.log(`Prompt improvement brief written to ${briefPath}`);
+    }
 
     expect(suite.failed).toBe(0);
   }, 120_000);

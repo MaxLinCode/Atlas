@@ -4,7 +4,12 @@ import { runConfirmedMutationRecoveryEvalSuite } from "./confirmed-mutation-reco
 import { runConversationContextEvalSuite } from "./conversation-context.eval-suite";
 import { runPlannerEvalSuite } from "./planner.eval-suite";
 import { runRouterConfirmationEvalSuite } from "./router-confirmation.eval-suite";
-import { ensureManualEvalEnv, buildEvalReport, writeEvalReport } from "./shared";
+import {
+  ensureManualEvalEnv,
+  buildEvalReport,
+  writeEvalReport,
+  writePromptImprovementBriefsForFailures
+} from "./shared";
 import { runTurnRouterEvalSuite } from "./turn-router.eval-suite";
 
 beforeAll(() => {
@@ -23,6 +28,7 @@ describe.sequential("manual prompt eval loop", () => {
 
     const report = buildEvalReport(suites);
     const reportPath = await writeEvalReport(report);
+    const briefPaths = await writePromptImprovementBriefsForFailures(suites);
 
     console.table(
       suites.map((suite) => ({
@@ -34,6 +40,9 @@ describe.sequential("manual prompt eval loop", () => {
       }))
     );
     console.log(`Manual eval report written to ${reportPath}`);
+    if (briefPaths.length > 0) {
+      console.log(`Prompt improvement briefs written to ${briefPaths.join(", ")}`);
+    }
 
     expect(report.failedCases).toBe(0);
   }, 300_000);
