@@ -99,15 +99,17 @@ export async function handleGoogleCalendarConnect(
     connectionStore?: GoogleCalendarConnectionStore;
   } = {}
 ) {
-  return handleGoogleCalendarConnectPreview(request);
+  return handleGoogleCalendarConnectPreview(request, dependencies);
 }
 
 export async function handleGoogleCalendarConnectPreview(
   request: Request,
-  _dependencies: {
+  dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
   } = {}
 ) {
+  void dependencies;
+
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   const config = getConfig();

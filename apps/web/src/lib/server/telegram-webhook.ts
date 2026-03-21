@@ -19,7 +19,6 @@ import {
   getDefaultFollowUpRuntimeStore,
   getLatestFollowUpBundleContext,
   recordIncomingTelegramMessageIfNew,
-  recordOutgoingTelegramMessageIfNew,
   updateOutgoingTelegramMessage,
   type ConversationHistoryStore,
   type FollowUpRuntimeStore,
