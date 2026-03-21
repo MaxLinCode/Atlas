@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxPlanningOutput } from "@atlas/core";
 import {
   getDefaultGoogleCalendarConnectionStore,
+  getDefaultFollowUpRuntimeStore,
   getDefaultInboxProcessingStore,
   listPlannerRunsForTests,
   listScheduleBlocksForTests,
@@ -108,6 +109,7 @@ function buildRequest(body: unknown, secret = "test-webhook-secret") {
 
 async function seedOutstandingFollowUpBundle(titles: string[]) {
   const store = getDefaultInboxProcessingStore();
+  const followUpStore = getDefaultFollowUpRuntimeStore();
 
   seedInboxItemForProcessingTests({
     id: "inbox-seed",
@@ -170,7 +172,7 @@ async function seedOutstandingFollowUpBundle(titles: string[]) {
   });
 
   const taskIds = listTasksForTests().map((task) => task.id);
-  await (store as any).markFollowUpSent(taskIds, "2026-03-20T17:00:00.000Z");
+  await followUpStore.markFollowUpSent(taskIds, "2026-03-20T17:00:00.000Z");
 
   await recordOutgoingTelegramMessageIfNew({
     userId: "123",
@@ -198,6 +200,7 @@ async function seedOutstandingFollowUpBundle(titles: string[]) {
 
   return {
     store,
+    followUpStore,
     taskIds
   };
 }
@@ -336,7 +339,7 @@ describe("telegram webhook route", () => {
   });
 
   it("binds numbered followup replies and marks the selected task done", async () => {
-    const { store } = await seedOutstandingFollowUpBundle(["Review launch checklist"]);
+    const { store, followUpStore } = await seedOutstandingFollowUpBundle(["Review launch checklist"]);
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -351,7 +354,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store,
-        followUpStore: store as any,
+        followUpStore,
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -364,7 +367,7 @@ describe("telegram webhook route", () => {
   });
 
   it("accepts short natural-language followup replies that reference bundle numbers", async () => {
-    const { store, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+    const { store, followUpStore, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -379,7 +382,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store,
-        followUpStore: store as any,
+        followUpStore,
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -395,7 +398,7 @@ describe("telegram webhook route", () => {
   });
 
   it("accepts ordinal followup archive replies", async () => {
-    const { store, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+    const { store, followUpStore, taskIds } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -410,7 +413,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store,
-        followUpStore: store as any,
+        followUpStore,
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -426,7 +429,7 @@ describe("telegram webhook route", () => {
   });
 
   it("asks for clarification on ambiguous followup replies with multiple unresolved items", async () => {
-    const { store } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
+    const { store, followUpStore } = await seedOutstandingFollowUpBundle(["Task 1", "Task 2"]);
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -441,7 +444,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store,
-        followUpStore: store as any,
+        followUpStore,
         primeProcessingStore: seedInboxItemForProcessingTests
       }
     );
@@ -454,7 +457,7 @@ describe("telegram webhook route", () => {
   });
 
   it("lets mixed-intent messages fall through to the normal router even with outstanding followups", async () => {
-    const { store } = await seedOutstandingFollowUpBundle(["Review launch checklist", "Send investor update"]);
+    const { store, followUpStore } = await seedOutstandingFollowUpBundle(["Review launch checklist", "Send investor update"]);
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -469,7 +472,7 @@ describe("telegram webhook route", () => {
       }),
       {
         store,
-        followUpStore: store as any,
+        followUpStore,
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests
       }
