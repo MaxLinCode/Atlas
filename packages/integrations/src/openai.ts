@@ -100,7 +100,9 @@ export async function planInboxItemWithResponses(
     }
   });
 
-  return inboxPlanningOutputSchema.parse(inboxPlanningResponseFormatSchema.parse(response.output_parsed));
+  return inboxPlanningOutputSchema.parse(
+    normalizePlanningOutput(inboxPlanningResponseFormatSchema.parse(response.output_parsed))
+  );
 }
 
 export async function routeTurnWithResponses(
@@ -274,4 +276,50 @@ function normalizeConfirmedMutationRecoveryOutput(
   }
 
   return output;
+}
+
+function normalizePlanningOutput(
+  output: z.infer<typeof inboxPlanningResponseFormatSchema>
+) {
+  return {
+    confidence: output.confidence,
+    summary: output.summary,
+    actions: output.actions.map((action) => {
+      switch (action.type) {
+        case "create_task":
+          return {
+            type: action.type,
+            alias: action.alias,
+            title: action.title,
+            priority: action.priority,
+            urgency: action.urgency
+          };
+        case "create_schedule_block":
+          return {
+            type: action.type,
+            taskRef: action.taskRef,
+            scheduleConstraint: action.scheduleConstraint ?? null,
+            reason: action.reason
+          };
+        case "move_schedule_block":
+          return {
+            type: action.type,
+            blockRef: action.blockRef,
+            scheduleConstraint: action.scheduleConstraint ?? null,
+            reason: action.reason
+          };
+        case "complete_task":
+          return {
+            type: action.type,
+            taskRef: action.taskRef,
+            reason: action.reason
+          };
+        case "clarify":
+          return {
+            type: action.type,
+            reason: action.reason
+          };
+      }
+    })
+  };
 }
