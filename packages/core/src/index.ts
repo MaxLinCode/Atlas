@@ -497,9 +497,12 @@ export const createScheduleBlockPlanningActionSchema = z.object({
 
 export const createScheduleBlockPlanningActionResponseFormatSchema = z.object({
   type: z.literal("create_schedule_block"),
-  taskRef: taskReferenceSchema,
-  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable(),
-  reason: z.string().min(1)
+  taskRef: z.object({
+    kind: z.enum(["created_task", "existing_task"]),
+    alias: z.string().min(1)
+  }).nullable().optional(),
+  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable().optional(),
+  reason: z.string().min(1).nullable().optional()
 });
 
 export const moveScheduleBlockPlanningActionSchema = z.object({
@@ -511,9 +514,11 @@ export const moveScheduleBlockPlanningActionSchema = z.object({
 
 export const moveScheduleBlockPlanningActionResponseFormatSchema = z.object({
   type: z.literal("move_schedule_block"),
-  blockRef: scheduleBlockReferenceSchema,
-  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable(),
-  reason: z.string().min(1)
+  blockRef: z.object({
+    alias: z.string().min(1)
+  }).nullable().optional(),
+  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable().optional(),
+  reason: z.string().min(1).nullable().optional()
 });
 
 export const completeTaskPlanningActionSchema = z.object({
@@ -535,13 +540,28 @@ export const planningActionSchema = z.discriminatedUnion("type", [
   clarifyPlanningActionSchema
 ]);
 
-export const planningActionResponseFormatSchema = z.discriminatedUnion("type", [
-  createTaskPlanningActionSchema,
-  createScheduleBlockPlanningActionResponseFormatSchema,
-  moveScheduleBlockPlanningActionResponseFormatSchema,
-  completeTaskPlanningActionSchema,
-  clarifyPlanningActionSchema
-]);
+export const planningActionResponseFormatSchema = z.object({
+  type: z.enum([
+    "create_task",
+    "create_schedule_block",
+    "move_schedule_block",
+    "complete_task",
+    "clarify"
+  ]),
+  alias: z.string().min(1).nullable().optional(),
+  title: z.string().min(1).nullable().optional(),
+  priority: z.enum(["low", "medium", "high"]).nullable().optional(),
+  urgency: z.enum(["low", "medium", "high"]).nullable().optional(),
+  taskRef: z.object({
+    kind: z.enum(["created_task", "existing_task"]),
+    alias: z.string().min(1)
+  }).nullable().optional(),
+  blockRef: z.object({
+    alias: z.string().min(1)
+  }).nullable().optional(),
+  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable().optional(),
+  reason: z.string().min(1).nullable().optional()
+});
 
 export const inboxPlanningOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
