@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   getConfig,
   inboxPlanningContextSchema,
+  inboxPlanningResponseFormatSchema,
   inboxPlanningOutputSchema,
   turnRoutingInputSchema,
   turnRoutingOutputSchema,
@@ -95,11 +96,11 @@ export async function planInboxItemWithResponses(
       }
     ],
     text: {
-      format: zodTextFormat(inboxPlanningOutputSchema, "atlas_inbox_planning_output")
+      format: zodTextFormat(inboxPlanningResponseFormatSchema, "atlas_inbox_planning_output")
     }
   });
 
-  return inboxPlanningOutputSchema.parse(response.output_parsed);
+  return inboxPlanningOutputSchema.parse(inboxPlanningResponseFormatSchema.parse(response.output_parsed));
 }
 
 export async function routeTurnWithResponses(

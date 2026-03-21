@@ -454,6 +454,17 @@ export const scheduleConstraintSchema = z.object({
 
 });
 
+export const scheduleConstraintResponseFormatSchema = z.object({
+  dayReference: z.enum(["today", "tomorrow", "weekday"]).nullable(),
+  weekday: weekdaySchema.nullable(),
+  weekOffset: z.number().int().min(0).max(8).nullable(),
+  relativeMinutes: z.number().int().positive().max(7 * 24 * 60).nullable().optional(),
+  explicitHour: z.number().int().min(0).max(23).nullable(),
+  minute: z.number().int().min(0).max(59).nullable(),
+  preferredWindow: z.enum(["morning", "afternoon", "evening"]).nullable(),
+  sourceText: z.string().min(1)
+});
+
 export const taskReferenceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("created_task"),
@@ -484,10 +495,24 @@ export const createScheduleBlockPlanningActionSchema = z.object({
   reason: z.string().min(1)
 });
 
+export const createScheduleBlockPlanningActionResponseFormatSchema = z.object({
+  type: z.literal("create_schedule_block"),
+  taskRef: taskReferenceSchema,
+  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable(),
+  reason: z.string().min(1)
+});
+
 export const moveScheduleBlockPlanningActionSchema = z.object({
   type: z.literal("move_schedule_block"),
   blockRef: scheduleBlockReferenceSchema,
   scheduleConstraint: scheduleConstraintSchema.nullable(),
+  reason: z.string().min(1)
+});
+
+export const moveScheduleBlockPlanningActionResponseFormatSchema = z.object({
+  type: z.literal("move_schedule_block"),
+  blockRef: scheduleBlockReferenceSchema,
+  scheduleConstraint: scheduleConstraintResponseFormatSchema.nullable(),
   reason: z.string().min(1)
 });
 
@@ -510,10 +535,24 @@ export const planningActionSchema = z.discriminatedUnion("type", [
   clarifyPlanningActionSchema
 ]);
 
+export const planningActionResponseFormatSchema = z.discriminatedUnion("type", [
+  createTaskPlanningActionSchema,
+  createScheduleBlockPlanningActionResponseFormatSchema,
+  moveScheduleBlockPlanningActionResponseFormatSchema,
+  completeTaskPlanningActionSchema,
+  clarifyPlanningActionSchema
+]);
+
 export const inboxPlanningOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
   summary: z.string().min(1),
   actions: z.array(planningActionSchema).min(1)
+});
+
+export const inboxPlanningResponseFormatSchema = z.object({
+  confidence: z.number().min(0).max(1),
+  summary: z.string().min(1),
+  actions: z.array(planningActionResponseFormatSchema).min(1)
 });
 
 export const inboxPlanningTaskContextSchema = z.object({
