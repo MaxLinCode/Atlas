@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
-Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. The active branch restructures the OpenAI prompts into explicit prompt assets, expands live eval coverage around ambiguous routing and confirmed-mutation recovery, adds a consolidated `pnpm eval:all` loop plus suite-specific eval reports for prompt iteration, shifts product language from Telegram-first to chat-first at the prompt and docs layer, and threads `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor. Atlas also now carries repo-local Codex skills under `skills/` so workflow guidance can evolve with the codebase instead of living only in global agent defaults.
+Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. Recent work restructured the OpenAI prompts into explicit prompt assets, expanded live eval coverage around ambiguous routing and confirmed-mutation recovery, added a consolidated `pnpm eval:all` loop plus suite-specific eval reports and prompt-improvement briefs for prompt iteration, shifted product language from Telegram-first to chat-first at the prompt and docs layer, and threaded `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor. Atlas also now carries repo-local Codex skills under `skills/` so workflow guidance can evolve with the codebase instead of living only in global agent defaults.
 
 ## Near-term milestones
 
@@ -41,7 +41,10 @@ Current implementation focus: harden the model-driven planning layer now that th
 - Define the next data model around task-centric current commitment plus future task history.
 - Add the task-level schema and repository support needed for the locked follow-up runtime, including `followup_reminder_sent_at`.
 - Implement the background follow-up/reminder dispatch path, turn-boundary drain, and per-user locking against the locked runtime semantics.
+- Fix cron follow-up idempotency so concurrent runners cannot send duplicate bundles for the same unresolved task set; repeated reminder eligibility should come from task state transitions rather than timestamp-salted delivery keys.
+- Fix webhook follow-up continuation dedupe to compare normalized unresolved bundle membership instead of order-sensitive task-id sequences built from different sort rules.
 - Expand integration coverage for follow-up, reminder, late-reply, and reschedule flows under the locked runtime rules.
+- Future work: widen the deterministic follow-up reply gate to accept more natural phrasings without reintroducing mixed-intent shortcut hijacking.
 - Design the dedicated commitment/history model that eventually replaces planner-facing `schedule_block` aliases.
 - Clean up the remaining `schedule_block` compatibility layer and complete the task-first repository design:
   - remove planner/runtime dependence on `schedule_block_*` aliases for existing-item reschedules and move mutations
@@ -252,9 +255,14 @@ Current implementation focus: harden the model-driven planning layer now that th
 
 ## Next Handoff
 
-- Next implementation task: close the remaining production-readiness gaps around the locked-down Google Calendar path.
-- Use the delivery plan in `docs/workflows/google-calendar-delivery.md`, the authority ADR in `docs/decisions/0007-google-calendar-authority-and-sync.md`, and the security ADR in `docs/decisions/0008-security-lockdown-and-google-oauth-handoff.md`.
+- Next implementation task: stabilize the planner contract and prompt iteration loop now that the live eval harness is in place.
+- Start by using `pnpm eval:planner` and `pnpm eval:all` as the gating loop for any planner or router change.
 - Keep the next slice focused:
+  - eliminate remaining planner output flakiness around `scheduleConstraint` shape so live evals do not intermittently fail on otherwise valid scheduling intent
+  - add deterministic contract coverage for the planner normalization path that converts the API-facing response shape into the strict runtime schema
+  - verify the generated `*.prompt-improvement.md` artifacts are useful in practice on at least one real failing eval case, and refine the brief format if it is too noisy or too narrow
+  - keep `manual-eval-report.json` as the canonical full-suite artifact and suite-specific report/brief files as targeted iteration tools only
+- After that slice, return to the locked-down Google Calendar production-readiness work:
   - validate the Telegram-to-browser Google link handoff in a real deployed environment
   - finish disconnect/revocation UX and operator visibility for linked accounts
   - decide and implement retention jobs for `bot_events` and `planner_runs` rather than leaving them as undocumented indefinite operational history

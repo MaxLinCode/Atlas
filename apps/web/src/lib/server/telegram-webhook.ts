@@ -8,16 +8,21 @@ import {
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
   type ConversationTurn,
+  type Task,
   getConfig,
   normalizeTelegramUpdate,
   telegramUpdateSchema
 } from "@atlas/core";
 import {
+  getDefaultInboxProcessingStore,
   listRecentConversationTurns,
+  getDefaultFollowUpRuntimeStore,
+  getLatestFollowUpBundleContext,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
   updateOutgoingTelegramMessage,
   type ConversationHistoryStore,
+  type FollowUpRuntimeStore,
   type IncomingTelegramIngressStore,
   type OutgoingTelegramDeliveryStore,
   type PersistedInboxItem
@@ -35,6 +40,7 @@ import {
 } from "@atlas/integrations";
 
 import { processInboxItem, type ProcessInboxItemDependencies } from "./process-inbox-item";
+import { renderMutationReply } from "./mutation-reply";
 import {
   buildConversationResponse,
   type BuildConversationResponseInput,
@@ -49,6 +55,8 @@ import {
   createGoogleCalendarConnectLink,
   hasActiveGoogleCalendarConnection
 } from "./google-calendar";
+import { buildFollowUpBundle } from "./follow-up";
+import { sendTelegramMessageWithPersistence } from "./telegram-webhook-transport";
 
 type WebhookResult = {
   status: number;
@@ -77,6 +85,7 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
     userId: string;
     redirectPath?: string | null;
   }) => Promise<string>;
+  followUpStore?: FollowUpRuntimeStore;
 };
 
 const TELEGRAM_SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -225,6 +234,18 @@ export async function handleTelegramWebhook(
     RECENT_CONVERSATION_TURN_LIMIT,
     dependencies.conversationHistoryStore
   );
+  const followUpIntercept = await tryHandleFollowUpReply(
+    {
+      normalizedMessage,
+      inboxItem: ingress.inboxItem
+    },
+    dependencies
+  );
+
+  if (followUpIntercept) {
+    return followUpIntercept;
+  }
+
   const routedWithContext = await (dependencies.turnRouter ?? routeMessageTurn)({
     rawText: normalizedMessage.rawText,
     normalizedText: normalizedMessage.normalizedText,
@@ -273,6 +294,14 @@ export async function handleTelegramWebhook(
         ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
       }
     );
+    const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        chatId: normalizedMessage.chatId,
+        inboxItemId: ingress.inboxItem.id
+      },
+      dependencies
+    );
 
     return {
       status: 200,
@@ -287,7 +316,8 @@ export async function handleTelegramWebhook(
           outcome: "conversation_replied",
           reply: conversationResponse.reply
         },
-        outboundDelivery
+        outboundDelivery,
+        followUpContinuation
       }
     };
   }
@@ -363,6 +393,14 @@ export async function handleTelegramWebhook(
         ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
       }
     );
+    const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        chatId: normalizedMessage.chatId,
+        inboxItemId: ingress.inboxItem.id
+      },
+      dependencies
+    );
 
     return {
       status: 200,
@@ -374,7 +412,8 @@ export async function handleTelegramWebhook(
         turnRoute: routedWithContext.route,
         routing: routedWithContext,
         processing,
-        outboundDelivery
+        outboundDelivery,
+        followUpContinuation
       }
     };
   }
@@ -405,6 +444,14 @@ export async function handleTelegramWebhook(
       ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
     }
   );
+  const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
+    {
+      userId: normalizedMessage.user.telegramUserId,
+      chatId: normalizedMessage.chatId,
+      inboxItemId: ingress.inboxItem.id
+    },
+    dependencies
+  );
 
   return {
     status: 200,
@@ -416,7 +463,8 @@ export async function handleTelegramWebhook(
       turnRoute: routedWithContext.route,
       routing: routedWithContext,
       processing,
-      outboundDelivery
+      outboundDelivery,
+      followUpContinuation
     }
   };
 }
@@ -484,89 +532,7 @@ async function sendFollowUpMessage(
   input: SendFollowUpMessageInput,
   dependencies: SendFollowUpMessageDependencies
 ) {
-  const idempotencyKey =
-    input.idempotencyKey ??
-    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
-
-  if (!idempotencyKey) {
-    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
-  }
-
-  const reservation = await recordOutgoingTelegramMessageIfNew(
-    {
-      userId: input.userId,
-      eventType: input.eventType ?? "telegram_followup_message",
-      idempotencyKey,
-      payload: {
-        chatId: input.chatId,
-        text: input.persistedText ?? input.text,
-        attempts: 0
-      },
-      retryState: "sending"
-    },
-    dependencies.deliveryStore
-  );
-
-  if (reservation.status === "duplicate") {
-    return {
-      status: "duplicate",
-      attempts: 0,
-      idempotencyKey
-    };
-  }
-
-  let attempts = 0;
-  let lastError: Error | null = null;
-
-  while (attempts < 2) {
-    attempts += 1;
-
-    try {
-      const sentMessage = await dependencies.sender({
-        chatId: input.chatId,
-        text: input.text
-      });
-
-      await updateOutgoingTelegramMessage(
-        {
-          idempotencyKey,
-          payload: buildOutgoingEventPayload(input, sentMessage, attempts),
-          retryState: "sent"
-        },
-        dependencies.deliveryStore
-      );
-
-      return {
-        status: "sent",
-        attempts,
-        idempotencyKey,
-        message: sentMessage.result
-      };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Failed to send Telegram follow-up message.");
-    }
-  }
-
-  await updateOutgoingTelegramMessage(
-    {
-      idempotencyKey,
-      payload: {
-        chatId: input.chatId,
-        text: input.text,
-        attempts,
-        error: lastError?.message ?? "Unknown Telegram delivery error."
-      },
-      retryState: "failed"
-    },
-    dependencies.deliveryStore
-  );
-
-  return {
-    status: "failed",
-    attempts,
-    idempotencyKey,
-    error: lastError?.message ?? "Unknown Telegram delivery error."
-  };
+  return sendTelegramMessageWithPersistence(input, dependencies);
 }
 
 async function sendImmediateRouteFeedback(
@@ -736,6 +702,343 @@ function buildOutgoingEventPayload(
     telegram: sentMessage,
     ...(metadata ?? {})
   };
+}
+
+async function tryHandleFollowUpReply(
+  input: {
+    normalizedMessage: NonNullable<ReturnType<typeof normalizeTelegramUpdate>>;
+    inboxItem: PersistedInboxItem;
+  },
+  dependencies: TelegramWebhookDependencies
+): Promise<WebhookResult | null> {
+  const followUpStore = dependencies.followUpStore ?? (dependencies.store as FollowUpRuntimeStore | undefined) ?? getDefaultFollowUpRuntimeStore();
+  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(input.normalizedMessage.user.telegramUserId);
+
+  if (outstandingTasks.length === 0) {
+    return null;
+  }
+
+  const latestContext = await getLatestFollowUpBundleContext(
+    input.normalizedMessage.user.telegramUserId,
+    dependencies.conversationHistoryStore
+  );
+
+  if (!latestContext) {
+    return null;
+  }
+
+  const unresolvedById = new Map(outstandingTasks.map((task) => [task.id, task]));
+  const contextTasks = latestContext.items
+    .map((item) => ({
+      ...item,
+      task: unresolvedById.get(item.taskId) ?? null
+    }))
+    .filter((item): item is typeof item & { task: Task } => item.task !== null);
+
+  if (contextTasks.length === 0) {
+    return null;
+  }
+
+  if (!looksLikeFollowUpReply(input.normalizedMessage.normalizedText, contextTasks.length)) {
+    return null;
+  }
+
+  const parsed = parseFollowUpReply(input.normalizedMessage.normalizedText, contextTasks);
+
+  if (parsed.kind === "new_request") {
+    return null;
+  }
+
+  if (parsed.kind === "ambiguous") {
+    return replyWithText(
+      {
+        userId: input.normalizedMessage.user.telegramUserId,
+        chatId: input.normalizedMessage.chatId,
+        inboxItemId: input.inboxItem.id,
+        text: "Which one do you mean? Reply with the number or numbers."
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        body: {
+          accepted: true,
+          inboxItem: input.inboxItem,
+          processing: {
+            outcome: "conversation_replied",
+            reply: "Which one do you mean? Reply with the number or numbers."
+          }
+        }
+      }
+    );
+  }
+
+  const selectedTasks = parsed.taskIds.map((taskId) => unresolvedById.get(taskId)).filter((task): task is Task => task !== undefined);
+
+  if (selectedTasks.length === 0) {
+    return null;
+  }
+
+  const directStore = dependencies.store ?? getDefaultInboxProcessingStore();
+  await dependencies.primeProcessingStore?.(input.inboxItem);
+  const plannerRun = {
+    userId: input.inboxItem.userId,
+    inboxItemId: input.inboxItem.id,
+    version: "followup-direct-v1",
+    modelInput: { source: "followup_reply", text: input.normalizedMessage.normalizedText },
+    modelOutput: parsed,
+    confidence: 1
+  };
+
+  if (parsed.kind === "done") {
+    const processing = await directStore.saveTaskCompletionResult({
+      inboxItemId: input.inboxItem.id,
+      confidence: 1,
+      plannerRun,
+      taskIds: selectedTasks.map((task) => task.id),
+      followUpMessage: ""
+    });
+
+    return replyWithText(
+      {
+        userId: input.normalizedMessage.user.telegramUserId,
+        chatId: input.normalizedMessage.chatId,
+        inboxItemId: input.inboxItem.id,
+        text: renderMutationReply(processing)
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        body: {
+          accepted: true,
+          inboxItem: input.inboxItem,
+          processing
+        }
+      }
+    );
+  }
+
+  if (parsed.kind === "archive") {
+    const processing = await directStore.saveTaskArchiveResult({
+      inboxItemId: input.inboxItem.id,
+      confidence: 1,
+      plannerRun,
+      taskIds: selectedTasks.map((task) => task.id),
+      followUpMessage: ""
+    });
+
+    return replyWithText(
+      {
+        userId: input.normalizedMessage.user.telegramUserId,
+        chatId: input.normalizedMessage.chatId,
+        inboxItemId: input.inboxItem.id,
+        text: renderMutationReply(processing)
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        body: {
+          accepted: true,
+          inboxItem: input.inboxItem,
+          processing
+        }
+      }
+    );
+  }
+
+  if (parsed.kind === "not_yet") {
+    const processing = await directStore.saveNeedsClarificationResult({
+      inboxItemId: input.inboxItem.id,
+      confidence: 1,
+      plannerRun,
+      reason: "Follow-up reply needs explicit reschedule or archive decision.",
+      followUpMessage: "Noted. Tell me when you want to reschedule it, or say archive."
+    });
+
+    return replyWithText(
+      {
+        userId: input.normalizedMessage.user.telegramUserId,
+        chatId: input.normalizedMessage.chatId,
+        inboxItemId: input.inboxItem.id,
+        text: processing.followUpMessage
+      },
+      {
+        sender: dependencies.sender ?? sendTelegramMessage,
+        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        body: {
+          accepted: true,
+          inboxItem: input.inboxItem,
+          processing
+        }
+      }
+    );
+  }
+
+  return null;
+}
+
+function parseFollowUpReply(
+  normalizedText: string,
+  contextTasks: Array<{ number: number; taskId: string; title: string; task: Task }>
+):
+  | { kind: "done"; taskIds: string[] }
+  | { kind: "archive"; taskIds: string[] }
+  | { kind: "not_yet"; taskIds: string[] }
+  | { kind: "ambiguous" }
+  | { kind: "new_request" } {
+  const lower = normalizedText.toLowerCase();
+  const numberToTask = new Map(contextTasks.map((item) => [item.number, item.taskId]));
+  const selectedTaskIds = extractFollowUpSelectionNumbers(lower)
+    .map((number) => numberToTask.get(number))
+    .filter((taskId): taskId is string => Boolean(taskId));
+  const action = detectFollowUpAction(lower);
+
+  if (selectedTaskIds.length > 0 && action) {
+    return {
+      kind: action,
+      taskIds: selectedTaskIds
+    } as { kind: "done" | "archive" | "not_yet"; taskIds: string[] };
+  }
+
+  if (contextTasks.length === 1 && action) {
+    const [onlyTask] = contextTasks;
+
+    if (!onlyTask) {
+      return { kind: "new_request" };
+    }
+
+    return {
+      kind: action,
+      taskIds: [onlyTask.taskId]
+    } as { kind: "done" | "archive" | "not_yet"; taskIds: string[] };
+  }
+
+  if (action) {
+    return { kind: "ambiguous" };
+  }
+
+  return { kind: "new_request" };
+}
+
+function looksLikeFollowUpReply(normalizedText: string, outstandingTaskCount: number) {
+  const lower = normalizedText.toLowerCase();
+  const action = detectFollowUpAction(lower);
+
+  if (!action) {
+    return false;
+  }
+
+  const stripped = stripFollowUpReplySyntax(lower);
+
+  if (stripped.length > 0) {
+    return false;
+  }
+
+  const hasExplicitSelection = extractFollowUpSelectionNumbers(lower).length > 0;
+
+  if (hasExplicitSelection) {
+    return true;
+  }
+
+  return outstandingTaskCount > 0;
+}
+
+function detectFollowUpAction(
+  lower: string
+): "done" | "archive" | "not_yet" | null {
+  if (/\b(done|completed|finished)\b/.test(lower)) {
+    return "done";
+  }
+
+  if (/\b(archive|drop|cancel)\b/.test(lower)) {
+    return "archive";
+  }
+
+  if (/\b(not yet|later|reschedule|move)\b/.test(lower)) {
+    return "not_yet";
+  }
+
+  return null;
+}
+
+function stripFollowUpReplySyntax(lower: string) {
+  return lower
+    .replace(/\bnot yet\b/g, " ")
+    .replace(/\b(done|completed|finished|archive|drop|cancel|later|reschedule|move)\b/g, " ")
+    .replace(/\b\d+\b/g, " ")
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/g, " ")
+    .replace(/\b(i|i'm|ive|i've|it|them|that|those|the|a|an|my|on|for|please|just|still|one|ones|item|items|task|tasks|number|numbers|no|and)\b/g, " ")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractFollowUpSelectionNumbers(lower: string) {
+  const selected = new Set<number>();
+
+  for (const value of lower.match(/\b\d+\b/g) ?? []) {
+    selected.add(Number(value));
+  }
+
+  for (const [word, number] of Object.entries(FOLLOW_UP_ORDINAL_WORDS)) {
+    if (new RegExp(`\\b${word}\\b`).test(lower)) {
+      selected.add(number);
+    }
+  }
+
+  return Array.from(selected);
+}
+
+const FOLLOW_UP_ORDINAL_WORDS: Record<string, number> = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10
+};
+
+async function maybeSendOutstandingFollowUpContinuation(
+  input: {
+    userId: string;
+    chatId: string;
+    inboxItemId: string;
+  },
+  dependencies: TelegramWebhookDependencies
+) {
+  const followUpStore =
+    dependencies.followUpStore ?? (dependencies.store as FollowUpRuntimeStore | undefined) ?? getDefaultFollowUpRuntimeStore();
+  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(input.userId);
+
+  if (outstandingTasks.length === 0 || (await followUpStore.hasInFlightInboxItem(input.userId))) {
+    return null;
+  }
+
+  const latestContext = await getLatestFollowUpBundleContext(input.userId, dependencies.conversationHistoryStore);
+  const outstandingIds = outstandingTasks.map((task) => task.id);
+
+  if (latestContext && latestContext.taskIds.join(",") === outstandingIds.join(",")) {
+    return null;
+  }
+
+  const bundle = buildFollowUpBundle(outstandingTasks, "reminder");
+
+  return sendTelegramMessageWithPersistence(
+    {
+      userId: input.userId,
+      chatId: input.chatId,
+      inboxItemId: `${input.inboxItemId}:followup-continuation`,
+      text: bundle.text,
+      bundle
+    },
+    {
+      sender: dependencies.sender ?? sendTelegramMessage,
+      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
+    }
+  );
 }
 
 function buildLazyLinkReplyIdempotencyKey(updateId: number) {

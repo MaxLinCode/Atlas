@@ -226,6 +226,7 @@ const baseTaskSchema = z.object({
   calendarSyncUpdatedAt: z.string().datetime().nullable().default(null),
   rescheduleCount: z.number().int().nonnegative(),
   lastFollowupAt: z.string().datetime().nullable().default(null),
+  followupReminderSentAt: z.string().datetime().nullable().default(null),
   completedAt: z.string().datetime().nullable().default(null),
   archivedAt: z.string().datetime().nullable().default(null),
   priority: z.enum(["low", "medium", "high"]),
@@ -285,6 +286,13 @@ export const taskSchema = baseTaskSchema.superRefine((task, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Only archived tasks may record archivedAt."
+    });
+  }
+
+  if (task.followupReminderSentAt !== null && task.lastFollowupAt === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "followupReminderSentAt requires lastFollowupAt."
     });
   }
 });
@@ -748,6 +756,7 @@ export function buildCapturedTask(input: CapturedTaskInput): Omit<Task, "id" | "
     calendarSyncUpdatedAt: null,
     rescheduleCount: 0,
     lastFollowupAt: null,
+    followupReminderSentAt: null,
     completedAt: null,
     archivedAt: null,
     priority: input.priority,
@@ -1249,5 +1258,14 @@ export function isTaskFollowupDue(task: Task, now = new Date().toISOString()) {
     task.lifecycleState === "scheduled" &&
     task.scheduledEndAt !== null &&
     Date.parse(task.scheduledEndAt) <= Date.parse(now)
+  );
+}
+
+export function isTaskFollowupReminderDue(task: Task, now = new Date().toISOString()) {
+  return (
+    task.lifecycleState === "awaiting_followup" &&
+    task.lastFollowupAt !== null &&
+    task.followupReminderSentAt === null &&
+    Date.parse(task.lastFollowupAt) + 2 * 60 * 60 * 1000 <= Date.parse(now)
   );
 }

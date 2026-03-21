@@ -34,6 +34,9 @@ export function renderMutationReply(
     case "completed_tasks":
       return renderCompletedTasksReply(result.completedTasks);
 
+    case "archived_tasks":
+      return renderArchivedTasksReply(result.archivedTasks);
+
     case "needs_clarification":
       return result.followUpMessage;
   }
@@ -99,4 +102,22 @@ function renderCompletedTasksReply(tasks: { title: string }[]) {
   }
 
   return `Marked as done:\n${tasks.map((task) => `- ${quoteTaskTitle(task.title)}`).join("\n")}`;
+}
+
+function renderArchivedTasksReply(tasks: { title: string }[]) {
+  if (tasks.length === 0) {
+    return "Archived it.";
+  }
+
+  if (tasks.length === 1) {
+    const [task] = tasks;
+
+    if (!task) {
+      return "Archived it.";
+    }
+
+    return `Archived ${quoteTaskTitle(task.title)}.`;
+  }
+
+  return `Archived:\n${tasks.map((task) => `- ${quoteTaskTitle(task.title)}`).join("\n")}`;
 }
