@@ -109,11 +109,13 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 ### Cron protection
 
-1. Confirm Vercel Cron Jobs includes `/api/cron/send-followups` on the production deployment.
-2. Call the follow-up cron route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
-3. Call the follow-up cron route with the correct bearer token and confirm it succeeds.
-4. Call the reconcile route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
-5. Call the reconcile route with the correct bearer token and confirm it succeeds.
+1. Confirm the GitHub Actions workflows [`.github/workflows/send-followups.yml`](/Users/maxlin/Code/Atlas/.github/workflows/send-followups.yml) and [`.github/workflows/reconcile-google-calendar.yml`](/Users/maxlin/Code/Atlas/.github/workflows/reconcile-google-calendar.yml) are enabled with `APP_BASE_URL` and `CRON_SECRET` repository secrets.
+2. Confirm `send-followups.yml` runs every 15 minutes and `reconcile-google-calendar.yml` runs every 30 minutes.
+3. Confirm both workflows expose manual `workflow_dispatch` for smoke tests.
+4. Call the follow-up cron route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
+5. Call the follow-up cron route with the correct bearer token and confirm it succeeds.
+6. Call the reconcile route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
+7. Call the reconcile route with the correct bearer token and confirm it succeeds.
 
 ### Basic safety checks
 

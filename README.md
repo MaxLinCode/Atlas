@@ -106,7 +106,11 @@ Atlas no longer exposes public planner/debug mutation routes. The intended exter
 - `GET /api/google-calendar/oauth/callback`
 - protected cron routes that require `Authorization: Bearer $CRON_SECRET`
 
-The production deployment schedules follow-up dispatch on Vercel every 10 minutes via `GET /api/cron/send-followups`.
+The production deployment serves protected cron routes from Vercel, but GitHub Actions owns the schedules:
+- [send-followups.yml](/Users/maxlin/Code/Atlas/.github/workflows/send-followups.yml) calls `POST /api/cron/send-followups` every 15 minutes
+- [reconcile-google-calendar.yml](/Users/maxlin/Code/Atlas/.github/workflows/reconcile-google-calendar.yml) calls `POST /api/cron/reconcile-google-calendar` every 30 minutes
+
+Both workflows use the `APP_BASE_URL` and `CRON_SECRET` repository secrets.
 
 ## How We Work
 
