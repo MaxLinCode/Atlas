@@ -31,7 +31,7 @@ function isAuthorized(request: Request) {
   return { ok: true as const };
 }
 
-export async function POST(request: Request) {
+async function handleRequest(request: Request) {
   const auth = isAuthorized(request);
 
   if (!auth.ok) {
@@ -39,4 +39,12 @@ export async function POST(request: Request) {
   }
 
   return jsonOk(await runBundledFollowUps());
+}
+
+export async function GET(request: Request) {
+  return handleRequest(request);
+}
+
+export async function POST(request: Request) {
+  return handleRequest(request);
 }

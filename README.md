@@ -92,7 +92,7 @@ For local-only test credentials, prefer `apps/web/.env.test.local`, which is git
 - `GOOGLE_OAUTH_REDIRECT_URI`: OAuth callback URL for Google Calendar linking
 - `GOOGLE_LINK_TOKEN_SECRET`: secret used only for one-time Telegram-to-browser Google link handoff tokens
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`: base64-encoded 32-byte key used to encrypt stored Google access and refresh tokens
-- `CRON_SECRET`: bearer token required for protected cron routes such as Google Calendar reconciliation
+- `CRON_SECRET`: bearer token required for protected cron routes such as Google Calendar reconciliation and follow-up dispatch
 
 To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
 
@@ -105,6 +105,8 @@ Atlas no longer exposes public planner/debug mutation routes. The intended exter
 - `GET /api/google-calendar/oauth/start`
 - `GET /api/google-calendar/oauth/callback`
 - protected cron routes that require `Authorization: Bearer $CRON_SECRET`
+
+The production deployment schedules follow-up dispatch on Vercel every 10 minutes via `GET /api/cron/send-followups`.
 
 ## How We Work
 

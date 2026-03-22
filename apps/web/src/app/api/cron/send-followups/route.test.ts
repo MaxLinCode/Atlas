@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const { runBundledFollowUpsMock } = vi.hoisted(() => ({
   runBundledFollowUpsMock: vi.fn()
@@ -24,7 +24,7 @@ describe("send followups cron route", () => {
   it("rejects unauthenticated cron requests", async () => {
     process.env.CRON_SECRET = "cron-secret";
 
-    const response = await POST(new Request("http://localhost/api/cron/send-followups", { method: "POST" }));
+    const response = await GET(new Request("http://localhost/api/cron/send-followups"));
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
@@ -34,7 +34,7 @@ describe("send followups cron route", () => {
   });
 
   it("fails closed when the cron secret is not configured", async () => {
-    const response = await POST(new Request("http://localhost/api/cron/send-followups", { method: "POST" }));
+    const response = await GET(new Request("http://localhost/api/cron/send-followups"));
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
@@ -43,7 +43,24 @@ describe("send followups cron route", () => {
     });
   });
 
-  it("runs followups for authorized cron requests", async () => {
+  it("runs followups for authorized GET cron requests", async () => {
+    process.env.CRON_SECRET = "cron-secret";
+
+    const response = await GET(
+      new Request("http://localhost/api/cron/send-followups", {
+        headers: { authorization: "Bearer cron-secret" }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      accepted: true,
+      sentBundles: 0
+    });
+    expect(runBundledFollowUpsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("also accepts authorized POST requests", async () => {
     process.env.CRON_SECRET = "cron-secret";
 
     const response = await POST(
