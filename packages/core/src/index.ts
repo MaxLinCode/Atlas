@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
+import {
+  conversationDiscourseStateSchema
+} from "./discourse-state";
 
+export * from "./discourse-state";
 export * from "./telegram";
 
 const postgresConnectionStringSchema = z.string().refine((value) => {
@@ -664,6 +668,97 @@ export const conversationTurnSchema = z.object({
   createdAt: z.string().datetime()
 });
 
+export const conversationRecordModeSchema = z.enum([
+  "conversation",
+  "mutation",
+  "conversation_then_mutation",
+  "confirmed_mutation"
+]);
+
+const conversationEntityBaseSchema = z.object({
+  id: z.string().min(1),
+  conversationId: z.string().min(1),
+  label: z.string().min(1),
+  status: z.enum(["active", "resolved", "superseded"]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const conversationTaskEntitySchema = conversationEntityBaseSchema.extend({
+  kind: z.literal("task"),
+  data: z.object({
+    taskId: z.string().min(1),
+    title: z.string().min(1),
+    lifecycleState: z.enum(["pending_schedule", "scheduled", "awaiting_followup", "done", "archived"]),
+    scheduledStartAt: z.string().datetime().nullable(),
+    scheduledEndAt: z.string().datetime().nullable()
+  })
+});
+
+export const conversationProposalOptionEntitySchema = conversationEntityBaseSchema.extend({
+  kind: z.literal("proposal_option"),
+  data: z.object({
+    route: z.enum(["conversation", "conversation_then_mutation"]),
+    replyText: z.string().min(1)
+  })
+});
+
+export const conversationScheduledBlockEntitySchema = conversationEntityBaseSchema.extend({
+  kind: z.literal("scheduled_block"),
+  data: z.object({
+    blockId: z.string().min(1),
+    taskId: z.string().min(1),
+    title: z.string().min(1),
+    startAt: z.string().datetime(),
+    endAt: z.string().datetime(),
+    externalCalendarId: z.string().nullable()
+  })
+});
+
+export const conversationClarificationEntitySchema = conversationEntityBaseSchema.extend({
+  kind: z.literal("clarification"),
+  data: z.object({
+    prompt: z.string().min(1),
+    reason: z.string().min(1).nullable(),
+    open: z.boolean()
+  })
+});
+
+export const conversationReminderEntitySchema = conversationEntityBaseSchema.extend({
+  kind: z.literal("reminder"),
+  data: z.object({
+    taskId: z.string().min(1),
+    title: z.string().min(1),
+    reminderKind: z.enum(["initial", "reminder"]),
+    number: z.number().int().positive().nullable()
+  })
+});
+
+export const conversationEntitySchema = z.discriminatedUnion("kind", [
+  conversationTaskEntitySchema,
+  conversationProposalOptionEntitySchema,
+  conversationScheduledBlockEntitySchema,
+  conversationClarificationEntitySchema,
+  conversationReminderEntitySchema
+]);
+
+export const conversationRecordSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  title: z.string().nullable(),
+  summaryText: z.string().nullable(),
+  mode: conversationRecordModeSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const conversationStateSnapshotSchema = z.object({
+  conversation: conversationRecordSchema,
+  transcript: z.array(conversationTurnSchema),
+  entityRegistry: z.array(conversationEntitySchema),
+  discourseState: conversationDiscourseStateSchema.nullable()
+});
+
 export const turnRouteSchema = z.enum([
   "conversation",
   "mutation",
@@ -674,7 +769,10 @@ export const turnRouteSchema = z.enum([
 export const turnRoutingInputSchema = z.object({
   rawText: z.string().min(1),
   normalizedText: z.string().min(1),
-  recentTurns: z.array(conversationTurnSchema)
+  recentTurns: z.array(conversationTurnSchema),
+  summaryText: z.string().nullable().optional(),
+  entityRegistry: z.array(conversationEntitySchema).optional().default([]),
+  discourseState: conversationDiscourseStateSchema.nullable().optional()
 });
 
 export const turnRoutingOutputSchema = z.object({
@@ -686,7 +784,9 @@ export const confirmedMutationRecoveryInputSchema = z.object({
   rawText: z.string().min(1),
   normalizedText: z.string().min(1),
   recentTurns: z.array(conversationTurnSchema),
-  memorySummary: z.string().nullable()
+  memorySummary: z.string().nullable(),
+  entityRegistry: z.array(conversationEntitySchema).optional().default([]),
+  discourseState: conversationDiscourseStateSchema.nullable().optional()
 });
 
 export const confirmedMutationRecoveryResponseFormatSchema = z.object({
@@ -751,10 +851,14 @@ export type TaskReference = z.infer<typeof taskReferenceSchema>;
 export type ScheduleBlockReference = z.infer<typeof scheduleBlockReferenceSchema>;
 export type InboxPlanningContext = z.infer<typeof inboxPlanningContextSchema>;
 export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
+export type ConversationEntity = z.infer<typeof conversationEntitySchema>;
+export type ConversationRecordMode = z.infer<typeof conversationRecordModeSchema>;
+export type ConversationRecord = z.infer<typeof conversationRecordSchema>;
+export type ConversationStateSnapshot = z.infer<typeof conversationStateSnapshotSchema>;
 export type TurnRoute = z.infer<typeof turnRouteSchema>;
-export type TurnRoutingInput = z.infer<typeof turnRoutingInputSchema>;
+export type TurnRoutingInput = z.input<typeof turnRoutingInputSchema>;
 export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
-export type ConfirmedMutationRecoveryInput = z.infer<typeof confirmedMutationRecoveryInputSchema>;
+export type ConfirmedMutationRecoveryInput = z.input<typeof confirmedMutationRecoveryInputSchema>;
 export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type CapturedTaskInput = {
   userId: string;

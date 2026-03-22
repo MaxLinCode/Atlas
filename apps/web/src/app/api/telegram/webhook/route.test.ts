@@ -12,6 +12,7 @@ import {
   listOutgoingBotEventsForTests,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
+  resetConversationStateStoreForTests,
   resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
@@ -259,6 +260,7 @@ beforeEach(async () => {
     }
   }));
   sendTelegramChatActionMock.mockResolvedValue(undefined);
+  resetConversationStateStoreForTests();
   resetIncomingTelegramIngressStoreForTests();
   resetInboxProcessingStoreForTests();
   resetGoogleCalendarConnectionStoreForTests();
@@ -880,6 +882,12 @@ describe("telegram webhook route", () => {
     expect(confirmedMutationRecoverer).toHaveBeenCalledWith(
       expect.objectContaining({
         rawText: "Yes",
+        memorySummary: null,
+        entityRegistry: [],
+        discourseState: expect.objectContaining({
+          focus_entity_id: null,
+          last_user_mentioned_entity_ids: []
+        }),
         recentTurns: expect.arrayContaining([
           expect.objectContaining({
             role: "assistant",
@@ -1494,7 +1502,12 @@ describe("telegram webhook route", () => {
             createdAt: expect.any(String)
           }
         ],
-        memorySummary: "The user wants weekly prioritization help."
+        memorySummary: "The user wants weekly prioritization help.",
+        entityRegistry: [],
+        discourseState: expect.objectContaining({
+          focus_entity_id: null,
+          last_user_mentioned_entity_ids: []
+        })
       });
       expect(sendTelegramMessageMock).toHaveBeenCalledWith({
         chatId: "999",
@@ -1581,7 +1594,12 @@ describe("telegram webhook route", () => {
           createdAt: expect.any(String)
         }
       ],
-      memorySummary: "The user is discussing a possible move to tomorrow morning."
+      memorySummary: "The user is discussing a possible move to tomorrow morning.",
+      entityRegistry: [],
+      discourseState: expect.objectContaining({
+        focus_entity_id: null,
+        last_user_mentioned_entity_ids: []
+      })
     });
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
@@ -1648,7 +1666,12 @@ describe("telegram webhook route", () => {
           createdAt: expect.any(String)
         }
       ],
-      memorySummary: null
+      memorySummary: null,
+      entityRegistry: [],
+      discourseState: expect.objectContaining({
+        focus_entity_id: null,
+        last_user_mentioned_entity_ids: []
+      })
     });
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
