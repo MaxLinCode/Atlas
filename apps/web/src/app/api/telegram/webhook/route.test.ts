@@ -23,13 +23,23 @@ import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
-const { editTelegramMessageMock, sendTelegramMessageMock, sendTelegramChatActionMock, routeTurnWithResponsesMock } =
-  vi.hoisted(() => ({
-    editTelegramMessageMock: vi.fn(),
+const {
+  editTelegramMessageMock,
+  sendTelegramMessageMock,
+  sendTelegramChatActionMock,
+  routeTurnWithResponsesMock,
+  summarizeConversationMemoryWithResponsesMock,
+  respondToConversationTurnWithResponsesMock,
+  recoverConfirmedMutationWithResponsesMock
+} = vi.hoisted(() => ({
+  editTelegramMessageMock: vi.fn(),
   sendTelegramMessageMock: vi.fn(),
   sendTelegramChatActionMock: vi.fn(),
-  routeTurnWithResponsesMock: vi.fn()
-  }));
+  routeTurnWithResponsesMock: vi.fn(),
+  summarizeConversationMemoryWithResponsesMock: vi.fn(),
+  respondToConversationTurnWithResponsesMock: vi.fn(),
+  recoverConfirmedMutationWithResponsesMock: vi.fn()
+}));
 
 vi.mock("@atlas/integrations", async () => {
   const actual = await vi.importActual<typeof import("@atlas/integrations")>("@atlas/integrations");
@@ -68,9 +78,12 @@ vi.mock("@atlas/integrations", async () => {
       ]
     }),
     editTelegramMessage: editTelegramMessageMock,
+    respondToConversationTurnWithResponses: respondToConversationTurnWithResponsesMock,
+    recoverConfirmedMutationWithResponses: recoverConfirmedMutationWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
     sendTelegramChatAction: sendTelegramChatActionMock,
-    sendTelegramMessage: sendTelegramMessageMock
+    sendTelegramMessage: sendTelegramMessageMock,
+    summarizeConversationMemoryWithResponses: summarizeConversationMemoryWithResponsesMock
   };
 });
 
@@ -262,9 +275,24 @@ beforeEach(async () => {
   sendTelegramMessageMock.mockReset();
   sendTelegramChatActionMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
+  summarizeConversationMemoryWithResponsesMock.mockReset();
+  respondToConversationTurnWithResponsesMock.mockReset();
+  recoverConfirmedMutationWithResponsesMock.mockReset();
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
     reason: "Direct scheduling request."
+  });
+  summarizeConversationMemoryWithResponsesMock.mockResolvedValue({
+    summary: "Recent conversation summary."
+  });
+  respondToConversationTurnWithResponsesMock.mockResolvedValue({
+    reply: "Mocked conversation reply."
+  });
+  recoverConfirmedMutationWithResponsesMock.mockResolvedValue({
+    outcome: "needs_clarification",
+    recoveredText: null,
+    reason: "Mocked recovery fallback.",
+    userReplyMessage: "Could you clarify what you want me to change?"
   });
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,
