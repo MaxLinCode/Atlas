@@ -72,6 +72,7 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 ## Notes
 
+- Vercel only hosts the protected cron endpoints. Scheduled follow-up dispatch and Google Calendar reconciliation now come from GitHub Actions via [`.github/workflows/send-followups.yml`](/Users/maxlin/Code/Atlas/.github/workflows/send-followups.yml) and [`.github/workflows/reconcile-google-calendar.yml`](/Users/maxlin/Code/Atlas/.github/workflows/reconcile-google-calendar.yml), not from Vercel Cron Jobs.
 - Do not log the webhook secret in Vercel function logs or error output.
 - Keep the route handler thin and continue moving persistence and planning behavior into workspace packages.
 - After the first Vercel smoke test, the next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.

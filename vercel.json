@@ -1,11 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/cron/send-followups",
-      "schedule": "*/10 * * * *"
-    }
-  ],
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install --frozen-lockfile"
 }

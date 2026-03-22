@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { InboxItem, ScheduleBlock, Task, UserProfile } from "@atlas/core";
 import { buildDefaultUserProfile, buildScheduleBlocksFromTasks } from "@atlas/core";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -159,6 +159,8 @@ export interface FollowUpRuntimeStore {
   markFollowUpSent(taskIds: string[], sentAt: string): Promise<void>;
   markFollowUpReminderSent(taskIds: string[], sentAt: string): Promise<void>;
 }
+
+const FOLLOWUP_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
 
 type StoredInboxItem = InboxItem;
 
@@ -598,7 +600,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         task.lifecycleState === "awaiting_followup" &&
         task.lastFollowupAt &&
         !task.followupReminderSentAt &&
-        Date.parse(task.lastFollowupAt) + 2 * 60 * 60 * 1000 <= Date.parse(now)
+        Date.parse(task.lastFollowupAt) + FOLLOWUP_REMINDER_DELAY_MS <= Date.parse(now)
       ) {
         due.push({ ...task, dueType: "reminder" });
       }
@@ -1310,59 +1312,36 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
   }
 
   async listDueFollowUpTasks(now = new Date().toISOString()): Promise<FollowUpDueTask[]> {
-    const taskRows = await this.db
+    const initialRows = await this.db
       .select()
       .from(tasks)
-      .where(eq(tasks.lifecycleState, "scheduled"));
+      .where(
+        and(
+          eq(tasks.lifecycleState, "scheduled"),
+          lte(tasks.scheduledEndAt, new Date(now))
+        )
+      );
 
-    const awaitingRows = await this.db
+    const reminderRows = await this.db
       .select()
       .from(tasks)
-      .where(eq(tasks.lifecycleState, "awaiting_followup"));
+      .where(
+        and(
+          eq(tasks.lifecycleState, "awaiting_followup"),
+          isNull(tasks.followupReminderSentAt),
+          isNotNull(tasks.lastFollowupAt),
+          lte(tasks.lastFollowupAt, new Date(Date.parse(now) - FOLLOWUP_REMINDER_DELAY_MS))
+        )
+      );
 
     const due: FollowUpDueTask[] = [];
 
-    for (const task of [...taskRows, ...awaitingRows]) {
-        const parsedTask = {
-          id: task.id,
-          userId: task.userId,
-          sourceInboxItemId: task.sourceInboxItemId,
-          lastInboxItemId: task.lastInboxItemId,
-          title: task.title,
-          lifecycleState: task.lifecycleState as Task["lifecycleState"],
-          externalCalendarEventId: task.externalCalendarEventId,
-          externalCalendarId: task.externalCalendarId,
-          scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
-          scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
-          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
-          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
-          rescheduleCount: task.rescheduleCount,
-          lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-          followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
-          completedAt: task.completedAt?.toISOString() ?? null,
-          archivedAt: task.archivedAt?.toISOString() ?? null,
-          priority: task.priority as Task["priority"],
-          urgency: task.urgency as Task["urgency"],
-          createdAt: task.createdAt.toISOString()
-        };
+    for (const task of initialRows) {
+      due.push({ ...toPersistedTask(task), dueType: "initial" });
+    }
 
-      if (
-        parsedTask.lifecycleState === "scheduled" &&
-        parsedTask.scheduledEndAt !== null &&
-        Date.parse(parsedTask.scheduledEndAt) <= Date.parse(now)
-      ) {
-        due.push({ ...parsedTask, dueType: "initial" });
-        continue;
-      }
-
-      if (
-        parsedTask.lifecycleState === "awaiting_followup" &&
-        parsedTask.lastFollowupAt !== null &&
-        parsedTask.followupReminderSentAt === null &&
-        Date.parse(parsedTask.lastFollowupAt) + 2 * 60 * 60 * 1000 <= Date.parse(now)
-      ) {
-        due.push({ ...parsedTask, dueType: "reminder" });
-      }
+    for (const task of reminderRows) {
+      due.push({ ...toPersistedTask(task), dueType: "reminder" });
     }
 
     return due.sort((left, right) => {
@@ -1376,32 +1355,16 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
     const taskRows = await this.db
       .select()
       .from(tasks)
-      .where(eq(tasks.userId, userId));
+      .where(
+        and(
+          eq(tasks.userId, userId),
+          eq(tasks.lifecycleState, "awaiting_followup"),
+          isNotNull(tasks.lastFollowupAt)
+        )
+      );
 
     return taskRows
-      .filter((task) => task.lifecycleState === "awaiting_followup" && task.lastFollowupAt !== null)
-      .map((task) => ({
-        id: task.id,
-        userId: task.userId,
-        sourceInboxItemId: task.sourceInboxItemId,
-        lastInboxItemId: task.lastInboxItemId,
-        title: task.title,
-        lifecycleState: task.lifecycleState as Task["lifecycleState"],
-        externalCalendarEventId: task.externalCalendarEventId,
-        externalCalendarId: task.externalCalendarId,
-        scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
-        scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
-        calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
-        calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
-        rescheduleCount: task.rescheduleCount,
-        lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-        followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
-        completedAt: task.completedAt?.toISOString() ?? null,
-        archivedAt: task.archivedAt?.toISOString() ?? null,
-        priority: task.priority as Task["priority"],
-        urgency: task.urgency as Task["urgency"],
-        createdAt: task.createdAt.toISOString()
-      }))
+      .map((task) => toPersistedTask(task))
       .sort(
         (left, right) =>
           Date.parse(left.lastFollowupAt ?? left.scheduledEndAt ?? new Date(0).toISOString()) -
@@ -1497,6 +1460,31 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
       confidence: inserted.confidence
     };
   }
+}
+
+function toPersistedTask(task: typeof tasks.$inferSelect): Task {
+  return {
+    id: task.id,
+    userId: task.userId,
+    sourceInboxItemId: task.sourceInboxItemId,
+    lastInboxItemId: task.lastInboxItemId,
+    title: task.title,
+    lifecycleState: task.lifecycleState as Task["lifecycleState"],
+    externalCalendarEventId: task.externalCalendarEventId,
+    externalCalendarId: task.externalCalendarId,
+    scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
+    scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
+    calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
+    calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
+    rescheduleCount: task.rescheduleCount,
+    lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
+    followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+    completedAt: task.completedAt?.toISOString() ?? null,
+    archivedAt: task.archivedAt?.toISOString() ?? null,
+    priority: task.priority as Task["priority"],
+    urgency: task.urgency as Task["urgency"],
+    createdAt: task.createdAt.toISOString()
+  };
 }
 
 const defaultInMemoryStore = new InMemoryInboxProcessingStore();
