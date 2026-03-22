@@ -25,12 +25,18 @@ Atlas is a chat-first brain-dump scheduler MVP. A user sends freeform text, the 
 - `pnpm typecheck`: run TypeScript checks across the repo
 - `pnpm test`: run the test suite
 - `pnpm telegram:webhook:set`: register the Telegram webhook and print Telegram's current webhook info
-- `pnpm db:generate`: generate a new Drizzle migration from schema changes
-- `pnpm db:migrate`: apply existing Drizzle migrations to the configured database
-- `pnpm db:studio`: open the Drizzle Studio workflow
 - `pnpm db:test:start`: start the local Homebrew Postgres test service and create `atlas_test`
 - `pnpm db:test:reset`: reset the local `atlas_test` database schema for integration reruns
 - `pnpm db:test:stop`: stop the local Homebrew Postgres test service
+
+Database schema commands are owned by `packages/db`:
+
+- `cd packages/db && DATABASE_URL=... pnpm db:generate`
+- `cd packages/db && DATABASE_URL=... pnpm db:check`
+- `cd packages/db && DATABASE_URL=... pnpm db:migrate`
+- `pnpm --filter @atlas/db db:generate` with `DATABASE_URL` already set
+- `pnpm --filter @atlas/db db:check` with `DATABASE_URL` already set
+- `pnpm --filter @atlas/db db:migrate` with `DATABASE_URL` already set
 
 ## Prompt Improvement Loop
 
@@ -79,7 +85,7 @@ Notes:
 ## Environment
 
 Copy `.env.example` into `apps/web/.env.local` for local development and provide real values through your deployment environment for hosted runs.
-For local-only test credentials, prefer `apps/web/.env.test.local`, which is gitignored and loaded by the Next app, Drizzle config, and integration test runner.
+For local-only test credentials, prefer `apps/web/.env.test.local`, which is gitignored and loaded by the Next app and integration test runner.
 
 - `DATABASE_URL`: Postgres connection string
 - `APP_BASE_URL`: canonical deployed app origin used when generating Google Calendar connect links
@@ -97,6 +103,8 @@ For local-only test credentials, prefer `apps/web/.env.test.local`, which is git
 To register the production Telegram webhook once those values are set, also export `ATLAS_WEBHOOK_URL` as the full deployed route URL and run `pnpm telegram:webhook:set`.
 
 For hosted rollout steps, use [`docs/workflows/production-deploy-checklist.md`](docs/workflows/production-deploy-checklist.md) as the main production deploy runbook and [`docs/workflows/vercel-telegram-webhook.md`](docs/workflows/vercel-telegram-webhook.md) for the narrower webhook-only setup flow.
+
+Production schema changes are not applied from local laptops. Merge to `main`, let the GitHub Actions migration workflow apply `packages/db/drizzle/` against the production database, and only release after that workflow succeeds.
 
 Atlas no longer exposes public planner/debug mutation routes. The intended externally reachable surfaces are:
 

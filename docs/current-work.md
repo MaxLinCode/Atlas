@@ -5,6 +5,8 @@
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
 Current implementation focus: replace transcript-heavy conversation memory with an explicit conversation-state layer. Atlas now persists a user-scoped conversation snapshot with transcript, summary, entity registry, and discourse state so reference resolution can anchor on known objects instead of reconstructing intent from recent turns alone. Recent work still includes the prompt-asset cleanup, expanded live eval coverage around ambiguous routing and confirmed-mutation recovery, a consolidated `pnpm eval:all` loop plus suite-specific eval reports and prompt-improvement briefs for prompt iteration, chat-first prompt/docs framing, and consistent `referenceTime` threading through scheduling.
 
+DB rollout hardening is now part of the active release path: `packages/db` owns all Drizzle commands and config, root-level DB command aliases are removed, and production migrations are expected to run from GitHub Actions before Vercel production release.
+
 ## Near-term milestones
 
 - Finish the prompt-asset cleanup and eval loop:

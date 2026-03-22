@@ -27,6 +27,8 @@ Set these in the Vercel project for the target environment before deploying:
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
 - `CRON_SECRET`
 
+Vercel Preview and Vercel Production must use different `DATABASE_URL` values. Preview must not target the production database.
+
 ## Route expectations
 
 - The Telegram webhook endpoint is `POST /api/telegram/webhook`.
@@ -39,7 +41,7 @@ Set these in the Vercel project for the target environment before deploying:
 2. Set the framework to Next.js.
 3. Set the Root Directory to `apps/web`.
 4. Enable the Vercel setting that allows the build to access workspace files outside the Root Directory if Vercel does not detect it automatically.
-5. Add the required environment variables in Vercel for Preview or Production.
+5. Add the required environment variables in Vercel for Preview or Production, including separate Preview and Production `DATABASE_URL` values.
 6. Deploy the latest `main` commit.
 
 ## Register the Telegram webhook
@@ -73,7 +75,7 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 ## Notes
 
 - Vercel only hosts the protected cron endpoints. Scheduled follow-up dispatch and Google Calendar reconciliation now come from GitHub Actions via [`.github/workflows/send-followups.yml`](/Users/maxlin/Code/Atlas/.github/workflows/send-followups.yml) and [`.github/workflows/reconcile-google-calendar.yml`](/Users/maxlin/Code/Atlas/.github/workflows/reconcile-google-calendar.yml), not from Vercel Cron Jobs.
+- Production database migrations are owned by `packages/db` and are applied by [`.github/workflows/apply-db-migrations.yml`](/Users/maxlin/Code/Atlas/.github/workflows/apply-db-migrations.yml), not by ad hoc local commands or Vercel deploy hooks.
 - Do not log the webhook secret in Vercel function logs or error output.
 - Keep the route handler thin and continue moving persistence and planning behavior into workspace packages.
 - After the first Vercel smoke test, the next backend milestone is replacing the `processInboxItem` stub with planner-owned persistence that reads canonical `inbox_items`, creates validated `tasks`, and records `planner_runs` as operational audit state.
-- End-to-end deployability is not fully hardened yet. Follow-up work should add a hosted migration-apply workflow, rename or replace any misleading generate-only migration commands, and document a repeatable production deploy checklist that covers schema application, deployment, webhook registration, and post-deploy verification.

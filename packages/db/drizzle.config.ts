@@ -1,28 +1,17 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { loadEnvFile } from "node:process";
-import { fileURLToPath } from "node:url";
-
 import { defineConfig } from "drizzle-kit";
+const databaseUrl = process.env.DATABASE_URL;
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-loadLocalEnv(path.join(rootDir, "apps/web/.env.local"));
-loadLocalEnv(path.join(rootDir, "apps/web/.env.test.local"));
-loadLocalEnv(path.join(rootDir, ".env.local"));
-loadLocalEnv(path.join(rootDir, ".env.test.local"));
+if (!databaseUrl) {
+  throw new Error(
+    "packages/db/drizzle.config.ts requires DATABASE_URL in the environment. Run Drizzle commands from packages/db or via `pnpm --filter @atlas/db ...` with DATABASE_URL already set."
+  );
+}
 
 export default defineConfig({
   schema: "./src/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgresql://postgres@localhost:5432/atlas_test"
+    url: databaseUrl
   }
 });
-
-function loadLocalEnv(filePath: string) {
-  if (existsSync(filePath)) {
-    loadEnvFile(filePath);
-  }
-}
