@@ -23,13 +23,23 @@ import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
-const { editTelegramMessageMock, sendTelegramMessageMock, sendTelegramChatActionMock, routeTurnWithResponsesMock } =
-  vi.hoisted(() => ({
-    editTelegramMessageMock: vi.fn(),
+const {
+  editTelegramMessageMock,
+  sendTelegramMessageMock,
+  sendTelegramChatActionMock,
+  routeTurnWithResponsesMock,
+  summarizeConversationMemoryWithResponsesMock,
+  respondToConversationTurnWithResponsesMock,
+  recoverConfirmedMutationWithResponsesMock
+} = vi.hoisted(() => ({
+  editTelegramMessageMock: vi.fn(),
   sendTelegramMessageMock: vi.fn(),
   sendTelegramChatActionMock: vi.fn(),
-  routeTurnWithResponsesMock: vi.fn()
-  }));
+  routeTurnWithResponsesMock: vi.fn(),
+  summarizeConversationMemoryWithResponsesMock: vi.fn(),
+  respondToConversationTurnWithResponsesMock: vi.fn(),
+  recoverConfirmedMutationWithResponsesMock: vi.fn()
+}));
 
 vi.mock("@atlas/integrations", async () => {
   const actual = await vi.importActual<typeof import("@atlas/integrations")>("@atlas/integrations");
@@ -68,9 +78,12 @@ vi.mock("@atlas/integrations", async () => {
       ]
     }),
     editTelegramMessage: editTelegramMessageMock,
+    respondToConversationTurnWithResponses: respondToConversationTurnWithResponsesMock,
+    recoverConfirmedMutationWithResponses: recoverConfirmedMutationWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
     sendTelegramChatAction: sendTelegramChatActionMock,
-    sendTelegramMessage: sendTelegramMessageMock
+    sendTelegramMessage: sendTelegramMessageMock,
+    summarizeConversationMemoryWithResponses: summarizeConversationMemoryWithResponsesMock
   };
 });
 
@@ -262,9 +275,24 @@ beforeEach(async () => {
   sendTelegramMessageMock.mockReset();
   sendTelegramChatActionMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
+  summarizeConversationMemoryWithResponsesMock.mockReset();
+  respondToConversationTurnWithResponsesMock.mockReset();
+  recoverConfirmedMutationWithResponsesMock.mockReset();
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
     reason: "Direct scheduling request."
+  });
+  summarizeConversationMemoryWithResponsesMock.mockResolvedValue({
+    summary: "Recent conversation summary."
+  });
+  respondToConversationTurnWithResponsesMock.mockResolvedValue({
+    reply: "Mocked conversation reply."
+  });
+  recoverConfirmedMutationWithResponsesMock.mockResolvedValue({
+    outcome: "needs_clarification",
+    recoveredText: null,
+    reason: "Mocked recovery fallback.",
+    userReplyMessage: "Could you clarify what you want me to change?"
   });
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,
@@ -491,6 +519,9 @@ describe("telegram webhook route", () => {
 
   it("lets mixed-intent messages fall through to the normal router even with outstanding followups", async () => {
     const { store, followUpStore } = await seedOutstandingFollowUpBundle(["Review launch checklist", "Send investor update"]);
+    const conversationResponder = vi.fn(async () => ({
+      reply: "What time tomorrow should I schedule the dentist?"
+    }));
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -507,14 +538,25 @@ describe("telegram webhook route", () => {
         store,
         followUpStore,
         calendar: getDefaultCalendarAdapter(),
-        primeProcessingStore: seedInboxItemForProcessingTests
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder
       }
     );
 
     expect(response.status).toBe(200);
-    expect(routeTurnWithResponsesMock).toHaveBeenCalledTimes(1);
-    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("planned");
+    expect(response.body).toMatchObject({
+      processing: {
+        outcome: "conversation_replied",
+        reply: "What time tomorrow should I schedule the dentist?"
+      },
+      routing: {
+        policy: {
+          action: "ask_clarification"
+        }
+      }
+    });
     expect(listTasksForTests().filter((task) => task.lifecycleState === "done")).toHaveLength(0);
+    expect(conversationResponder).toHaveBeenCalledTimes(1);
   });
 
   it("also gates /start for unlinked users", async () => {
@@ -804,6 +846,58 @@ describe("telegram webhook route", () => {
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(editTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not keep clear scheduling requests in discuss-first mode", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 145,
+        message: {
+          message_id: 110,
+          date: 1_700_000_020,
+          text: "Schedule gym tomorrow at 6pm for 1 hour",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "mutation",
+      routing: {
+        interpretation: {
+          turnType: "planning_request",
+          ambiguity: "none"
+        },
+        policy: {
+          action: "execute_mutation"
+        }
+      },
+      processing: {
+        outcome: "planned"
+      }
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Checking your schedule"
+    });
   });
 
   it("treats confirmed mutation turns as write-capable when recovery finds one concrete proposal", async () => {

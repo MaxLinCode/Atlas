@@ -18,6 +18,7 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
     activeClarifications.filter((clarification) => clarification.blocking).map((clarification) => clarification.slot)
   );
   const targetEntityId = input.interpretation.resolvedEntityIds[0];
+  const confirmationRequired = doesTurnRequireProposal(input);
 
   switch (input.interpretation.turnType) {
     case "informational":
@@ -61,7 +62,11 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
         clarificationSlots: ["proposal"]
       };
     case "clarification_answer":
-      if (input.interpretation.ambiguity === "high") {
+      if (
+        input.interpretation.ambiguity === "high" ||
+        (input.interpretation.missingSlots?.length ?? 0) > 0 ||
+        blockingSlots.length > 0
+      ) {
         return {
           action: "ask_clarification",
           reason: "Clarification answer is still too ambiguous to safely continue.",
@@ -72,15 +77,15 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
         };
       }
 
-      if (input.interpretation.resolvedProposalId) {
+      if (confirmationRequired) {
         return {
           action: "present_proposal",
-          reason: "Clarification filled a pending proposal context but confirmation is still preferred.",
+          reason: "Clarification resolved the missing details, but explicit product policy still requires proposal-first confirmation.",
           requiresWrite: false,
           requiresConfirmation: true,
           useMutationPipeline: false,
           ...(targetEntityId ? { targetEntityId } : {}),
-          targetProposalId: input.interpretation.resolvedProposalId,
+          ...(input.interpretation.resolvedProposalId ? { targetProposalId: input.interpretation.resolvedProposalId } : {}),
           clarificationSlots: input.interpretation.missingSlots
         };
       }
@@ -120,10 +125,23 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
         };
       }
 
-      if (input.interpretation.confidence >= 0.85 && input.interpretation.ambiguity === "none") {
+      if (confirmationRequired) {
+        return {
+          action: "present_proposal",
+          reason: "Write request is ready, but explicit product policy requires proposal-first confirmation.",
+          requiresWrite: false,
+          requiresConfirmation: true,
+          useMutationPipeline: false,
+          ...(targetEntityId ? { targetEntityId } : {}),
+          ...(input.interpretation.resolvedProposalId ? { targetProposalId: input.interpretation.resolvedProposalId } : {}),
+          clarificationSlots: input.interpretation.missingSlots
+        };
+      }
+
+      if (input.interpretation.ambiguity === "none") {
         return {
           action: "execute_mutation",
-          reason: "Direct confident write intent can go straight to the mutation pipeline.",
+          reason: "Write-ready request can go straight to the mutation pipeline.",
           requiresWrite: true,
           requiresConfirmation: false,
           useMutationPipeline: true,
@@ -133,26 +151,53 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
       }
 
       return {
-        action: "present_proposal",
-        reason: "Write intent is present but should be proposed before applying it.",
-        requiresWrite: false,
-        requiresConfirmation: true,
-        useMutationPipeline: false,
-        ...(targetEntityId ? { targetEntityId } : {}),
-        clarificationSlots: input.interpretation.missingSlots
-      };
-    case "unknown":
-      return {
         action: "ask_clarification",
-        reason: "Unknown turn meaning should prompt a clarification instead of guessing.",
+        reason: "Write intent is present but still needs clarification before applying it.",
         requiresWrite: false,
         requiresConfirmation: false,
         useMutationPipeline: false,
+        ...(targetEntityId ? { targetEntityId } : {}),
         clarificationSlots: input.interpretation.missingSlots ?? blockingSlots
+      };
+    case "unknown":
+      return {
+        action:
+          input.interpretation.ambiguity === "none" && !containsWriteVerb(input.routingContext.normalizedText)
+            ? "reply_only"
+            : "ask_clarification",
+        reason:
+          input.interpretation.ambiguity === "none" && !containsWriteVerb(input.routingContext.normalizedText)
+            ? "Unknown non-write text should stay in the conversation responder."
+            : "Unknown turn meaning should prompt a clarification instead of guessing.",
+        requiresWrite: false,
+        requiresConfirmation: false,
+        useMutationPipeline: false,
+        clarificationSlots:
+          input.interpretation.ambiguity === "none" && !containsWriteVerb(input.routingContext.normalizedText)
+            ? undefined
+            : input.interpretation.missingSlots ?? blockingSlots
       };
   }
 }
 
 function unique(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function doesTurnRequireProposal(input: DecideTurnPolicyInput) {
+  const activeProposal = (input.routingContext.entityRegistry ?? []).find(
+    (entity) =>
+      entity.kind === "proposal_option" &&
+      entity.status === "active" &&
+      entity.id === input.interpretation.resolvedProposalId &&
+      entity.data.confirmationRequired === true
+  );
+
+  return Boolean(activeProposal);
+}
+
+function containsWriteVerb(text: string) {
+  return /\b(schedule|plan|move|reschedule|shift|create|add|book|put|mark|complete|archive|cancel|delete|change|update)\b/i.test(
+    text
+  );
 }

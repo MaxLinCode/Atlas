@@ -1,5 +1,5 @@
 # Current Work
-
+REMOVE: pr smoke test
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
@@ -192,17 +192,15 @@ DB rollout hardening is now part of the active release path: `packages/db` owns 
 - The conversational model behavior is now documented as a separate two-path architecture. Remaining work should implement that design incrementally instead of trying to ship a full conversational bot in one slice.
 - The first `TurnRouter` slice is now landed:
   - routing is app-owned in `apps/web`
-  - the router is model-assisted through `packages/integrations`
 - inbound chat turns now pass through two explicit app-owned stages:
-  - `interpretation`: classify the turn as informational, planning/edit intent, clarification answer, confirmation, follow-up reply, or unknown using persisted conversation state plus the legacy router signal
+  - `interpretation`: classify the turn as informational, planning/edit intent, clarification answer, confirmation, follow-up reply, or unknown using message text plus persisted conversation state only
   - `policy`: decide whether to `reply_only`, `ask_clarification`, `present_proposal`, `execute_mutation`, or `recover_and_execute`
   - ingress is still persisted canonically before interpretation and policy selection
-  - `conversation_then_mutation` and `confirmed_mutation` are no longer peer router outputs; they are compatibility mappings for `present_proposal` / `ask_clarification` and `recover_and_execute`
-- The turn-router prompt is now stricter about mutation readiness:
-  - `mutation` should be reserved for clear, direct, sufficiently specified, write-ready requests
-  - partial scheduling asks and other underspecified write intents should bias toward `conversation_then_mutation`
-  - short-horizon confirmations or concrete refinements of one recent proposal may now route as `confirmed_mutation`
-  - a small few-shot example set now reinforces the incomplete-versus-write-ready boundary in the router prompt
+  - legacy route names are now compatibility-only response shapes at the webhook boundary and are not semantic inputs to interpretation or policy
+- Native turn interpretation and policy now own write readiness:
+  - clear, fully specified scheduling and edit requests should execute directly
+  - missing slots, unresolved references, and blocking clarifications should ask for clarification
+  - proposal-first behavior should only happen for explicit confirmation-required product rules
 - A live local turn-router eval harness is now available:
   - `pnpm eval:turn-router` calls the real OpenAI Responses API against a curated fixture set
   - this is intended for manual prompt verification, not deterministic CI coverage
@@ -234,11 +232,10 @@ DB rollout hardening is now part of the active release path: `packages/db` owns 
   - `apps/web` assembles ephemeral conversation context for `conversation` and `conversation_then_mutation`
   - `packages/integrations` owns the summary and conversation model calls
   - `packages/db` owns the read model for recent persisted turns
-- Mixed-turn confirmation handling is now landed in a narrow v1 form:
-  - the router now uses bounded recent transcript when classifying the turn, and summaries stay optional downstream context rather than default routing input
-  - short-horizon confirmations and concrete refinements may route as `confirmed_mutation`
+- Mixed-turn confirmation handling is now landed in a native app-owned form:
+  - confirmation requires one recoverable active proposal in state
   - `apps/web` recovers a write-ready mutation request from recent context and reuses the existing structured mutation path
-  - ambiguous confirmations still stay discuss-first and non-writing
+  - ambiguous confirmations still stay non-writing and ask for clarification
 - Proposal and clarification state are now persisted as explicit conversation entities so confirmation recovery and clarification handling can inspect working state rather than depending only on raw transcript.
 - The webhook now logs debug-friendly routing trace points for interpretation, policy, execution branch, and confirmation recovery outcome.
 - Routing ownership is now aligned to the intended architecture:

@@ -24,14 +24,14 @@ describe("decideTurnPolicy", () => {
     });
   });
 
-  it("asks for clarification when write intent still has missing slots", () => {
+  it("asks for clarification when a scheduling request is still missing required slots", () => {
     expect(
       decideTurnPolicy({
         interpretation: {
           turnType: "planning_request",
-          confidence: 0.7,
+          confidence: 0.58,
           resolvedEntityIds: [],
-          ambiguity: "low",
+          ambiguity: "high",
           missingSlots: ["time"]
         },
         routingContext: {
@@ -46,28 +46,28 @@ describe("decideTurnPolicy", () => {
     });
   });
 
-  it("presents a proposal for medium-confidence write intent", () => {
+  it("does not force proposal mode for low-confidence writes alone", () => {
     expect(
       decideTurnPolicy({
         interpretation: {
           turnType: "planning_request",
           confidence: 0.68,
           resolvedEntityIds: [],
-          ambiguity: "low"
+          ambiguity: "none"
         },
         routingContext: {
-          rawText: "Could we move it to tomorrow morning?",
-          normalizedText: "Could we move it to tomorrow morning?",
+          rawText: "Schedule gym tomorrow at 6pm",
+          normalizedText: "Schedule gym tomorrow at 6pm",
           recentTurns: []
         }
       })
     ).toMatchObject({
-      action: "present_proposal",
-      requiresConfirmation: true
+      action: "execute_mutation",
+      requiresConfirmation: false
     });
   });
 
-  it("executes direct confident write intent", () => {
+  it("executes complete scheduling requests with no ambiguity", () => {
     expect(
       decideTurnPolicy({
         interpretation: {
@@ -77,8 +77,8 @@ describe("decideTurnPolicy", () => {
           ambiguity: "none"
         },
         routingContext: {
-          rawText: "Schedule gym tomorrow evening",
-          normalizedText: "Schedule gym tomorrow evening",
+          rawText: "Schedule gym tomorrow at 6pm for 1 hour",
+          normalizedText: "Schedule gym tomorrow at 6pm for 1 hour",
           recentTurns: []
         }
       })
@@ -101,7 +101,23 @@ describe("decideTurnPolicy", () => {
         routingContext: {
           rawText: "Yes",
           normalizedText: "Yes",
-          recentTurns: []
+          recentTurns: [],
+          entityRegistry: [
+            {
+              id: "proposal-1",
+              conversationId: "conversation-1",
+              kind: "proposal_option",
+              label: "Schedule it at 3pm",
+              status: "active",
+              createdAt: "2026-03-20T16:00:00.000Z",
+              updatedAt: "2026-03-20T16:00:00.000Z",
+              data: {
+                route: "conversation_then_mutation",
+                replyText: "Would you like me to schedule it at 3pm?",
+                confirmationRequired: true
+              }
+            }
+          ]
         }
       })
     ).toMatchObject({
@@ -110,28 +126,7 @@ describe("decideTurnPolicy", () => {
     });
   });
 
-  it("falls back to clarification when confirmation has no recoverable proposal", () => {
-    expect(
-      decideTurnPolicy({
-        interpretation: {
-          turnType: "confirmation",
-          confidence: 0.4,
-          resolvedEntityIds: [],
-          ambiguity: "high"
-        },
-        routingContext: {
-          rawText: "Yes",
-          normalizedText: "Yes",
-          recentTurns: []
-        }
-      })
-    ).toMatchObject({
-      action: "ask_clarification",
-      clarificationSlots: ["proposal"]
-    });
-  });
-
-  it("asks for clarification on high-ambiguity write-like turns", () => {
+  it("asks for clarification on ambiguous write-like turns", () => {
     expect(
       decideTurnPolicy({
         interpretation: {
@@ -149,6 +144,45 @@ describe("decideTurnPolicy", () => {
       })
     ).toMatchObject({
       action: "ask_clarification"
+    });
+  });
+
+  it("uses present_proposal only for explicit confirmation-required policy", () => {
+    expect(
+      decideTurnPolicy({
+        interpretation: {
+          turnType: "planning_request",
+          confidence: 0.93,
+          resolvedEntityIds: ["task-1"],
+          resolvedProposalId: "proposal-1",
+          ambiguity: "none"
+        },
+        routingContext: {
+          rawText: "Schedule it tomorrow at 6pm",
+          normalizedText: "Schedule it tomorrow at 6pm",
+          recentTurns: [],
+          entityRegistry: [
+            {
+              id: "proposal-1",
+              conversationId: "conversation-1",
+              kind: "proposal_option",
+              label: "Schedule it tomorrow at 6pm",
+              status: "active",
+              createdAt: "2026-03-20T16:00:00.000Z",
+              updatedAt: "2026-03-20T16:00:00.000Z",
+              data: {
+                route: "conversation_then_mutation",
+                replyText: "Would you like me to schedule it tomorrow at 6pm?",
+                confirmationRequired: true,
+                targetEntityId: "task-1"
+              }
+            }
+          ]
+        }
+      })
+    ).toMatchObject({
+      action: "present_proposal",
+      requiresConfirmation: true
     });
   });
 });

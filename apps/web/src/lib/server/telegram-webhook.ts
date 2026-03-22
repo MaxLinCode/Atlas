@@ -56,7 +56,6 @@ import {
 import {
   routeMessageTurn,
   doesPolicyAllowWrites,
-  getCompatibilityTurnRoute,
   getConversationRouteForPolicy,
   type TurnRouterInput,
   type TurnRouterResult
@@ -296,7 +295,7 @@ export async function handleTelegramWebhook(
     policy: routedWithContext.policy
   });
 
-  const compatibilityTurnRoute = getCompatibilityTurnRoute(routedWithContext);
+  const compatibilityTurnRoute = getCompatibilityTurnRouteFromPolicy(routedWithContext.policy.action);
   const immediateFeedback = buildImmediateRouteFeedback(routedWithContext.policy.action);
 
   const placeholderDelivery = await sendImmediateRouteFeedback(
@@ -314,9 +313,6 @@ export async function handleTelegramWebhook(
   );
 
   if (!doesPolicyAllowWrites(routedWithContext.policy.action)) {
-    if (compatibilityTurnRoute === "mutation" || compatibilityTurnRoute === "confirmed_mutation") {
-      throw new Error("Turn router returned mutation while writes were disabled.");
-    }
     console.info("turn_execution_branch", {
       userId: normalizedMessage.user.telegramUserId,
       action: routedWithContext.policy.action
@@ -1203,6 +1199,20 @@ async function maybeSendOutstandingFollowUpContinuation(
 
 function buildLazyLinkReplyIdempotencyKey(updateId: number) {
   return `telegram:lazy-link:${updateId}`;
+}
+
+function getCompatibilityTurnRouteFromPolicy(action: TurnRouterResult["policy"]["action"]) {
+  switch (action) {
+    case "reply_only":
+      return "conversation" as const;
+    case "ask_clarification":
+    case "present_proposal":
+      return "conversation_then_mutation" as const;
+    case "execute_mutation":
+      return "mutation" as const;
+    case "recover_and_execute":
+      return "confirmed_mutation" as const;
+  }
 }
 
 function buildImmediateRouteFeedback(action: TurnRouterResult["policy"]["action"]): ImmediateRouteFeedback {

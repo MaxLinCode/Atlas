@@ -18,9 +18,9 @@ Atlas now operates in two complementary modes:
 
 - conversation mode: planning dialogue, reflection, prioritization, meta-use, and schedule proposals without required side effects
 - mutation mode: validated task, scheduling, completion, archive, and reschedule writes
-- turn routing mode: app-owned routing that selects whether a turn stays conversational, enters mutation, or uses a conversation-first path before later mutation
+- turn routing mode: app-owned native interpretation and policy over message text plus conversation state that selects the execution path for the turn
 
-Every turn begins in conversation mode. Mutation mode runs only on clear user intent or after Atlas proposes a concrete change and the user confirms it.
+Every turn begins with app-owned interpretation. Mutation mode runs only on clear user intent or after Atlas proposes a concrete change and the user confirms it.
 
 ## Messaging Bot Contract
 
