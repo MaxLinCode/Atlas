@@ -491,6 +491,9 @@ describe("telegram webhook route", () => {
 
   it("lets mixed-intent messages fall through to the normal router even with outstanding followups", async () => {
     const { store, followUpStore } = await seedOutstandingFollowUpBundle(["Review launch checklist", "Send investor update"]);
+    const conversationResponder = vi.fn(async () => ({
+      reply: "What time tomorrow should I schedule the dentist?"
+    }));
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -507,14 +510,25 @@ describe("telegram webhook route", () => {
         store,
         followUpStore,
         calendar: getDefaultCalendarAdapter(),
-        primeProcessingStore: seedInboxItemForProcessingTests
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder
       }
     );
 
     expect(response.status).toBe(200);
-    expect(routeTurnWithResponsesMock).toHaveBeenCalledTimes(1);
-    expect((response.body as { processing: { outcome: string } }).processing.outcome).toBe("planned");
+    expect(response.body).toMatchObject({
+      processing: {
+        outcome: "conversation_replied",
+        reply: "What time tomorrow should I schedule the dentist?"
+      },
+      routing: {
+        policy: {
+          action: "ask_clarification"
+        }
+      }
+    });
     expect(listTasksForTests().filter((task) => task.lifecycleState === "done")).toHaveLength(0);
+    expect(conversationResponder).toHaveBeenCalledTimes(1);
   });
 
   it("also gates /start for unlinked users", async () => {
@@ -804,6 +818,58 @@ describe("telegram webhook route", () => {
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(editTelegramMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not keep clear scheduling requests in discuss-first mode", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 145,
+        message: {
+          message_id: 110,
+          date: 1_700_000_020,
+          text: "Schedule gym tomorrow at 6pm for 1 hour",
+          chat: {
+            id: 999,
+            type: "private"
+          },
+          from: {
+            id: 123,
+            is_bot: false,
+            first_name: "Max",
+            last_name: "Lin"
+          }
+        }
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      accepted: true,
+      turnRoute: "mutation",
+      routing: {
+        interpretation: {
+          turnType: "planning_request",
+          ambiguity: "none"
+        },
+        policy: {
+          action: "execute_mutation"
+        }
+      },
+      processing: {
+        outcome: "planned"
+      }
+    });
+    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
+      chatId: "999",
+      text: "Checking your schedule"
+    });
   });
 
   it("treats confirmed mutation turns as write-capable when recovery finds one concrete proposal", async () => {
