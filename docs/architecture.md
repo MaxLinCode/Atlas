@@ -17,7 +17,7 @@ Atlas should support two complementary modes:
 2. The webhook route validates the event and resolves the messaging user.
 3. If the user is allowlisted but does not have an active Google Calendar connection, the app replies with a signed Google connect link and stops before canonical ingress persistence.
 4. Linked users continue through the normal ingress path: the webhook derives an idempotency key from the transport delivery id, records the incoming bot event once, skips duplicate deliveries, and stores an inbox item only for first-seen events.
-5. An app-layer service loads only the context needed for the current turn, which may be a bounded recent-turn window plus a request-scoped working summary for conversational continuity, relevant user preferences or schedule information, or the full persisted task-and-schedule graph for a mutation.
+5. An app-layer service loads only the context needed for the current turn. Conversation context now comes from a persisted conversation-state snapshot with four buckets: transcript, summary, entity registry, and discourse state. The app may still use a bounded recent-turn window for continuity, but exact reference resolution should come from entities plus discourse focus rather than transcript reconstruction alone.
 6. The model returns a conversational response, optional planning suggestions, and optionally a decision that the turn should enter mutation mode.
 
 ## Mutation mode flow
@@ -45,6 +45,7 @@ Atlas should support two complementary modes:
 - Accept input fast, then process it against persisted Atlas state instead of relying on chat transcripts.
 - For v1, treat an active Google Calendar connection as the entry ticket for meaningful chat-bot use; unlinked users should receive a connect flow before Atlas persists or plans their message.
 - Use bounded recent transcript context only for conversational continuity; it is not canonical Atlas memory.
+- Keep conversation memory split by role: transcript for replay, summary for compression, entity registry for object memory, and discourse state for short-lived conversational focus.
 - Prefer schedule-forward task handling in MVP so extracted work gets placed onto time, not left as open-ended backlog by default.
 - Keep every scheduling decision explainable and traceable to a planner run plus validated model output.
 - Keep conversational scheduling anchored to persisted tasks and schedule blocks, not broad recent-message inference.

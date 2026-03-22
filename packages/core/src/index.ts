@@ -699,7 +699,15 @@ export const conversationProposalOptionEntitySchema = conversationEntityBaseSche
   kind: z.literal("proposal_option"),
   data: z.object({
     route: z.enum(["conversation", "conversation_then_mutation"]),
-    replyText: z.string().min(1)
+    replyText: z.string().min(1),
+    policyAction: z
+      .enum(["reply_only", "ask_clarification", "present_proposal", "execute_mutation", "recover_and_execute"])
+      .optional(),
+    targetEntityId: z.string().min(1).nullable().optional(),
+    mutationInputSource: z.enum(["direct_user_turn", "recovered_proposal"]).nullable().optional(),
+    confirmationRequired: z.boolean().optional(),
+    originatingTurnText: z.string().min(1).nullable().optional(),
+    missingSlots: z.array(z.string().min(1)).optional()
   })
 });
 
@@ -780,6 +788,54 @@ export const turnRoutingOutputSchema = z.object({
   reason: z.string().min(1)
 });
 
+export const turnInterpretationTypeSchema = z.enum([
+  "informational",
+  "planning_request",
+  "edit_request",
+  "clarification_answer",
+  "confirmation",
+  "follow_up_reply",
+  "unknown"
+]);
+
+export const turnAmbiguitySchema = z.enum(["none", "low", "high"]);
+
+export const turnInterpretationSchema = z.object({
+  turnType: turnInterpretationTypeSchema,
+  confidence: z.number().min(0).max(1),
+  resolvedEntityIds: z.array(z.string().min(1)).default([]),
+  resolvedProposalId: z.string().min(1).optional(),
+  ambiguity: turnAmbiguitySchema,
+  ambiguityReason: z.string().min(1).optional(),
+  missingSlots: z.array(z.string().min(1)).optional(),
+  notes: z.array(z.string().min(1)).optional()
+});
+
+export const turnPolicyActionSchema = z.enum([
+  "reply_only",
+  "ask_clarification",
+  "present_proposal",
+  "execute_mutation",
+  "recover_and_execute"
+]);
+
+export const turnPolicyDecisionSchema = z.object({
+  action: turnPolicyActionSchema,
+  reason: z.string().min(1),
+  requiresWrite: z.boolean(),
+  requiresConfirmation: z.boolean(),
+  useMutationPipeline: z.boolean(),
+  targetEntityId: z.string().min(1).optional(),
+  targetProposalId: z.string().min(1).optional(),
+  mutationInputSource: z.enum(["direct_user_turn", "recovered_proposal"]).optional(),
+  clarificationSlots: z.array(z.string().min(1)).optional()
+});
+
+export const routedTurnSchema = z.object({
+  interpretation: turnInterpretationSchema,
+  policy: turnPolicyDecisionSchema
+});
+
 export const confirmedMutationRecoveryInputSchema = z.object({
   rawText: z.string().min(1),
   normalizedText: z.string().min(1),
@@ -858,6 +914,12 @@ export type ConversationStateSnapshot = z.infer<typeof conversationStateSnapshot
 export type TurnRoute = z.infer<typeof turnRouteSchema>;
 export type TurnRoutingInput = z.input<typeof turnRoutingInputSchema>;
 export type TurnRoutingOutput = z.infer<typeof turnRoutingOutputSchema>;
+export type TurnInterpretationType = z.infer<typeof turnInterpretationTypeSchema>;
+export type TurnAmbiguity = z.infer<typeof turnAmbiguitySchema>;
+export type TurnInterpretation = z.infer<typeof turnInterpretationSchema>;
+export type TurnPolicyAction = z.infer<typeof turnPolicyActionSchema>;
+export type TurnPolicyDecision = z.infer<typeof turnPolicyDecisionSchema>;
+export type RoutedTurn = z.infer<typeof routedTurnSchema>;
 export type ConfirmedMutationRecoveryInput = z.input<typeof confirmedMutationRecoveryInputSchema>;
 export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type CapturedTaskInput = {

@@ -18,7 +18,8 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
   {
     title: "Inputs",
     lines: [
-      "The provided recent turns and memory summary are continuity context only, not authoritative Atlas state."
+      "The provided transcript and memory summary are continuity context only, not authoritative Atlas state.",
+      "When entityRegistry or discourseState are present, use them as the primary reference-resolution aid for pronouns like 'it', 'that', or 'the other one'."
     ]
   },
   {

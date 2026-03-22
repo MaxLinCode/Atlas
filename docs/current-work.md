@@ -3,7 +3,7 @@
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
-Current implementation focus: harden the model-driven planning layer now that the Google Calendar path is locked down. Recent work restructured the OpenAI prompts into explicit prompt assets, expanded live eval coverage around ambiguous routing and confirmed-mutation recovery, added a consolidated `pnpm eval:all` loop plus suite-specific eval reports and prompt-improvement briefs for prompt iteration, shifted product language from Telegram-first to chat-first at the prompt and docs layer, and threaded `referenceTime` consistently through scheduling so temporal interpretation and busy-calendar lookups use the same anchor. Atlas also now carries repo-local Codex skills under `skills/` so workflow guidance can evolve with the codebase instead of living only in global agent defaults.
+Current implementation focus: replace transcript-heavy conversation memory with an explicit conversation-state layer. Atlas now persists a user-scoped conversation snapshot with transcript, summary, entity registry, and discourse state so reference resolution can anchor on known objects instead of reconstructing intent from recent turns alone. Recent work still includes the prompt-asset cleanup, expanded live eval coverage around ambiguous routing and confirmed-mutation recovery, a consolidated `pnpm eval:all` loop plus suite-specific eval reports and prompt-improvement briefs for prompt iteration, chat-first prompt/docs framing, and consistent `referenceTime` threading through scheduling.
 
 ## Near-term milestones
 
@@ -11,6 +11,11 @@ Current implementation focus: harden the model-driven planning layer now that th
   - keep each model prompt scoped to one job with explicit sections and output requirements
   - expand live eval fixtures around ambiguous referents, vague confirmations, and partial scheduling requests
   - use eval results to drive prompt revisions before considering model upgrades
+- Harden the new conversation-state layer:
+  - keep transcript strictly for replay/continuity, not exact object memory
+  - expand entity-registry coverage for proposal options, reminders, clarifications, and mutation results
+  - improve discourse-state updates so follow-up pronouns and contrastive phrases like `the other one` resolve against the focused entity set
+  - thread explicit entity/discourse context through the remaining recovery and follow-up paths
 - Preserve deterministic time handling across mutation mode:
   - keep planner interpretation, schedule generation, move logic, and busy-period lookup anchored to `referenceTime`
   - continue removing remaining wall-clock assumptions from scheduling paths and tests
@@ -186,10 +191,11 @@ Current implementation focus: harden the model-driven planning layer now that th
 - The first `TurnRouter` slice is now landed:
   - routing is app-owned in `apps/web`
   - the router is model-assisted through `packages/integrations`
-- inbound chat turns are classified as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
-  - ingress is still persisted canonically before route selection
-  - `mutation` and `confirmed_mutation` enter the write-capable structured mutation path
-  - `conversation` and `conversation_then_mutation` remain non-writing
+- inbound chat turns now pass through two explicit app-owned stages:
+  - `interpretation`: classify the turn as informational, planning/edit intent, clarification answer, confirmation, follow-up reply, or unknown using persisted conversation state plus the legacy router signal
+  - `policy`: decide whether to `reply_only`, `ask_clarification`, `present_proposal`, `execute_mutation`, or `recover_and_execute`
+  - ingress is still persisted canonically before interpretation and policy selection
+  - `conversation_then_mutation` and `confirmed_mutation` are no longer peer router outputs; they are compatibility mappings for `present_proposal` / `ask_clarification` and `recover_and_execute`
 - The turn-router prompt is now stricter about mutation readiness:
   - `mutation` should be reserved for clear, direct, sufficiently specified, write-ready requests
   - partial scheduling asks and other underspecified write intents should bias toward `conversation_then_mutation`
@@ -231,6 +237,8 @@ Current implementation focus: harden the model-driven planning layer now that th
   - short-horizon confirmations and concrete refinements may route as `confirmed_mutation`
   - `apps/web` recovers a write-ready mutation request from recent context and reuses the existing structured mutation path
   - ambiguous confirmations still stay discuss-first and non-writing
+- Proposal and clarification state are now persisted as explicit conversation entities so confirmation recovery and clarification handling can inspect working state rather than depending only on raw transcript.
+- The webhook now logs debug-friendly routing trace points for interpretation, policy, execution branch, and confirmation recovery outcome.
 - Routing ownership is now aligned to the intended architecture:
   - `apps/web` owns routing orchestration and route application
   - `packages/core` owns routing and confirmation-recovery product contracts

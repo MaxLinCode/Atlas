@@ -17,6 +17,7 @@ export const confirmedMutationRecoverySystemPrompt = buildPromptSpec([
     title: "Inputs",
     lines: [
       "Use only the provided latest turn, recent turns, and any optional working summary.",
+      "When entityRegistry or discourseState are present, use them to identify the current focused proposal, task, or clarification before relying on transcript reconstruction alone.",
       "Transcript is short-horizon confirmation context only, not canonical state."
     ]
   },

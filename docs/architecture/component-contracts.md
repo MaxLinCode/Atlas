@@ -94,7 +94,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 - Authentication and authorization boundaries
 - Idempotency handling
 - Orchestration order across components
-- Turn routing across `conversation`, `mutation`, `conversation_then_mutation`, and `confirmed_mutation`
+- Turn interpretation and policy selection over persisted conversation state before choosing the execution path
 - Which persisted context to load before asking core to classify or schedule an inbox item
 - Whether a turn stays in conversation mode or enters mutation mode
 - Which context to load for the current mode before asking core or the model to reason about the turn, including whether a summary is needed or if recent turns alone suffice
@@ -109,7 +109,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Role
 
-`packages/core` owns product types, turn-routing and confirmation-recovery schemas, mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
+`packages/core` owns product types, turn-interpretation and turn-policy schemas, confirmation-recovery schemas, mode-specific validation schemas, mutation-action schemas, symbolic reference rules for existing-item mutations, deterministic scheduling proposal helpers, and accountability policy rules for the MVP.
 
 ### Accepts
 
@@ -119,7 +119,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Produces
 
-- Turn-routing schemas, structured mutation-action schemas, symbolic reference rules, scheduling proposals, follow-up outcomes, and ambiguity outcomes
+- Turn-interpretation schemas, turn-policy schemas, structured mutation-action schemas, symbolic reference rules, scheduling proposals, follow-up outcomes, and ambiguity outcomes
 - App-owned validation results and explainable decisions
 
 ### May read
@@ -133,7 +133,7 @@ The Vercel layer is the entrypoint and orchestrator for the system.
 
 ### Allowed decisions
 
-- Validation of model-produced turn-routing output through app-owned schemas
+- Validation of model-produced turn-routing output and app-owned interpretation/policy outputs through app-owned schemas
 - Validation of model-produced confirmation-recovery output through app-owned schemas
 - Validation of model-produced mutation output through app-owned schemas
 - Scheduling heuristics that are deterministic and explainable
@@ -161,7 +161,7 @@ The model layer interprets messy user text for three app-selected responsibiliti
 
 ### Produces
 
-- Turn-routing classifications such as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation`
+- Legacy turn-routing classifications such as `conversation`, `mutation`, `conversation_then_mutation`, or `confirmed_mutation` when the app uses the compatibility classifier signal
 - Conversational planning responses, suggestions, and clarifications in conversation mode
 - Structured mutation proposals such as create task, schedule task, move scheduled time, complete task, archive task, or clarify in mutation mode
 - Optional metadata such as confidence, ambiguity markers, and scheduling constraint hints

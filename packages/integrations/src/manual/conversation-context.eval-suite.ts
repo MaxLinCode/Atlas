@@ -58,6 +58,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "mixed-turn reference uses recent context and stays discuss-first",
     input: {
       route: "conversation_then_mutation",
+      rawText: "Could we move it to Friday morning instead?",
       normalizedText: "Could we move it to Friday morning instead?",
       recentTurns: DENTIST_TURNS
     },
@@ -73,6 +74,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "write-adjacent question stays hedged",
     input: {
       route: "conversation",
+      rawText: "Did you already create that?",
       normalizedText: "Did you already create that?",
       recentTurns: DENTIST_TURNS
     },
@@ -88,6 +90,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "planning dialogue uses recent continuity",
     input: {
       route: "conversation",
+      rawText: "How should I prioritize tomorrow?",
       normalizedText: "How should I prioritize tomorrow?",
       recentTurns: PRIORITIZATION_TURNS
     },
@@ -100,6 +103,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "unclear referent asks one narrow question",
     input: {
       route: "conversation",
+      rawText: "Can you move that?",
       normalizedText: "Can you move that?",
       recentTurns: DENTIST_TURNS
     },
@@ -114,6 +118,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "delegated slot choice does not ask for an exact hour",
     input: {
       route: "conversation_then_mutation",
+      rawText: "Schedule it for me and pick an open spot.",
       normalizedText: "Schedule it for me and pick an open spot.",
       recentTurns: OIL_CHANGE_TURNS
     },
@@ -131,6 +136,7 @@ export const CONVERSATION_CONTEXT_EVAL_CASES: ConversationContextEvalCase[] = [
     name: "bare scheduling does not ask follow-up timing questions",
     input: {
       route: "conversation_then_mutation",
+      rawText: "Schedule an oil change.",
       normalizedText: "Schedule an oil change.",
       recentTurns: []
     },

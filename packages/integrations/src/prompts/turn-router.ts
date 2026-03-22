@@ -26,6 +26,7 @@ export const turnRouterSystemPrompt = buildPromptSpec([
     title: "Decision Rules",
     lines: [
       "Choose mutation only when the write request is write-ready now.",
+      "When entityRegistry or discourseState identify one active focused object, use that object before falling back to transcript-only inference.",
       "Treat broad but usable timing preferences and explicit slot delegation as write-ready when Atlas can safely choose a time from calendar availability.",
       "Treat a bare scheduling request like 'schedule an oil change' as write-ready when the task target is clear, even if the user did not give a specific time, because Atlas can choose the next reasonable slot.",
       "Treat 'schedule it for me', 'pick an open spot', and similar delegated-slot requests as write-ready when the task target is clear.",

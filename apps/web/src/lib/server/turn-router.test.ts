@@ -3,54 +3,12 @@ import { describe, expect, it } from "vitest";
 import { routeMessageTurn } from "./turn-router";
 
 describe("turn router", () => {
-  it("routes mutation turns as write-capable", async () => {
-    const result = await routeMessageTurn(
-      {
-        rawText: "Schedule review tomorrow at 9",
-        normalizedText: "Schedule review tomorrow at 9",
-        recentTurns: [],
-      },
-      {
-        classifyTurn: async () => ({
-          route: "mutation",
-          reason: "Direct scheduling request."
-        })
-      }
-    );
-
-    expect(result).toMatchObject({
-      route: "mutation",
-      writesAllowed: true
-    });
-  });
-
-  it("routes conversation turns as non-writing", async () => {
-    const result = await routeMessageTurn(
-      {
-        rawText: "Can you help me prioritize this week?",
-        normalizedText: "Can you help me prioritize this week?",
-        recentTurns: [],
-      },
-      {
-        classifyTurn: async () => ({
-          route: "conversation",
-          reason: "Planning dialogue request."
-        })
-      }
-    );
-
-    expect(result).toMatchObject({
-      route: "conversation",
-      writesAllowed: false
-    });
-  });
-
-  it("keeps mixed turns non-writing in the first slice", async () => {
+  it("returns both interpretation and policy for legacy conversation-then-mutation behavior", async () => {
     const result = await routeMessageTurn(
       {
         rawText: "I might move this to Friday, what do you think?",
         normalizedText: "I might move this to Friday, what do you think?",
-        recentTurns: [],
+        recentTurns: []
       },
       {
         classifyTurn: async () => ({
@@ -61,12 +19,17 @@ describe("turn router", () => {
     );
 
     expect(result).toMatchObject({
-      route: "conversation_then_mutation",
-      writesAllowed: false
+      interpretation: {
+        turnType: "planning_request"
+      },
+      policy: {
+        action: "present_proposal",
+        requiresWrite: false
+      }
     });
   });
 
-  it("routes confirmed mutation turns as write-capable", async () => {
+  it("represents confirmed mutation recovery as confirmation plus recover-and-execute", async () => {
     const result = await routeMessageTurn(
       {
         rawText: "Yes",
@@ -76,13 +39,27 @@ describe("turn router", () => {
             role: "assistant",
             text: "Would you like me to schedule it at 3pm?",
             createdAt: "2026-03-17T16:00:00.000Z"
-          },
-          {
-            role: "user",
-            text: "Yes",
-            createdAt: "2026-03-17T16:01:00.000Z"
           }
         ],
+        entityRegistry: [
+          {
+            id: "proposal-1",
+            conversationId: "conversation-1",
+            kind: "proposal_option",
+            label: "Schedule it at 3pm",
+            status: "active",
+            createdAt: "2026-03-17T16:00:00.000Z",
+            updatedAt: "2026-03-17T16:00:00.000Z",
+            data: {
+              route: "conversation_then_mutation",
+              replyText: "Would you like me to schedule it at 3pm?",
+              confirmationRequired: true,
+              originatingTurnText: "Schedule dentist reminder tomorrow",
+              targetEntityId: null,
+              mutationInputSource: null
+            }
+          }
+        ]
       },
       {
         classifyTurn: async () => ({
@@ -93,8 +70,15 @@ describe("turn router", () => {
     );
 
     expect(result).toMatchObject({
-      route: "confirmed_mutation",
-      writesAllowed: true
+      interpretation: {
+        turnType: "confirmation",
+        resolvedProposalId: "proposal-1"
+      },
+      policy: {
+        action: "recover_and_execute",
+        targetProposalId: "proposal-1",
+        mutationInputSource: "recovered_proposal"
+      }
     });
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InboxPlanningOutput } from "@atlas/core";
+import type { InboxPlanningOutput, RoutedTurn, TurnPolicyAction, TurnInterpretationType } from "@atlas/core";
 import {
   getDefaultGoogleCalendarConnectionStore,
   getDefaultFollowUpRuntimeStore,
@@ -106,6 +106,37 @@ function buildRequest(body: unknown, secret = "test-webhook-secret") {
     },
     body: JSON.stringify(body)
   });
+}
+
+function buildRoutedTurn(input: {
+  turnType: TurnInterpretationType;
+  action: TurnPolicyAction;
+  confidence?: number;
+  ambiguity?: "none" | "low" | "high";
+  resolvedProposalId?: string;
+}) : RoutedTurn {
+  return {
+    interpretation: {
+      turnType: input.turnType,
+      confidence: input.confidence ?? 0.9,
+      resolvedEntityIds: [],
+      ...(input.resolvedProposalId ? { resolvedProposalId: input.resolvedProposalId } : {}),
+      ambiguity: input.ambiguity ?? "none"
+    },
+    policy: {
+      action: input.action,
+      reason: "test",
+      requiresWrite: input.action === "execute_mutation" || input.action === "recover_and_execute",
+      requiresConfirmation: input.action === "present_proposal",
+      useMutationPipeline: input.action === "execute_mutation" || input.action === "recover_and_execute",
+      ...(input.resolvedProposalId ? { targetProposalId: input.resolvedProposalId } : {}),
+      ...(input.action === "recover_and_execute"
+        ? { mutationInputSource: "recovered_proposal" as const }
+        : input.action === "execute_mutation"
+          ? { mutationInputSource: "direct_user_turn" as const }
+          : {})
+    }
+  };
 }
 
 async function seedOutstandingFollowUpBundle(titles: string[]) {
@@ -749,10 +780,9 @@ describe("telegram webhook route", () => {
         store: getDefaultInboxProcessingStore(),
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        turnRouter: async () => ({
-          route: "mutation",
-          reason: "Direct scheduling request.",
-          writesAllowed: true
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "planning_request",
+          action: "execute_mutation"
         })
       }
     );
@@ -863,10 +893,10 @@ describe("telegram webhook route", () => {
           summary: "The assistant proposed a concrete 3pm schedule and the user is now confirming it."
         }),
         confirmedMutationRecoverer,
-        turnRouter: async () => ({
-          route: "confirmed_mutation",
-          reason: "The user is confirming a recent concrete proposal.",
-          writesAllowed: true
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "confirmation",
+          action: "recover_and_execute",
+          resolvedProposalId: "proposal-1"
         })
       }
     );
@@ -1019,10 +1049,10 @@ describe("telegram webhook route", () => {
           reason: "The user refined the recent concrete proposal.",
           userReplyMessage: "Done - I've moved it to 4pm."
         }),
-        turnRouter: async () => ({
-          route: "confirmed_mutation",
-          reason: "The user is refining a recent concrete proposal.",
-          writesAllowed: true
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "confirmation",
+          action: "recover_and_execute",
+          resolvedProposalId: "proposal-1"
         })
       }
     );
@@ -1155,10 +1185,10 @@ describe("telegram webhook route", () => {
           reason: "The latest turn clearly reports completion of the recent journaling task.",
           userReplyMessage: "Got it."
         }),
-        turnRouter: async () => ({
-          route: "confirmed_mutation",
-          reason: "The latest turn clearly completes one recent task.",
-          writesAllowed: true
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "confirmation",
+          action: "recover_and_execute",
+          resolvedProposalId: "proposal-1"
         })
       }
     );
@@ -1223,10 +1253,10 @@ describe("telegram webhook route", () => {
           reason: "I have two recent proposals in view. Which one do you want me to apply?",
           userReplyMessage: "I have two recent proposals in view. Which one do you want me to apply?"
         }),
-        turnRouter: async () => ({
-          route: "confirmed_mutation",
-          reason: "This looks like a confirmation but the target is ambiguous.",
-          writesAllowed: true
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "confirmation",
+          action: "recover_and_execute",
+          resolvedProposalId: "proposal-1"
         })
       }
     );
@@ -1405,10 +1435,9 @@ describe("telegram webhook route", () => {
           primeProcessingStore: seedInboxItemForProcessingTests,
           conversationMemorySummarizer,
           conversationResponder,
-          turnRouter: async () => ({
-            route: "conversation",
-            reason: "Planning dialogue request.",
-            writesAllowed: false
+          turnRouter: async () => buildRoutedTurn({
+            turnType: "informational",
+            action: "reply_only"
           })
         }
       );
@@ -1469,6 +1498,7 @@ describe("telegram webhook route", () => {
       });
       expect(conversationResponder).toHaveBeenCalledWith({
         route: "conversation",
+        rawText: "How should I prioritize this week?",
         normalizedText: "How should I prioritize this week?",
         recentTurns: [
           {
@@ -1557,10 +1587,11 @@ describe("telegram webhook route", () => {
           summary: "The user is discussing a possible move to tomorrow morning."
         }),
         conversationResponder,
-        turnRouter: async () => ({
-          route: "conversation_then_mutation",
-          reason: "Mixed turn should discuss first.",
-          writesAllowed: false
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "planning_request",
+          action: "present_proposal",
+          confidence: 0.68,
+          ambiguity: "low"
         })
       }
     );
@@ -1586,6 +1617,7 @@ describe("telegram webhook route", () => {
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation_then_mutation",
+      rawText: "Could we move it to tomorrow morning?",
       normalizedText: "Could we move it to tomorrow morning?",
       recentTurns: [
         {
@@ -1647,10 +1679,9 @@ describe("telegram webhook route", () => {
           throw new Error("summary unavailable");
         },
         conversationResponder,
-        turnRouter: async () => ({
-          route: "conversation",
-          reason: "Discussion turn.",
-          writesAllowed: false
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "informational",
+          action: "reply_only"
         })
       }
     );
@@ -1658,6 +1689,7 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation",
+      rawText: "Should we talk this through first?",
       normalizedText: "Should we talk this through first?",
       recentTurns: [
         {
@@ -1713,10 +1745,9 @@ describe("telegram webhook route", () => {
         conversationResponder: async () => ({
           reply: "From our recent exchange, it sounds like you mean the dentist reminder, but I am not treating that as confirmed state."
         }),
-        turnRouter: async () => ({
-          route: "conversation",
-          reason: "Write-adjacent question still needs cautious conversational handling.",
-          writesAllowed: false
+        turnRouter: async () => buildRoutedTurn({
+          turnType: "informational",
+          action: "reply_only"
         })
       }
     );
