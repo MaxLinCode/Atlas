@@ -120,6 +120,53 @@ describe("interpretTurn", () => {
     });
   });
 
+  it("does not treat yes with only clarification state as confirmation", async () => {
+    const result = await interpretTurn({
+      rawText: "Yes",
+      normalizedText: "Yes",
+      recentTurns: [],
+      entityRegistry: [
+        {
+          id: "clar-1",
+          conversationId: "conversation-1",
+          kind: "clarification",
+          label: "Need a time",
+          status: "active",
+          createdAt: "2026-03-20T16:00:00.000Z",
+          updatedAt: "2026-03-20T16:00:00.000Z",
+          data: {
+            prompt: "It sounds like you want me to block out time for planning your Malaysia trip at 3:15 PM for 15 minutes. I can proceed with that now.",
+            reason: null,
+            open: true
+          }
+        }
+      ],
+      discourseState: {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [
+          {
+            id: "clar-1",
+            slot: "unknown",
+            question: "It sounds like you want me to block out time for planning your Malaysia trip at 3:15 PM for 15 minutes. I can proceed with that now.",
+            status: "pending",
+            blocking: true,
+            createdAt: "2026-03-20T16:00:00.000Z",
+            createdTurnId: "assistant:1"
+          }
+        ],
+        mode: "clarifying"
+      }
+    });
+
+    expect(result).toMatchObject({
+      turnType: "unknown",
+      ambiguity: "high"
+    });
+  });
+
   it("treats short replies to pending clarifications as clarification answers", async () => {
     const result = await interpretTurn({
       rawText: "Tomorrow afternoon",
