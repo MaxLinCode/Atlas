@@ -3,6 +3,8 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
 import {
+  conversationDiscourseStateSchema,
+  conversationEntitySchema,
   getConfig,
   inboxPlanningContextSchema,
   inboxPlanningResponseFormatSchema,
@@ -40,18 +42,21 @@ export const conversationMemorySummaryOutputSchema = z.object({
 
 export const conversationResponseInputSchema = z.object({
   route: z.enum(["conversation", "conversation_then_mutation"]),
+  rawText: z.string().min(1),
   normalizedText: z.string().min(1),
   recentTurns: z.array(conversationTurnSchema),
-  memorySummary: z.string().nullable()
+  memorySummary: z.string().nullable(),
+  entityRegistry: z.array(conversationEntitySchema).optional().default([]),
+  discourseState: conversationDiscourseStateSchema.nullable().optional()
 });
 
 export const conversationResponseOutputSchema = z.object({
   reply: z.string().min(1)
 });
 
-export type ConversationMemorySummaryInput = z.infer<typeof conversationMemorySummaryInputSchema>;
+export type ConversationMemorySummaryInput = z.input<typeof conversationMemorySummaryInputSchema>;
 export type ConversationMemorySummaryOutput = z.infer<typeof conversationMemorySummaryOutputSchema>;
-export type ConversationResponseInput = z.infer<typeof conversationResponseInputSchema>;
+export type ConversationResponseInput = z.input<typeof conversationResponseInputSchema>;
 export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
 
 export type OpenAIResponsesClient = {
@@ -128,7 +133,7 @@ export async function routeTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(context)
+            text: JSON.stringify(buildTurnRoutingPromptContext(context))
           }
         ]
       }
@@ -164,7 +169,7 @@ export async function recoverConfirmedMutationWithResponses(
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(context)
+            text: JSON.stringify(buildConfirmedMutationRecoveryPromptContext(context))
           }
         ]
       }
@@ -207,7 +212,7 @@ export async function respondToConversationTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(context)
+            text: JSON.stringify(buildConversationResponsePromptContext(context))
           }
         ]
       }
@@ -218,6 +223,37 @@ export async function respondToConversationTurnWithResponses(
   });
 
   return conversationResponseOutputSchema.parse(response.output_parsed);
+}
+
+function buildTurnRoutingPromptContext(context: TurnRoutingInput) {
+  return {
+    rawText: context.rawText,
+    recentTurns: context.recentTurns,
+    summaryText: context.summaryText ?? null,
+    entityRegistry: context.entityRegistry ?? [],
+    discourseState: context.discourseState ?? null
+  };
+}
+
+function buildConfirmedMutationRecoveryPromptContext(context: ConfirmedMutationRecoveryInput) {
+  return {
+    rawText: context.rawText,
+    recentTurns: context.recentTurns,
+    memorySummary: context.memorySummary,
+    entityRegistry: context.entityRegistry ?? [],
+    discourseState: context.discourseState ?? null
+  };
+}
+
+function buildConversationResponsePromptContext(context: ConversationResponseInput) {
+  return {
+    route: context.route,
+    rawText: context.rawText,
+    recentTurns: context.recentTurns,
+    memorySummary: context.memorySummary,
+    entityRegistry: context.entityRegistry ?? [],
+    discourseState: context.discourseState ?? null
+  };
 }
 
 export async function summarizeConversationMemoryWithResponses(

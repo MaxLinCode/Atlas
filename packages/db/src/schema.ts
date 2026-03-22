@@ -1,4 +1,5 @@
 import {
+  index,
   integer,
   jsonb,
   pgTable,
@@ -26,6 +27,80 @@ export const inboxItems = pgTable("inbox_items", {
     sourceEventIdIndex: uniqueIndex("inbox_items_source_event_id_idx")
       .on(table.sourceEventId)
       .where(sql`${table.sourceEventId} is not null`)
+  })
+);
+
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    title: text("title"),
+    summaryText: text("summary_text"),
+    mode: varchar("mode", { length: 32 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdIndex: index("conversations_user_id_idx").on(table.userId),
+    updatedAtIndex: index("conversations_updated_at_idx").on(table.updatedAt)
+  })
+);
+
+export const conversationTurns = pgTable(
+  "conversation_turns",
+  {
+    id: uuid("id").primaryKey(),
+    conversationId: uuid("conversation_id").notNull().references(() => conversations.id),
+    userId: text("user_id").notNull(),
+    role: varchar("role", { length: 16 }).notNull(),
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    conversationCreatedAtIndex: index("conversation_turns_conversation_id_created_at_idx").on(
+      table.conversationId,
+      table.createdAt
+    ),
+    userCreatedAtIndex: index("conversation_turns_user_id_created_at_idx").on(table.userId, table.createdAt)
+  })
+);
+
+export const conversationEntities = pgTable(
+  "conversation_entities",
+  {
+    id: uuid("id").primaryKey(),
+    conversationId: uuid("conversation_id").notNull().references(() => conversations.id),
+    userId: text("user_id").notNull(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    label: text("label").notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    conversationUpdatedAtIndex: index("conversation_entities_conversation_id_updated_at_idx").on(
+      table.conversationId,
+      table.updatedAt
+    ),
+    userUpdatedAtIndex: index("conversation_entities_user_id_updated_at_idx").on(table.userId, table.updatedAt)
+  })
+);
+
+export const conversationDiscourseStates = pgTable(
+  "conversation_discourse_states",
+  {
+    conversationId: uuid("conversation_id").primaryKey().references(() => conversations.id),
+    userId: text("user_id").notNull(),
+    payload: jsonb("payload").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userUpdatedAtIndex: index("conversation_discourse_states_user_id_updated_at_idx").on(
+      table.userId,
+      table.updatedAt
+    )
   })
 );
 

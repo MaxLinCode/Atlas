@@ -1,16 +1,17 @@
 import {
+  routedTurnSchema,
+  type RoutedTurn,
+  type TurnPolicyAction,
   type TurnRoute,
   type TurnRoutingInput,
   type TurnRoutingOutput
 } from "@atlas/core";
-import { routeTurnWithResponses } from "@atlas/integrations";
+
+import { decideTurnPolicy } from "./decide-turn-policy";
+import { interpretTurn } from "./interpret-turn";
 
 export type TurnRouterInput = TurnRoutingInput;
-export type TurnRouterResult = {
-  route: TurnRoute;
-  reason: string;
-  writesAllowed: boolean;
-};
+export type TurnRouterResult = RoutedTurn;
 
 export type TurnRouterDependencies = {
   classifyTurn?: (input: TurnRouterInput) => Promise<TurnRoutingOutput>;
@@ -20,25 +21,39 @@ export async function routeMessageTurn(
   input: TurnRouterInput,
   dependencies: TurnRouterDependencies = {}
 ): Promise<TurnRouterResult> {
-  const parsedInput = parseTurnRouterInput(input);
-  const classifyTurn = dependencies.classifyTurn ?? routeTurnWithResponses;
-  const classified = await classifyTurn(parsedInput);
+  const interpretation = await interpretTurn(input, dependencies);
+  const policy = decideTurnPolicy({
+    interpretation,
+    routingContext: input
+  });
 
-  return {
-    route: classified.route,
-    reason: classified.reason,
-    writesAllowed: allowsWrites(classified.route)
-  };
+  return routedTurnSchema.parse({
+    interpretation,
+    policy
+  });
 }
 
-function allowsWrites(route: TurnRoute) {
-  return route === "mutation" || route === "confirmed_mutation";
+export function doesPolicyAllowWrites(action: TurnPolicyAction) {
+  return action === "execute_mutation" || action === "recover_and_execute";
 }
 
-function parseTurnRouterInput(input: TurnRouterInput): TurnRouterInput {
-  if (!input.rawText.trim() || !input.normalizedText.trim()) {
-    throw new Error("Turn router input must include non-empty rawText and normalizedText.");
+export function getConversationRouteForPolicy(action: TurnPolicyAction): Extract<
+  TurnRoute,
+  "conversation" | "conversation_then_mutation"
+> {
+  return action === "reply_only" ? "conversation" : "conversation_then_mutation";
+}
+
+export function getCompatibilityTurnRoute(result: TurnRouterResult): TurnRoute {
+  switch (result.policy.action) {
+    case "reply_only":
+      return "conversation";
+    case "ask_clarification":
+    case "present_proposal":
+      return "conversation_then_mutation";
+    case "execute_mutation":
+      return "mutation";
+    case "recover_and_execute":
+      return "confirmed_mutation";
   }
-
-  return input;
 }

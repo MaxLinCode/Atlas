@@ -10,14 +10,17 @@ import {
   type PresentedItem,
   type ScheduleBlock,
   type Task,
-  type TurnRoute
+  type TurnInterpretation,
+  type TurnPolicyAction
 } from "@atlas/core";
 import { type ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
-  route: Extract<TurnRoute, "conversation" | "conversation_then_mutation">;
+  policyAction: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
+  interpretation: TurnInterpretation;
   reply: string;
+  userTurnText: string;
   summaryText: string | null;
   occurredAt?: string;
 };
@@ -36,7 +39,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
   const newClarifications: PendingClarification[] = [];
   let nextFocusEntityId: string | null | undefined;
 
-  if (input.route === "conversation_then_mutation") {
+  if (input.policyAction === "present_proposal") {
     const proposalEntity = buildConversationEntity(input.snapshot.conversation.id, {
       kind: "proposal_option",
       label: summarizeLabel(input.reply),
@@ -44,8 +47,14 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       createdAt: occurredAt,
       updatedAt: occurredAt,
       data: {
-        route: input.route,
-        replyText: input.reply
+        route: "conversation_then_mutation",
+        replyText: input.reply,
+        policyAction: input.policyAction,
+        targetEntityId: input.interpretation.resolvedEntityIds[0] ?? null,
+        mutationInputSource: null,
+        confirmationRequired: true,
+        originatingTurnText: input.userTurnText,
+        missingSlots: input.interpretation.missingSlots
       }
     });
 
@@ -60,7 +69,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     nextFocusEntityId = proposalEntity.id;
   }
 
-  if (looksLikeClarification(input.reply)) {
+  if (input.policyAction === "ask_clarification") {
     const clarificationEntity = buildConversationEntity(input.snapshot.conversation.id, {
       kind: "clarification",
       label: summarizeLabel(input.reply),
@@ -90,13 +99,13 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     ...(presentedItems.length > 0 ? { presentedItems } : {}),
     ...(newClarifications.length > 0 ? { newClarifications } : {}),
     ...(nextFocusEntityId !== undefined ? { focusEntityId: nextFocusEntityId } : {}),
-    pendingConfirmation: input.route === "conversation_then_mutation",
+    pendingConfirmation: input.policyAction === "present_proposal",
     validEntityIds: entityRegistry.map((entity) => entity.id)
   }).state;
 
   return {
     summaryText: input.summaryText,
-    mode: input.route as ConversationRecordMode,
+    mode: getConversationModeForPolicy(input.policyAction),
     entityRegistry: trimEntityRegistry(entityRegistry),
     discourseState: nextDiscourseState
   };
@@ -254,12 +263,14 @@ function isTaskResolved(task: Task) {
   return task.lifecycleState === "done" || task.lifecycleState === "archived";
 }
 
-function looksLikeClarification(reply: string) {
-  return reply.trim().endsWith("?");
-}
-
 function summarizeLabel(text: string) {
   return text.trim().slice(0, 120);
+}
+
+function getConversationModeForPolicy(
+  policyAction: DeriveConversationReplyStateInput["policyAction"]
+): ConversationRecordMode {
+  return policyAction === "reply_only" ? "conversation" : "conversation_then_mutation";
 }
 
 function buildConversationEntity(

@@ -95,6 +95,45 @@ Notes:
 - Access and refresh tokens are stored as encrypted-at-rest credentials, not as admin-readable metadata.
 - Normal read models should expose redacted linkage metadata only; raw credentials should be available only to the runtime path that builds the Google adapter.
 
+### `conversations`
+
+- Classification: canonical record
+- Represents: the durable container for one user-scoped conversation thread, including the current broad summary and active interaction mode
+- Source of truth for: which conversation snapshot Atlas should use when loading entity registry and discourse state for reference resolution
+- Created by: app-owned conversation-state orchestration when a linked user enters the normal chat flow
+- Allowed mutations: title, summary text, mode, and updated timestamps owned by the app
+- Must not be confused with: raw transport events, planner runs, or the entity registry itself
+
+Notes:
+- `summary_text` is a compression aid for long-horizon continuity, not the exact referent-resolution mechanism.
+- In the current Telegram-first runtime, Atlas may maintain one latest active conversation per user even though the schema leaves room for multiple conversation rows over time.
+
+### `conversation_entities`
+
+- Classification: canonical record
+- Represents: first-class conversation objects such as tasks, proposal options, scheduled blocks, clarifications, and reminders that were created or referenced during the conversation
+- Source of truth for: object-level conversational memory and short-horizon reference resolution
+- Created by: app-owned conversation-state orchestration after conversation replies, mutation results, clarification prompts, and reminder bundles
+- Allowed mutations: status, labels, payload updates, and supersession as the conversation evolves
+- Must not be confused with: canonical task state in `tasks` or raw transcript text in `conversation_turns`
+
+Notes:
+- This table exists so Atlas can resolve phrases like `it`, `that`, or `the other one` against explicit objects instead of loosely replaying transcript.
+- Task and schedule entities here are conversational projections; canonical task lifecycle and commitment state still live in `tasks`.
+
+### `conversation_discourse_states`
+
+- Classification: canonical short-lived working-memory record
+- Represents: the current conversational focus, active entity ids, and pending clarification focus for the latest branch of discussion
+- Source of truth for: which conversation object Atlas should treat as currently salient when recent user language is referential or elliptical
+- Created by: app-owned conversation-state orchestration alongside entity-registry updates
+- Allowed mutations: replacement of the current working-memory payload on each turn
+- Must not be confused with: the broader summary, full transcript, or durable task/product state
+
+Notes:
+- This record is intentionally short-lived and branch-local.
+- It should be cheap to replace wholesale as the active focus moves.
+
 ## Operational records
 
 ### `bot_events`
@@ -111,6 +150,19 @@ Notes:
 - They are not the user-facing product memory.
 - They should not be the source of truth for whether the one follow-up reminder has already been sent.
 - They should have bounded operational retention rather than indefinite history by default.
+
+### `conversation_turns`
+
+- Classification: operational/continuity record
+- Represents: the raw user and assistant transcript for audit, replay, debugging, and bounded conversational continuity
+- Source of truth for: ordered replay of what was said in the active conversation
+- Created by: app-owned conversation-state orchestration after accepted inbound user turns and final outbound assistant replies
+- Allowed mutations: append-only in normal operation
+- Must not be confused with: the entity registry or discourse-state focus model
+
+Notes:
+- Transcript is useful continuity context, but it is not Atlas's exact object memory.
+- Reference resolution should prefer `conversation_entities` plus `conversation_discourse_states` over transcript reconstruction when possible.
 
 ### `planner_runs`
 

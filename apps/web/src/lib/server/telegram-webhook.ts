@@ -14,12 +14,16 @@ import {
   telegramUpdateSchema
 } from "@atlas/core";
 import {
+  appendConversationTurn,
+  loadConversationState,
+  saveConversationState,
   getDefaultInboxProcessingStore,
   listRecentConversationTurns,
   getDefaultFollowUpRuntimeStore,
   getLatestFollowUpBundleContext,
   recordIncomingTelegramMessageIfNew,
   updateOutgoingTelegramMessage,
+  type ConversationStateStore,
   type ConversationHistoryStore,
   type FollowUpRuntimeStore,
   type IncomingTelegramIngressStore,
@@ -39,6 +43,10 @@ import {
 } from "@atlas/integrations";
 
 import { processInboxItem, type ProcessInboxItemDependencies } from "./process-inbox-item";
+import {
+  deriveConversationReplyState,
+  deriveMutationState
+} from "./conversation-state";
 import { renderMutationReply } from "./mutation-reply";
 import {
   buildConversationResponse,
@@ -47,6 +55,9 @@ import {
 } from "./conversation-response";
 import {
   routeMessageTurn,
+  doesPolicyAllowWrites,
+  getCompatibilityTurnRoute,
+  getConversationRouteForPolicy,
   type TurnRouterInput,
   type TurnRouterResult
 } from "./turn-router";
@@ -72,6 +83,7 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   turnRouter?: (input: TurnRouterInput) => Promise<TurnRouterResult>;
   conversationResponder?: (input: BuildConversationResponseInput) => Promise<BuildConversationResponseResult>;
   conversationHistoryStore?: ConversationHistoryStore;
+  conversationStateStore?: ConversationStateStore;
   conversationMemorySummarizer?: (
     input: ConversationMemorySummaryInput
   ) => Promise<ConversationMemorySummaryOutput>;
@@ -228,11 +240,31 @@ export async function handleTelegramWebhook(
     };
   }
 
-  const recentTurns = await listRecentConversationTurns(
+  await appendConversationTurn(
+    {
+      userId: normalizedMessage.user.telegramUserId,
+      role: "user",
+      text: normalizedMessage.rawText
+    },
+    dependencies.conversationStateStore
+  );
+
+  const conversationState =
+    (await loadConversationState(
+      normalizedMessage.user.telegramUserId,
+      RECENT_CONVERSATION_TURN_LIMIT,
+      dependencies.conversationStateStore
+    )) ??
+    null;
+  const legacyRecentTurns = await listRecentConversationTurns(
     normalizedMessage.user.telegramUserId,
     RECENT_CONVERSATION_TURN_LIMIT,
     dependencies.conversationHistoryStore
   );
+  const recentTurns =
+    conversationState && conversationState.transcript.length > 1
+      ? conversationState.transcript
+      : legacyRecentTurns;
   const followUpIntercept = await tryHandleFollowUpReply(
     {
       normalizedMessage,
@@ -248,9 +280,24 @@ export async function handleTelegramWebhook(
   const routedWithContext = await (dependencies.turnRouter ?? routeMessageTurn)({
     rawText: normalizedMessage.rawText,
     normalizedText: normalizedMessage.normalizedText,
-    recentTurns
+    recentTurns,
+    summaryText: conversationState?.conversation.summaryText ?? null,
+    entityRegistry: conversationState?.entityRegistry ?? [],
+    discourseState: conversationState?.discourseState ?? null
   });
-  const immediateFeedback = buildImmediateRouteFeedback(routedWithContext.route);
+  console.info("turn_interpreted", {
+    userId: normalizedMessage.user.telegramUserId,
+    normalizedText: normalizedMessage.normalizedText,
+    interpretation: routedWithContext.interpretation
+  });
+  console.info("turn_policy_decided", {
+    userId: normalizedMessage.user.telegramUserId,
+    normalizedText: normalizedMessage.normalizedText,
+    policy: routedWithContext.policy
+  });
+
+  const compatibilityTurnRoute = getCompatibilityTurnRoute(routedWithContext);
+  const immediateFeedback = buildImmediateRouteFeedback(routedWithContext.policy.action);
 
   const placeholderDelivery = await sendImmediateRouteFeedback(
     {
@@ -266,17 +313,23 @@ export async function handleTelegramWebhook(
     }
   );
 
-  if (!routedWithContext.writesAllowed) {
-    if (routedWithContext.route === "mutation" || routedWithContext.route === "confirmed_mutation") {
+  if (!doesPolicyAllowWrites(routedWithContext.policy.action)) {
+    if (compatibilityTurnRoute === "mutation" || compatibilityTurnRoute === "confirmed_mutation") {
       throw new Error("Turn router returned mutation while writes were disabled.");
     }
+    console.info("turn_execution_branch", {
+      userId: normalizedMessage.user.telegramUserId,
+      action: routedWithContext.policy.action
+    });
 
     const memorySummary = await buildConversationMemorySummary(recentTurns, dependencies);
     const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
-      route: routedWithContext.route,
+      route: getConversationRouteForPolicy(routedWithContext.policy.action),
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
-      memorySummary
+      memorySummary,
+      entityRegistry: conversationState?.entityRegistry ?? [],
+      discourseState: conversationState?.discourseState ?? null
     });
 
     const outboundDelivery = await finalizeFollowUpMessage(
@@ -302,6 +355,31 @@ export async function handleTelegramWebhook(
       dependencies
     );
 
+    if (conversationState) {
+      await appendConversationTurn(
+        {
+          userId: normalizedMessage.user.telegramUserId,
+          role: "assistant",
+          text: conversationResponse.reply
+        },
+        dependencies.conversationStateStore
+      );
+      await saveConversationState(
+        {
+          userId: normalizedMessage.user.telegramUserId,
+          ...deriveConversationReplyState({
+            snapshot: conversationState,
+            policyAction: routedWithContext.policy.action,
+            interpretation: routedWithContext.interpretation,
+            reply: conversationResponse.reply,
+            userTurnText: normalizedMessage.rawText,
+            summaryText: memorySummary ?? conversationState.conversation.summaryText
+          })
+        },
+        dependencies.conversationStateStore
+      );
+    }
+
     return {
       status: 200,
       body: {
@@ -309,7 +387,7 @@ export async function handleTelegramWebhook(
         idempotencyKey,
         ingestion: normalizedMessage,
         inboxItem: ingress.inboxItem,
-        turnRoute: routedWithContext.route,
+        turnRoute: compatibilityTurnRoute,
         routing: routedWithContext,
         processing: {
           outcome: "conversation_replied",
@@ -321,16 +399,52 @@ export async function handleTelegramWebhook(
     };
   }
 
-  if (routedWithContext.route === "confirmed_mutation") {
+  if (routedWithContext.policy.action === "recover_and_execute") {
+    console.info("turn_execution_branch", {
+      userId: normalizedMessage.user.telegramUserId,
+      action: routedWithContext.policy.action
+    });
     const recoveredMutation = await (dependencies.confirmedMutationRecoverer ??
       recoverConfirmedMutationWithResponses)({
       rawText: normalizedMessage.rawText,
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
-      memorySummary: null
+      memorySummary: conversationState?.conversation.summaryText ?? null,
+      entityRegistry: conversationState?.entityRegistry ?? [],
+      discourseState: conversationState?.discourseState ?? null
+    });
+    console.info("turn_recovery_result", {
+      userId: normalizedMessage.user.telegramUserId,
+      action: routedWithContext.policy.action,
+      outcome: recoveredMutation.outcome
     });
 
     if (recoveredMutation.outcome === "needs_clarification") {
+      if (conversationState) {
+        await appendConversationTurn(
+          {
+            userId: normalizedMessage.user.telegramUserId,
+            role: "assistant",
+            text: recoveredMutation.userReplyMessage
+          },
+          dependencies.conversationStateStore
+        );
+        await saveConversationState(
+          {
+            userId: normalizedMessage.user.telegramUserId,
+            ...deriveConversationReplyState({
+              snapshot: conversationState,
+              policyAction: "ask_clarification",
+              interpretation: routedWithContext.interpretation,
+              reply: recoveredMutation.userReplyMessage,
+              userTurnText: normalizedMessage.rawText,
+              summaryText: conversationState.conversation.summaryText
+            })
+          },
+          dependencies.conversationStateStore
+        );
+      }
+
       return replyWithText(
         {
           userId: normalizedMessage.user.telegramUserId,
@@ -348,7 +462,7 @@ export async function handleTelegramWebhook(
             idempotencyKey,
             ingestion: normalizedMessage,
             inboxItem: ingress.inboxItem,
-            turnRoute: routedWithContext.route,
+            turnRoute: compatibilityTurnRoute,
             routing: routedWithContext,
             processing: {
               outcome: "conversation_replied",
@@ -401,6 +515,27 @@ export async function handleTelegramWebhook(
       dependencies
     );
 
+    if (conversationState) {
+      await appendConversationTurn(
+        {
+          userId: normalizedMessage.user.telegramUserId,
+          role: "assistant",
+          text: processing.followUpMessage
+        },
+        dependencies.conversationStateStore
+      );
+      await saveConversationState(
+        {
+          userId: normalizedMessage.user.telegramUserId,
+          ...deriveMutationState({
+            snapshot: conversationState,
+            processing
+          })
+        },
+        dependencies.conversationStateStore
+      );
+    }
+
     return {
       status: 200,
       body: {
@@ -408,7 +543,7 @@ export async function handleTelegramWebhook(
         idempotencyKey,
         ingestion: normalizedMessage,
         inboxItem: ingress.inboxItem,
-        turnRoute: routedWithContext.route,
+        turnRoute: compatibilityTurnRoute,
         routing: routedWithContext,
         processing,
         outboundDelivery,
@@ -417,6 +552,10 @@ export async function handleTelegramWebhook(
     };
   }
 
+  console.info("turn_execution_branch", {
+    userId: normalizedMessage.user.telegramUserId,
+    action: routedWithContext.policy.action
+  });
   await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
   const processing = await processInboxItem(
@@ -452,6 +591,27 @@ export async function handleTelegramWebhook(
     dependencies
   );
 
+  if (conversationState) {
+    await appendConversationTurn(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        role: "assistant",
+        text: processing.followUpMessage
+      },
+      dependencies.conversationStateStore
+    );
+    await saveConversationState(
+      {
+        userId: normalizedMessage.user.telegramUserId,
+        ...deriveMutationState({
+          snapshot: conversationState,
+          processing
+        })
+      },
+      dependencies.conversationStateStore
+    );
+  }
+
   return {
     status: 200,
     body: {
@@ -459,7 +619,7 @@ export async function handleTelegramWebhook(
       idempotencyKey,
       ingestion: normalizedMessage,
       inboxItem: ingress.inboxItem,
-      turnRoute: routedWithContext.route,
+      turnRoute: compatibilityTurnRoute,
       routing: routedWithContext,
       processing,
       outboundDelivery,
@@ -1044,20 +1204,21 @@ function buildLazyLinkReplyIdempotencyKey(updateId: number) {
   return `telegram:lazy-link:${updateId}`;
 }
 
-function buildImmediateRouteFeedback(route: TurnRouterResult["route"]): ImmediateRouteFeedback {
-  switch (route) {
-    case "mutation":
+function buildImmediateRouteFeedback(action: TurnRouterResult["policy"]["action"]): ImmediateRouteFeedback {
+  switch (action) {
+    case "execute_mutation":
       return {
         text: "Checking your schedule",
         chatAction: "typing"
       };
-    case "confirmed_mutation":
+    case "recover_and_execute":
       return {
         text: "Applying that",
         chatAction: "typing"
       };
-    case "conversation":
-    case "conversation_then_mutation":
+    case "reply_only":
+    case "ask_clarification":
+    case "present_proposal":
       return {
         text: "Thinking",
         chatAction: "typing"
