@@ -43,6 +43,16 @@ Set these in the Vercel project for the target environment before deploying:
 - `GOOGLE_LINK_TOKEN_SECRET`, `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`, and `CRON_SECRET` should be unique per environment.
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` must be a base64-encoded 32-byte key.
 - `TELEGRAM_ALLOWED_USER_IDS` is required in all environments. The app should not boot without it.
+- Vercel Preview and Vercel Production must use different `DATABASE_URL` values. Preview must not point at the production database.
+
+## GitHub Actions migration secret
+
+Set the production database connection string in GitHub Actions secrets as `DATABASE_URL_PRODUCTION`.
+
+- This secret is for the hosted migration workflow, not for Vercel runtime configuration.
+- The migration workflow maps `DATABASE_URL_PRODUCTION` to `DATABASE_URL` only inside the job that runs `pnpm --filter @atlas/db db:check` and `pnpm --filter @atlas/db db:migrate`.
+- Keep the production secret scoped to the repo or environment that owns production releases.
+- In GitHub branch protection or rulesets, mark `Apply DB Migrations / apply-db-migrations` as a required status check for the production release path.
 
 ## Pre-deploy checks
 
@@ -55,18 +65,25 @@ Set these in the Vercel project for the target environment before deploying:
 
 1. Review the pending migration files under `packages/db/drizzle/`.
 2. Confirm the migration set matches the code being deployed.
-3. Apply migrations to the target database before or alongside the app deploy, but do not leave the database halfway between expected schema versions.
-4. If the environment has known partial-state risk, verify the release migration is safe to rerun or has an explicit recovery plan.
-
-Atlas does not yet have a fully documented hosted migration runner. For now, production releases must include an explicit operator-applied migration step.
+3. Confirm the database commands are run only through `packages/db`:
+   - `cd packages/db && DATABASE_URL=... pnpm db:generate`
+   - `cd packages/db && DATABASE_URL=... pnpm db:check`
+   - `cd packages/db && DATABASE_URL=... pnpm db:migrate`
+   - or the equivalent `pnpm --filter @atlas/db ...` form with `DATABASE_URL` already set
+4. Merge the release to `main` and let [`.github/workflows/apply-db-migrations.yml`](/Users/maxlin/Code/Atlas/.github/workflows/apply-db-migrations.yml) run against `DATABASE_URL_PRODUCTION`.
+5. Do not apply production migrations from a local shell. The GitHub Actions migration workflow is the only supported production migration runner.
+6. Confirm the migration workflow succeeds before starting or approving the production Vercel release.
+7. If the environment has known partial-state risk, verify the release migration is safe to rerun or has an explicit recovery plan.
 
 ## Deploy
 
 1. Push the release branch and confirm the intended commit SHA.
-2. Verify the Vercel project uses `apps/web` as the Root Directory and can access workspace files outside that directory.
-3. Confirm the target Vercel environment has all required env vars.
-4. Deploy the intended commit to Vercel.
-5. Confirm the deployment is healthy before switching any production traffic assumptions to it.
+2. Merge the intended commit to `main`.
+3. Verify [`.github/workflows/apply-db-migrations.yml`](/Users/maxlin/Code/Atlas/.github/workflows/apply-db-migrations.yml) passed on that `main` commit before promoting any production deploy.
+4. Verify the Vercel project uses `apps/web` as the Root Directory and can access workspace files outside that directory.
+5. Confirm the target Vercel environment has all required env vars, including separate Preview and Production `DATABASE_URL` values.
+6. Deploy the intended `main` commit to Vercel Production.
+7. Confirm the deployment is healthy before switching any production traffic assumptions to it.
 
 ## Register or verify the Telegram webhook
 
@@ -122,11 +139,13 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 1. Confirm removed public planner/debug routes are still unavailable.
 2. Confirm linked-account reads do not expose raw Google access or refresh tokens.
 3. Confirm Vercel logs do not expose webhook secrets, cron secrets, link tokens, or decrypted Google credentials.
+4. Confirm the production deploy commit has a successful `apply-db-migrations` GitHub Actions run attached to it.
 
 ## Rollback notes
 
 - If the app deploy is bad but the schema is still compatible, roll traffic back to the last known good deployment.
 - If a migration is not backward-compatible, do not assume app rollback alone is sufficient.
+- If the migration workflow fails, do not continue with production deploy until the workflow is fixed or the migration issue is explicitly recovered.
 - If Google OAuth is failing after deploy, first verify `APP_BASE_URL`, `GOOGLE_OAUTH_REDIRECT_URI`, and the Google Cloud OAuth client configuration all match exactly.
 - If Telegram delivery fails after deploy, verify webhook registration, secret-token alignment, and Vercel route health before changing app code.
 

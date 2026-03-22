@@ -15,9 +15,6 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "telegram:webhook:set": "bash scripts/set-telegram-webhook.sh",
-    "db:generate": "pnpm --filter @atlas/db db:generate",
-    "db:migrate": "pnpm --filter @atlas/db db:migrate",
-    "db:studio": "pnpm --filter @atlas/db db:studio",
     "db:test:start": "bash scripts/db-test-start.sh",
     "db:test:stop": "bash scripts/db-test-stop.sh",
     "db:test:reset": "bash scripts/db-test-reset.sh"

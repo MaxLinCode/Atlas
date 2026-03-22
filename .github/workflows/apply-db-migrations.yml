@@ -1,0 +1,46 @@
+name: Apply DB Migrations
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: apply-db-migrations-main
+  cancel-in-progress: false
+
+jobs:
+  apply-db-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+    steps:
+      - name: Check required secret
+        run: test -n "$DATABASE_URL"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check migrations
+        run: pnpm --filter @atlas/db db:check
+
+      - name: Apply migrations
+        run: pnpm --filter @atlas/db db:migrate
