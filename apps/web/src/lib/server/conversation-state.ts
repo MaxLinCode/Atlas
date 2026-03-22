@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   createEmptyDiscourseState,
+  getActivePendingClarifications,
   updateDiscourseStateFromAssistantTurn,
   type ConversationEntity,
   type ConversationRecordMode,
@@ -11,13 +12,16 @@ import {
   type ScheduleBlock,
   type Task,
   type TurnInterpretation,
-  type TurnPolicyAction
+  type TurnPolicyAction,
+  type TurnPolicyDecision
 } from "@atlas/core";
 import { type ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
-  policyAction: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
+  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId"> & {
+    action: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
+  };
   interpretation: TurnInterpretation;
   reply: string;
   userTurnText: string;
@@ -37,28 +41,57 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
   const discourseState = input.snapshot.discourseState ?? createEmptyDiscourseState();
   const presentedItems: PresentedItem[] = [];
   const newClarifications: PendingClarification[] = [];
+  const resolvedClarificationIds: string[] = [];
+  const activePendingClarifications = getActivePendingClarifications(discourseState);
+  const persistableClarificationSlots = derivePersistableClarificationSlots(input.interpretation.missingSlots);
+  const shouldPersistClarification =
+    input.policy.action === "ask_clarification" && persistableClarificationSlots.length > 0;
+  const shouldClearActiveClarifications =
+    shouldPersistClarification ||
+    input.policy.action === "present_proposal" ||
+    input.interpretation.turnType === "confirmation";
   let nextFocusEntityId: string | null | undefined;
 
-  if (input.policyAction === "present_proposal") {
-    const proposalEntity = buildConversationEntity(input.snapshot.conversation.id, {
-      kind: "proposal_option",
-      label: summarizeLabel(input.reply),
-      status: "active",
-      createdAt: occurredAt,
-      updatedAt: occurredAt,
-      data: {
-        route: "conversation_then_mutation",
-        replyText: input.reply,
-        policyAction: input.policyAction,
-        targetEntityId: input.interpretation.resolvedEntityIds[0] ?? null,
-        mutationInputSource: null,
-        confirmationRequired: true,
-        originatingTurnText: input.userTurnText,
-        missingSlots: input.interpretation.missingSlots
-      }
-    });
+  if (shouldClearActiveClarifications) {
+    resolvedClarificationIds.push(...activePendingClarifications.map((clarification) => clarification.id));
 
-    entityRegistry.push(proposalEntity);
+    for (let index = 0; index < entityRegistry.length; index += 1) {
+      const entity = entityRegistry[index];
+
+      if (entity?.kind === "clarification" && entity.status === "active") {
+        entityRegistry[index] = {
+          ...entity,
+          status: "resolved",
+          updatedAt: occurredAt
+        };
+      }
+    }
+  }
+
+  if (input.policy.action === "present_proposal") {
+    const proposalEntity = upsertActiveProposalEntity(
+      entityRegistry,
+      input.snapshot.conversation.id,
+      compactObject({
+        proposalId: input.policy.targetProposalId,
+        kind: "proposal_option" as const,
+        label: summarizeLabel(input.reply),
+        status: "active" as const,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+        data: {
+          route: "conversation_then_mutation" as const,
+          replyText: input.reply,
+          policyAction: input.policy.action,
+          targetEntityId: input.interpretation.resolvedEntityIds[0] ?? null,
+          mutationInputSource: null,
+          confirmationRequired: true,
+          originatingTurnText: input.userTurnText,
+          missingSlots: input.interpretation.missingSlots
+        }
+      })
+    );
+
     presentedItems.push({
       id: `presented_${proposalEntity.id}`,
       type: "entity",
@@ -69,7 +102,13 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     nextFocusEntityId = proposalEntity.id;
   }
 
-  if (input.policyAction === "ask_clarification") {
+  if (shouldPersistClarification) {
+    const [clarificationSlot] = persistableClarificationSlots;
+
+    if (!clarificationSlot) {
+      throw new Error("Expected a persistable clarification slot when persisting clarification state.");
+    }
+
     const clarificationEntity = buildConversationEntity(input.snapshot.conversation.id, {
       kind: "clarification",
       label: summarizeLabel(input.reply),
@@ -78,7 +117,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       updatedAt: occurredAt,
       data: {
         prompt: input.reply,
-        reason: null,
+        reason: clarificationSlot,
         open: true
       }
     });
@@ -86,7 +125,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     entityRegistry.push(clarificationEntity);
     newClarifications.push({
       id: clarificationEntity.id,
-      slot: "unknown",
+      slot: clarificationSlot,
       question: input.reply,
       status: "pending",
       blocking: true,
@@ -98,14 +137,15 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
   const nextDiscourseState = updateDiscourseStateFromAssistantTurn(discourseState, {
     ...(presentedItems.length > 0 ? { presentedItems } : {}),
     ...(newClarifications.length > 0 ? { newClarifications } : {}),
+    ...(resolvedClarificationIds.length > 0 ? { resolvedClarificationIds } : {}),
     ...(nextFocusEntityId !== undefined ? { focusEntityId: nextFocusEntityId } : {}),
-    pendingConfirmation: input.policyAction === "present_proposal",
+    pendingConfirmation: input.policy.action === "present_proposal",
     validEntityIds: entityRegistry.map((entity) => entity.id)
   }).state;
 
   return {
     summaryText: input.summaryText,
-    mode: getConversationModeForPolicy(input.policyAction),
+    mode: getConversationModeForPolicy(input.policy.action),
     entityRegistry: trimEntityRegistry(entityRegistry),
     discourseState: nextDiscourseState
   };
@@ -115,6 +155,10 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   const existingByKey = new Map<string, ConversationEntity>(
     input.snapshot.entityRegistry.map((entity) => [entityKey(entity), entity])
+  );
+  const currentDiscourseState = input.snapshot.discourseState ?? createEmptyDiscourseState();
+  const resolvedClarificationIds = getActivePendingClarifications(currentDiscourseState).map(
+    (clarification) => clarification.id
   );
   const entityRegistry: ConversationEntity[] = input.snapshot.entityRegistry.map((entity) => {
     if (entity.kind === "proposal_option" || entity.kind === "clarification") {
@@ -207,9 +251,10 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
   }
 
   const discourseState = updateDiscourseStateFromAssistantTurn(
-    input.snapshot.discourseState ?? createEmptyDiscourseState(),
+    currentDiscourseState,
     {
       ...(newClarifications.length > 0 ? { newClarifications } : {}),
+      ...(resolvedClarificationIds.length > 0 ? { resolvedClarificationIds } : {}),
       focusEntityId: lastConcreteEntityId,
       editableEntityId: lastConcreteEntityId,
       pendingConfirmation: false,
@@ -268,7 +313,7 @@ function summarizeLabel(text: string) {
 }
 
 function getConversationModeForPolicy(
-  policyAction: DeriveConversationReplyStateInput["policyAction"]
+  policyAction: DeriveConversationReplyStateInput["policy"]["action"]
 ): ConversationRecordMode {
   return policyAction === "reply_only" ? "conversation" : "conversation_then_mutation";
 }
@@ -290,6 +335,82 @@ function buildConversationEntity(
     id: input.id ?? randomUUID(),
     conversationId
   } as ConversationEntity;
+}
+
+function upsertActiveProposalEntity(
+  entityRegistry: ConversationEntity[],
+  conversationId: string,
+  input: {
+    proposalId?: string;
+    kind: Extract<ConversationEntity["kind"], "proposal_option">;
+    label: string;
+    status: Extract<ConversationEntity["status"], "active">;
+    createdAt: string;
+    updatedAt: string;
+    data: Extract<ConversationEntity, { kind: "proposal_option" }>["data"];
+  }
+) {
+  let existingProposal: Extract<ConversationEntity, { kind: "proposal_option" }> | null = null;
+
+  for (let index = 0; index < entityRegistry.length; index += 1) {
+    const entity = entityRegistry[index];
+
+    if (entity?.kind !== "proposal_option") {
+      continue;
+    }
+
+    if (input.proposalId && entity.id === input.proposalId) {
+      existingProposal = entity;
+      continue;
+    }
+
+    if (entity.status === "active") {
+      entityRegistry[index] = {
+        ...entity,
+        status: "superseded",
+        updatedAt: input.updatedAt
+      };
+    }
+  }
+
+  const nextProposal = buildConversationEntity(conversationId, {
+    kind: input.kind,
+    label: input.label,
+    status: input.status,
+    createdAt: existingProposal?.createdAt ?? input.createdAt,
+    updatedAt: input.updatedAt,
+    data: input.data
+  }) as Extract<ConversationEntity, { kind: "proposal_option" }>;
+
+  const proposalId = input.proposalId ?? existingProposal?.id;
+
+  if (proposalId) {
+    nextProposal.id = proposalId;
+  }
+
+  replaceEntity(entityRegistry, nextProposal, `proposal_option:${nextProposal.id}`);
+
+  return nextProposal;
+}
+
+function derivePersistableClarificationSlots(slots: string[] | undefined) {
+  if (!slots) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      slots.map((slot) => slot.trim()).filter((slot) => slot.length > 0 && slot !== "unknown")
+    )
+  );
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as {
+    [K in keyof T as undefined extends T[K] ? never : K]: Exclude<T[K], undefined>;
+  } & {
+    [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<T[K], undefined>;
+  };
 }
 
 function entityKey(entity: ConversationEntity) {
