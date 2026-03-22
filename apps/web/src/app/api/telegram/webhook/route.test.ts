@@ -1498,6 +1498,7 @@ describe("telegram webhook route", () => {
       });
       expect(conversationResponder).toHaveBeenCalledWith({
         route: "conversation",
+        rawText: "How should I prioritize this week?",
         normalizedText: "How should I prioritize this week?",
         recentTurns: [
           {
@@ -1616,6 +1617,7 @@ describe("telegram webhook route", () => {
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation_then_mutation",
+      rawText: "Could we move it to tomorrow morning?",
       normalizedText: "Could we move it to tomorrow morning?",
       recentTurns: [
         {
@@ -1687,6 +1689,7 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(conversationResponder).toHaveBeenCalledWith({
       route: "conversation",
+      rawText: "Should we talk this through first?",
       normalizedText: "Should we talk this through first?",
       recentTurns: [
         {

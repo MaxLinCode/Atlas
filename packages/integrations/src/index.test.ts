@@ -695,9 +695,15 @@ describe("integrations", () => {
   });
 
   it("parses structured conversation response output from the Responses API client", async () => {
+    const parse = vi.fn(async () => ({
+      output_parsed: {
+        reply: "Start by picking the one thing that must happen tomorrow, then give it the first focus block."
+      }
+    }));
     const result = await respondToConversationTurnWithResponses(
       {
         route: "conversation",
+        rawText: "How should I plan tomorrow?",
         normalizedText: "How should I plan tomorrow?",
         recentTurns: [
           {
@@ -709,17 +715,45 @@ describe("integrations", () => {
         memorySummary: "The user wants help prioritizing tomorrow."
       },
       {
-        responses: {
-          parse: async () => ({
-            output_parsed: {
-              reply: "Start by picking the one thing that must happen tomorrow, then give it the first focus block."
-            }
-          })
-        }
+        responses: { parse }
       }
     );
 
     expect(result.reply).toContain("first focus block");
+    const parseCall = (parse as unknown as { mock: { calls: Array<[{
+      input?: Array<{ content?: Array<{ text?: string }> }>;
+    }]> } }).mock.calls[0];
+    const promptPayload = parseCall?.[0]?.input?.[1]?.content?.[0]?.text;
+    expect(promptPayload).toContain("\"rawText\":\"How should I plan tomorrow?\"");
+    expect(promptPayload).not.toContain("normalizedText");
+  });
+
+  it("omits normalizedText from model prompt payloads and uses rawText instead", async () => {
+    const parse = vi.fn(async () => ({
+      output_parsed: {
+        route: "conversation",
+        reason: "The user is asking for planning advice."
+      }
+    }));
+
+    await routeTurnWithResponses(
+      {
+        rawText: " Review   launch checklist tomorrow morning ",
+        normalizedText: "Review launch checklist tomorrow morning",
+        recentTurns: []
+      },
+      {
+        responses: { parse }
+      }
+    );
+
+    expect(parse).toHaveBeenCalledTimes(1);
+    const parseCall = (parse as unknown as { mock: { calls: Array<[{
+      input?: Array<{ content?: Array<{ text?: string }> }>;
+    }]> } }).mock.calls[0];
+    const promptPayload = parseCall?.[0]?.input?.[1]?.content?.[0]?.text;
+    expect(promptPayload).toContain("\"rawText\":\" Review   launch checklist tomorrow morning \"");
+    expect(promptPayload).not.toContain("normalizedText");
   });
 
   it("rejects malformed structured conversation response output", async () => {

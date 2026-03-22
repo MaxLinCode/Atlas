@@ -10,6 +10,7 @@ describe("conversation response service", () => {
     const result = await buildConversationResponse(
       {
         route: "conversation",
+        rawText: "How should I prioritize this week?",
         normalizedText: "How should I prioritize this week?",
         recentTurns: [
           {
@@ -28,6 +29,7 @@ describe("conversation response service", () => {
     expect(result.reply).toContain("deadline-driven work");
     expect(respond).toHaveBeenCalledWith({
       route: "conversation",
+      rawText: "How should I prioritize this week?",
       normalizedText: "How should I prioritize this week?",
       recentTurns: [
         {
@@ -44,6 +46,7 @@ describe("conversation response service", () => {
     const result = await buildConversationResponse(
       {
         route: "conversation_then_mutation",
+        rawText: "Could we move it to tomorrow morning?",
         normalizedText: "Could we move it to tomorrow morning?",
         recentTurns: [
           {
@@ -68,10 +71,11 @@ describe("conversation response service", () => {
     await expect(
       buildConversationResponse({
         route: "conversation",
+        rawText: "   ",
         normalizedText: "   ",
         recentTurns: [],
         memorySummary: null
       })
-    ).rejects.toThrow("must include non-empty normalizedText");
+    ).rejects.toThrow("must include non-empty rawText and normalizedText");
   });
 });
