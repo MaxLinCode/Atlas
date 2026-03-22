@@ -1,5 +1,5 @@
 # Current Work
-
+REMOVE: pr smoke test
 ## Active focus
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
