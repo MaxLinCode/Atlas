@@ -13,6 +13,7 @@ import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   confirmedMutationRecoveryOutputSchema,
+  conversationStateSnapshotSchema,
   detectTaskCalendarDrift,
   getConfig,
   getGoogleCalendarOAuthConfig,
@@ -25,6 +26,7 @@ import {
   normalizeTelegramText,
   normalizeTelegramUpdate,
   processInboxItem,
+  createEmptyDiscourseState,
   resolveScheduleBlockReference,
   resolveTaskReference,
   scheduleBlockSchema,
@@ -1083,6 +1085,47 @@ describe("core package", () => {
     expect(
       isTaskFollowupReminderDue({ ...task, followupReminderSentAt: "2026-03-15T19:00:00.000Z" }, "2026-03-15T21:00:00.000Z")
     ).toBe(false);
+  });
+
+  it("parses explicit conversation state with entity registry and discourse state", () => {
+    const parsed = conversationStateSnapshotSchema.parse({
+      conversation: {
+        id: "conversation-1",
+        userId: "123",
+        title: "Telegram planning thread",
+        summaryText: "The user is discussing a move for the dentist reminder.",
+        mode: "conversation_then_mutation",
+        createdAt: "2026-03-20T16:00:00.000Z",
+        updatedAt: "2026-03-20T16:05:00.000Z"
+      },
+      transcript: [
+        {
+          role: "user",
+          text: "Could we move it after lunch?",
+          createdAt: "2026-03-20T16:05:00.000Z"
+        }
+      ],
+      entityRegistry: [
+        {
+          id: "entity-1",
+          conversationId: "conversation-1",
+          kind: "proposal_option",
+          label: "Move the dentist reminder after lunch.",
+          status: "active",
+          createdAt: "2026-03-20T16:04:00.000Z",
+          updatedAt: "2026-03-20T16:04:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "It sounds like you want to move the dentist reminder after lunch."
+          }
+        }
+      ],
+      discourseState: createEmptyDiscourseState()
+    });
+
+    expect(parsed.entityRegistry[0]?.kind).toBe("proposal_option");
+    expect(parsed.discourseState?.last_user_mentioned_entity_ids).toEqual([]);
+    expect(parsed.discourseState?.mode).toBe("planning");
   });
 
   it("normalizes Telegram text and webhook metadata", () => {

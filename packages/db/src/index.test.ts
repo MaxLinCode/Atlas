@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   decryptCalendarCredential,
   encryptCalendarCredential,
+  appendConversationTurn,
   getDefaultFollowUpRuntimeStore,
   getLatestFollowUpBundleContext,
   getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
   getRepositoryHealth,
+  loadConversationState,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   listOutgoingBotEventsForTests,
@@ -17,9 +19,11 @@ import {
   listTasksForTests,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
+  resetConversationStateStoreForTests,
   resetInboxProcessingStoreForTests,
   resetGoogleCalendarConnectionStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
+  saveConversationState,
   seedInboxItemForProcessingTests,
   updateOutgoingTelegramMessage
 } from "./index";
@@ -169,6 +173,73 @@ describe("db package", () => {
       taskIds: ["task-1", "task-2"],
       items: [{ number: 1, taskId: "task-1" }, { number: 2, taskId: "task-2" }]
     });
+  });
+
+  it("stores explicit conversation transcript, entity registry, and discourse state", async () => {
+    resetConversationStateStoreForTests();
+
+    await appendConversationTurn({
+      userId: "123",
+      role: "user",
+      text: "Could we move that after lunch?",
+      createdAt: "2026-03-20T16:00:00.000Z"
+    });
+    await saveConversationState({
+      userId: "123",
+      summaryText: "The user is discussing a move after lunch.",
+      mode: "conversation_then_mutation",
+      entityRegistry: [
+        {
+          id: "entity-1",
+          conversationId: "placeholder",
+          kind: "proposal_option",
+          label: "Move the dentist reminder after lunch.",
+          status: "active",
+          createdAt: "2026-03-20T16:01:00.000Z",
+          updatedAt: "2026-03-20T16:01:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "It sounds like you want to move the dentist reminder after lunch."
+          }
+        }
+      ],
+      discourseState: {
+        focus_entity_id: "entity-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "planning"
+      },
+      updatedAt: "2026-03-20T16:01:00.000Z"
+    });
+
+    const state = await loadConversationState("123", 6);
+
+    expect(state).toMatchObject({
+      conversation: {
+        userId: "123",
+        summaryText: "The user is discussing a move after lunch.",
+        mode: "conversation_then_mutation"
+      },
+      transcript: [
+        {
+          role: "user",
+          text: "Could we move that after lunch?"
+        }
+      ],
+      entityRegistry: [
+        {
+          kind: "proposal_option",
+          label: "Move the dentist reminder after lunch."
+        }
+      ],
+      discourseState: {
+        focus_entity_id: "entity-1",
+        last_user_mentioned_entity_ids: []
+      }
+    });
+    expect(state?.entityRegistry[0]?.conversationId).toBe(state?.conversation.id);
   });
 
   it("lists recent conversation turns in ascending order and excludes unsent assistant messages", async () => {
