@@ -51,14 +51,14 @@ export async function runBundledFollowUps(
     const outstanding = await store.listOutstandingFollowUpTasks(userId);
     const initialTaskIds = new Set(initialTasks.map((task) => task.id));
     const reminderTaskIds = new Set(reminderTasks.map((task) => task.id));
-    const bundleTasks = mergeFollowUpBundleTasks(outstanding, initialTasks);
+    const bundleTasks = mergeFollowUpBundleTasks(outstanding, initialTasks, reminderTasks);
 
     if (bundleTasks.length === 0) {
       continue;
     }
 
     const bundle = buildFollowUpBundle(bundleTasks, initialTasks.length > 0 ? "initial" : "reminder");
-    const delivery = await sendFollowUpBundle(userId, bundle, now, dependencies);
+    const delivery = await sendFollowUpBundle(userId, bundle, dependencies);
 
     if (delivery.status === "failed") {
       continue;
@@ -84,7 +84,8 @@ export async function runBundledFollowUps(
 
 function mergeFollowUpBundleTasks(
   outstanding: Task[],
-  initialTasks: FollowUpDueTask[]
+  initialTasks: FollowUpDueTask[],
+  reminderTasks: FollowUpDueTask[]
 ) {
   const tasksById = new Map<string, Pick<Task, "id" | "title" | "scheduledEndAt">>();
 
@@ -93,6 +94,12 @@ function mergeFollowUpBundleTasks(
   }
 
   for (const task of initialTasks) {
+    if (!tasksById.has(task.id)) {
+      tasksById.set(task.id, task);
+    }
+  }
+
+  for (const task of reminderTasks) {
     if (!tasksById.has(task.id)) {
       tasksById.set(task.id, task);
     }
@@ -138,7 +145,6 @@ export function buildFollowUpBundle(tasks: Pick<Task, "id" | "title" | "schedule
 async function sendFollowUpBundle(
   userId: string,
   bundle: RenderedFollowUpBundle,
-  now: string,
   dependencies: FollowUpRunnerDependencies
 ) {
   const chatId = userId;
@@ -148,7 +154,7 @@ async function sendFollowUpBundle(
       userId,
       chatId,
       text: bundle.text,
-      idempotencyKey: `${buildTelegramFollowUpIdempotencyKey(`${bundle.kind}:${bundle.taskIds.join(",")}:${now}`)}:${bundle.taskIds.length}`,
+      idempotencyKey: buildTelegramFollowUpIdempotencyKey(`${bundle.kind}:${bundle.taskIds.join(",")}`),
       bundle
     },
     {

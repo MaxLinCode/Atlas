@@ -6,7 +6,8 @@ import {
   listTasksForTests,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
-  seedInboxItemForProcessingTests
+  seedInboxItemForProcessingTests,
+  type FollowUpRuntimeStore
 } from "@atlas/db";
 
 import { runBundledFollowUps } from "./follow-up";
@@ -186,5 +187,88 @@ describe("runBundledFollowUps", () => {
       kind: "initial",
       taskIds: [...initialTaskIds, ...laterTaskIds]
     });
+  });
+
+  it("deduplicates identical follow-up bundles across repeated runner attempts", async () => {
+    const reservedKeys = new Set<string>();
+    const deliveryStore = {
+      reserveOutgoingIfAbsent: vi.fn(async (event) => {
+        if (reservedKeys.has(event.idempotencyKey)) {
+          return { status: "duplicate" as const };
+        }
+
+        reservedKeys.add(event.idempotencyKey);
+        return { status: "reserved" as const, eventId: "event-1" };
+      }),
+      updateOutgoing: vi.fn(async () => undefined)
+    };
+    const sender = vi.fn().mockResolvedValue({
+      ok: true,
+      result: {
+        message_id: 88,
+        date: 1_700_000_000,
+        chat: {
+          id: "123",
+          type: "private"
+        },
+        text: "sent"
+      }
+    });
+    const dueTask = {
+      id: "task-1",
+      userId: "123",
+      sourceInboxItemId: "inbox-a",
+      lastInboxItemId: "inbox-a",
+      title: "Review launch checklist",
+      lifecycleState: "scheduled" as const,
+      externalCalendarEventId: null,
+      externalCalendarId: null,
+      scheduledStartAt: "2026-03-20T16:00:00.000Z",
+      scheduledEndAt: "2026-03-20T17:00:00.000Z",
+      calendarSyncStatus: "in_sync" as const,
+      calendarSyncUpdatedAt: null,
+      rescheduleCount: 0,
+      lastFollowupAt: null,
+      followupReminderSentAt: null,
+      completedAt: null,
+      archivedAt: null,
+      priority: "medium" as const,
+      urgency: "medium" as const,
+      createdAt: "2026-03-20T16:00:00.000Z",
+      dueType: "initial" as const
+    };
+    const store: FollowUpRuntimeStore = {
+      listDueFollowUpTasks: vi.fn(async () => [dueTask]),
+      listOutstandingFollowUpTasks: vi.fn(async () => []),
+      hasInFlightInboxItem: vi.fn(async () => false),
+      markFollowUpSent: vi.fn(async () => undefined),
+      markFollowUpReminderSent: vi.fn(async () => undefined)
+    };
+
+    await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
+      store,
+      deliveryStore,
+      sender
+    });
+    await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
+      store,
+      deliveryStore,
+      sender
+    });
+
+    expect(sender).toHaveBeenCalledTimes(1);
+    expect(deliveryStore.reserveOutgoingIfAbsent).toHaveBeenCalledTimes(2);
+    expect(deliveryStore.reserveOutgoingIfAbsent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        idempotencyKey: "telegram:followup:inbox-item:initial:task-1"
+      })
+    );
+    expect(deliveryStore.reserveOutgoingIfAbsent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        idempotencyKey: "telegram:followup:inbox-item:initial:task-1"
+      })
+    );
   });
 });

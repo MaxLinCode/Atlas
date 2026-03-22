@@ -109,8 +109,11 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 ### Cron protection
 
-1. Call the reconcile route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
-2. Call the same route with the correct bearer token and confirm it succeeds.
+1. Confirm Vercel Cron Jobs includes `/api/cron/send-followups` on the production deployment.
+2. Call the follow-up cron route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
+3. Call the follow-up cron route with the correct bearer token and confirm it succeeds.
+4. Call the reconcile route without `Authorization: Bearer $CRON_SECRET` and confirm it is rejected.
+5. Call the reconcile route with the correct bearer token and confirm it succeeds.
 
 ### Basic safety checks
 
