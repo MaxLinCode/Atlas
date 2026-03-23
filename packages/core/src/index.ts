@@ -10,6 +10,7 @@ import {
 export * from "./ambiguity";
 export * from "./commit-policy";
 export * from "./discourse-state";
+export * from "./proposal-rules";
 export * from "./slot-normalizer";
 export * from "./telegram";
 
