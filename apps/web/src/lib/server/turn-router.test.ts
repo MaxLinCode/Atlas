@@ -17,8 +17,10 @@ vi.mock("./slot-extractor", () => ({
 }));
 
 import { classifyTurn } from "./llm-classifier";
+import { extractSlots } from "./slot-extractor";
 
 const mockClassifyTurn = vi.mocked(classifyTurn);
+const mockExtractSlots = vi.mocked(extractSlots);
 
 function mockClassification(output: Partial<TurnClassifierOutput>) {
   const full: TurnClassifierOutput = {
@@ -35,6 +37,11 @@ describe("turn router", () => {
     mockClassification({
       turnType: "planning_request",
       confidence: 0.95
+    });
+    mockExtractSlots.mockResolvedValueOnce({
+      extractedValues: { day: "tomorrow", time: "18:00" },
+      confidence: { day: 0.95, time: 0.95 },
+      unresolvable: []
     });
 
     const result = await routeMessageTurn({
