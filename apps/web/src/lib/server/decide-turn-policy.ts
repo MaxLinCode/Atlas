@@ -37,8 +37,7 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingSlots: commitResult.missingSlots,
-    needsClarification: commitResult.needsClarification,
-    blockingSlots: []
+    needsClarification: commitResult.needsClarification
   });
 
   switch (classification.turnType) {

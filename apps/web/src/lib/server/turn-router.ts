@@ -1,10 +1,8 @@
 import {
   applyCommitPolicy,
   createEmptyDiscourseState,
-  getActivePendingClarifications,
   routedTurnSchema,
   type ConversationTurn,
-  type DiscourseState,
   type RoutedTurn,
   type SlotKey,
   deriveAmbiguity,
@@ -75,7 +73,7 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
   });
 
   // Build interpretation for backward compatibility
-  const interpretation = buildInterpretation(classification, commitResult, discourseState);
+  const interpretation = buildInterpretation(classification, commitResult);
 
   return routedTurnSchema.parse({
     interpretation,
@@ -96,22 +94,16 @@ function deriveConversationContext(recentTurns: ConversationTurn[]): string {
 
 function buildInterpretation(
   classification: TurnClassifierOutput,
-  commitResult: CommitPolicyOutput,
-  discourseState: DiscourseState
+  commitResult: CommitPolicyOutput
 ): TurnInterpretation {
-  const blockingSlots = getActivePendingClarifications(discourseState)
-    .filter((c) => c.blocking)
-    .map((c) => c.slot);
   const allMissingSlots = unique([
     ...commitResult.missingSlots,
-    ...commitResult.needsClarification,
-    ...blockingSlots
+    ...commitResult.needsClarification
   ]);
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingSlots: commitResult.missingSlots,
-    needsClarification: commitResult.needsClarification,
-    blockingSlots
+    needsClarification: commitResult.needsClarification
   });
 
   return {
@@ -121,7 +113,7 @@ function buildInterpretation(
     ...(classification.resolvedProposalId ? { resolvedProposalId: classification.resolvedProposalId } : {}),
     ambiguity,
     ...(ambiguity !== "none"
-      ? { ambiguityReason: deriveAmbiguityReason(classification.turnType, ambiguity, blockingSlots) }
+      ? { ambiguityReason: deriveAmbiguityReason(classification.turnType, ambiguity) }
       : {}),
     ...(allMissingSlots.length > 0 ? { missingSlots: allMissingSlots } : {})
   };
@@ -129,13 +121,8 @@ function buildInterpretation(
 
 function deriveAmbiguityReason(
   turnType: TurnInterpretation["turnType"],
-  ambiguity: TurnAmbiguity,
-  blockingSlots: string[]
+  ambiguity: TurnAmbiguity
 ): string {
-  if (blockingSlots.length > 0) {
-    return "Blocking clarification slots are still open.";
-  }
-
   if (ambiguity === "high") {
     switch (turnType) {
       case "unknown":

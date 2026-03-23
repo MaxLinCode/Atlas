@@ -43,13 +43,14 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
   const newClarifications: PendingClarification[] = [];
   const resolvedClarificationIds: string[] = [];
   const activePendingClarifications = getActivePendingClarifications(discourseState);
-  const persistableClarificationSlots = derivePersistableClarificationSlots(input.interpretation.missingSlots);
+  const persistableClarificationSlots = derivePersistableClarificationSlots(input.policy.clarificationSlots);
   const shouldPersistClarification =
     input.policy.action === "ask_clarification" && persistableClarificationSlots.length > 0;
   const shouldClearActiveClarifications =
     shouldPersistClarification ||
     input.policy.action === "present_proposal" ||
-    input.interpretation.turnType === "confirmation";
+    input.interpretation.turnType === "confirmation" ||
+    (input.interpretation.turnType === "clarification_answer" && !shouldPersistClarification);
   let nextFocusEntityId: string | null | undefined;
 
   if (shouldClearActiveClarifications) {
@@ -87,7 +88,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
           mutationInputSource: null,
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
-          missingSlots: input.interpretation.missingSlots
+          missingSlots: input.policy.clarificationSlots
         }
       })
     );
@@ -409,6 +410,8 @@ function upsertActiveProposalEntity(
   return nextProposal;
 }
 
+const PERSISTABLE_SLOT_KEYS = new Set(["day", "time", "duration", "target"]);
+
 function derivePersistableClarificationSlots(slots: string[] | undefined) {
   if (!slots) {
     return [];
@@ -416,7 +419,7 @@ function derivePersistableClarificationSlots(slots: string[] | undefined) {
 
   return Array.from(
     new Set(
-      slots.map((slot) => slot.trim()).filter((slot) => slot.length > 0 && slot !== "unknown")
+      slots.map((slot) => slot.trim()).filter((slot) => PERSISTABLE_SLOT_KEYS.has(slot))
     )
   );
 }

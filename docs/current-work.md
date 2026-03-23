@@ -299,6 +299,20 @@ PR #53 (`codex/turn-routing-refactor`) implements the 3-layer turn routing pipel
 3. Merge PR #53
 4. Open follow-up issue for items 6–10
 
+### Follow-up — clarification state cleanup (separate PR)
+
+The stale-slot-readiness fix revealed further simplification opportunities in the clarification persistence model:
+
+1. **`blocking` field on `PendingClarification` is dead weight.** It is hardcoded to `true` everywhere — never set to `false`. The only reader is `deriveMode()`, which checks `hasBlockingClarification` to return `"clarifying"` mode. The field can be removed and `deriveMode` can derive "clarifying" from `pending_write_contract` + `resolved_slots` (contract gaps) instead.
+
+2. **Resolved/cancelled clarifications accumulate as noise.** `getActivePendingClarifications()` filters to `status === "pending"`, so resolved entries just grow the array. No code inspects resolved entries for decisions. They could be pruned on state update or moved to a separate audit trail.
+
+3. **Full `pending_clarifications` array (including resolved entries) is passed to the LLM classifier.** The system prompt says "active clarifications the assistant is waiting on" but the data includes stale resolved entries. This could mislead the model into thinking there are still open questions. Fix: filter to `status === "pending"` before passing to the classifier, or pass only `getActivePendingClarifications()`.
+
+4. **`deriveMode` could derive "clarifying" from canonical slot state.** Instead of checking `hasBlockingClarification` (which depends on persisted clarification entities), check whether `pending_write_contract` exists and has unresolved required slots in `resolved_slots`. This aligns mode derivation with the same canonical source of truth used for routing.
+
+5. **`getActivePendingClarifications` remains needed** for reference resolution (disambiguating pronouns when there's a single active clarification for an entity) and state transitions (marking clarifications as resolved). It is no longer needed for routing decisions after the stale-slot-readiness fix.
+
 ### After merge — next priorities
 
 - Stabilize the planner contract and prompt iteration loop using `pnpm eval:planner` and `pnpm eval:all` as the gating loop
