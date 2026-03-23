@@ -3,10 +3,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 import {
-  conversationDiscourseStateSchema
+  conversationDiscourseStateSchema,
+  resolvedSlotsSchema
 } from "./discourse-state";
 
 export * from "./discourse-state";
+export * from "./slot-normalizer";
 export * from "./telegram";
 
 const postgresConnectionStringSchema = z.string().refine((value) => {
@@ -836,6 +838,40 @@ export const routedTurnSchema = z.object({
   policy: turnPolicyDecisionSchema
 });
 
+const slotKeySchema = z.enum(["day", "time", "duration", "target"]);
+
+const slotConfidenceSchema = z.object({
+  day: z.number().nullable().optional(),
+  time: z.number().nullable().optional(),
+  duration: z.number().nullable().optional(),
+  target: z.number().nullable().optional()
+});
+
+export const rawSlotExtractionSchema = z.object({
+  time: z.object({ hour: z.number().int(), minute: z.number().int() }).nullable(),
+  day: z.object({
+    kind: z.enum(["relative", "weekday", "absolute"]),
+    value: z.string()
+  }).nullable(),
+  duration: z.object({ minutes: z.number().int() }).nullable(),
+  target: z.object({ entityId: z.string() }).nullable(),
+  confidence: slotConfidenceSchema,
+  unresolvable: z.array(slotKeySchema)
+});
+
+export const slotExtractorInputSchema = z.object({
+  currentTurnText: z.string(),
+  pendingSlots: z.array(slotKeySchema),
+  priorResolvedSlots: resolvedSlotsSchema,
+  conversationContext: z.string().optional()
+});
+
+export const slotExtractorOutputSchema = z.object({
+  extractedValues: resolvedSlotsSchema.partial(),
+  confidence: slotConfidenceSchema,
+  unresolvable: z.array(slotKeySchema)
+});
+
 export const confirmedMutationRecoveryInputSchema = z.object({
   rawText: z.string().min(1),
   normalizedText: z.string().min(1),
@@ -920,6 +956,10 @@ export type TurnInterpretation = z.infer<typeof turnInterpretationSchema>;
 export type TurnPolicyAction = z.infer<typeof turnPolicyActionSchema>;
 export type TurnPolicyDecision = z.infer<typeof turnPolicyDecisionSchema>;
 export type RoutedTurn = z.infer<typeof routedTurnSchema>;
+export type SlotKey = z.infer<typeof slotKeySchema>;
+export type RawSlotExtraction = z.infer<typeof rawSlotExtractionSchema>;
+export type SlotExtractorInput = z.infer<typeof slotExtractorInputSchema>;
+export type SlotExtractorOutput = z.infer<typeof slotExtractorOutputSchema>;
 export type ConfirmedMutationRecoveryInput = z.input<typeof confirmedMutationRecoveryInputSchema>;
 export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type CapturedTaskInput = {

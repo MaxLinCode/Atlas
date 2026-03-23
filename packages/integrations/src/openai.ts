@@ -15,15 +15,20 @@ import {
   confirmedMutationRecoveryInputSchema,
   confirmedMutationRecoveryResponseFormatSchema,
   confirmedMutationRecoveryOutputSchema,
+  rawSlotExtractionSchema,
+  slotExtractorInputSchema,
   type TurnRoutingInput,
   type TurnRoutingOutput,
   type ConfirmedMutationRecoveryInput,
-  type ConfirmedMutationRecoveryOutput
+  type ConfirmedMutationRecoveryOutput,
+  type SlotExtractorInput,
+  type RawSlotExtraction
 } from "@atlas/core";
 import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
 import { inboxPlannerSystemPrompt } from "./prompts/planner";
+import { slotExtractorSystemPrompt } from "./prompts/slot-extractor";
 import { turnRouterSystemPrompt } from "./prompts/turn-router";
 
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
@@ -31,6 +36,7 @@ export const DEFAULT_TURN_ROUTER_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL = "gpt-4o-mini";
+export const DEFAULT_SLOT_EXTRACTOR_MODEL = "gpt-4o-mini";
 
 export const conversationMemorySummaryInputSchema = z.object({
   recentTurns: z.array(conversationTurnSchema)
@@ -223,6 +229,51 @@ export async function respondToConversationTurnWithResponses(
   });
 
   return conversationResponseOutputSchema.parse(response.output_parsed);
+}
+
+export async function extractSlotsWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+): Promise<RawSlotExtraction> {
+  const context = slotExtractorInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_SLOT_EXTRACTOR_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: slotExtractorSystemPrompt
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(buildSlotExtractorPromptContext(context))
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(rawSlotExtractionSchema, "atlas_slot_extraction_output")
+    }
+  });
+
+  return rawSlotExtractionSchema.parse(response.output_parsed);
+}
+
+function buildSlotExtractorPromptContext(context: SlotExtractorInput) {
+  return {
+    currentTurnText: context.currentTurnText,
+    pendingSlots: context.pendingSlots,
+    priorResolvedSlots: context.priorResolvedSlots,
+    conversationContext: context.conversationContext ?? null
+  };
 }
 
 function buildTurnRoutingPromptContext(context: TurnRoutingInput) {
