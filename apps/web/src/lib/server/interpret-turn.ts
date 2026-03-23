@@ -58,7 +58,12 @@ export async function interpretTurn(input: InterpretTurnInput): Promise<TurnInte
   }
 
   if (clarificationLike) {
-    const ambiguity = blockingSlots.length > 0 ? "high" : "none";
+    const unresolvedBlockingSlots = deriveClarificationAnswerMissingSlots({
+      blockingSlots,
+      writeSignals,
+      resolvedEntityIds
+    });
+    const ambiguity = unresolvedBlockingSlots.length > 0 ? "high" : "none";
 
     return {
       turnType: "clarification_answer",
@@ -69,7 +74,7 @@ export async function interpretTurn(input: InterpretTurnInput): Promise<TurnInte
       ...(ambiguity === "high"
         ? { ambiguityReason: "Blocking clarification slots are still open." }
         : {}),
-      ...(blockingSlots.length > 0 ? { missingSlots: blockingSlots } : {})
+      ...(unresolvedBlockingSlots.length > 0 ? { missingSlots: unresolvedBlockingSlots } : {})
     };
   }
 
@@ -156,7 +161,7 @@ function unique(values: string[]) {
 }
 
 function isConfirmationTurn(lower: string) {
-  return /^(yes|yeah|yep|ok|okay|do it|sounds good|works|that works|go ahead|please do|confirm)([.! ]*)?$/.test(
+  return /^(yes|yeah|yep|ok|okay|do it|sounds good|works|that works|go ahead|please do|confirm)([.,!? ]*)?$/.test(
     lower
   );
 }
@@ -297,6 +302,30 @@ function deriveMissingSlots(input: {
   }
 
   return unique(missingSlots);
+}
+
+function deriveClarificationAnswerMissingSlots(input: {
+  blockingSlots: string[];
+  writeSignals: ReturnType<typeof analyzeWriteSignals>;
+  resolvedEntityIds: string[];
+}) {
+  return unique(
+    input.blockingSlots.filter((slot) => {
+      switch (slot) {
+        case "day":
+          return !input.writeSignals.hasDayReference;
+        case "time":
+          return !input.writeSignals.hasClockTime;
+        case "target":
+          return input.resolvedEntityIds.length === 0 && !input.writeSignals.hasConcreteSubject;
+        case "proposal":
+        case "unknown":
+          return true;
+        default:
+          return true;
+      }
+    })
+  );
 }
 
 function deriveWriteAmbiguity(input: {

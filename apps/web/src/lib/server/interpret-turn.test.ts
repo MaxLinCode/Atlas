@@ -198,6 +198,70 @@ describe("interpretTurn", () => {
     });
   });
 
+  it("clears a satisfied time clarification slot when the answer provides a clock time", async () => {
+    const result = await interpretTurn({
+      rawText: "5pm",
+      normalizedText: "5pm",
+      recentTurns: [],
+      discourseState: {
+        focus_entity_id: null,
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [
+          {
+            id: "clar-1",
+            slot: "time",
+            question: "What time should I schedule it?",
+            status: "pending",
+            blocking: true,
+            createdAt: "2026-03-20T16:00:00.000Z",
+            createdTurnId: "assistant:1"
+          }
+        ],
+        mode: "clarifying"
+      }
+    });
+
+    expect(result).toMatchObject({
+      turnType: "clarification_answer",
+      ambiguity: "none"
+    });
+    expect(result.missingSlots).toBeUndefined();
+  });
+
+  it("treats punctuated consent as confirmation when one active proposal exists", async () => {
+    const result = await interpretTurn({
+      rawText: "Ok,",
+      normalizedText: "Ok,",
+      recentTurns: [],
+      entityRegistry: [
+        {
+          id: "proposal-1",
+          conversationId: "conversation-1",
+          kind: "proposal_option",
+          label: "Schedule it at 5pm",
+          status: "active",
+          createdAt: "2026-03-20T16:00:00.000Z",
+          updatedAt: "2026-03-20T16:00:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "Would you like me to schedule it at 5pm?",
+            confirmationRequired: true,
+            targetEntityId: null,
+            mutationInputSource: null
+          }
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      turnType: "confirmation",
+      resolvedProposalId: "proposal-1",
+      ambiguity: "none"
+    });
+  });
+
   it("treats informational questions as informational", async () => {
     const result = await interpretTurn({
       rawText: "What do I have tomorrow?",
