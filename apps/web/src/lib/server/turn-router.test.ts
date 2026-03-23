@@ -66,4 +66,48 @@ describe("turn router", () => {
       }
     });
   });
+
+  it("routes punctuated consent on an active proposal to recover-and-execute", async () => {
+    const result = await routeMessageTurn({
+      rawText: "Ok,",
+      normalizedText: "Ok,",
+      recentTurns: [
+        {
+          role: "assistant",
+          text: "Would you like me to schedule it at 5pm?",
+          createdAt: "2026-03-17T16:00:00.000Z"
+        }
+      ],
+      entityRegistry: [
+        {
+          id: "proposal-1",
+          conversationId: "conversation-1",
+          kind: "proposal_option",
+          label: "Schedule it at 5pm",
+          status: "active",
+          createdAt: "2026-03-17T16:00:00.000Z",
+          updatedAt: "2026-03-17T16:00:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "Would you like me to schedule it at 5pm?",
+            confirmationRequired: true,
+            originatingTurnText: "Schedule Malaysia trip planning at 5pm",
+            targetEntityId: null,
+            mutationInputSource: null
+          }
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      interpretation: {
+        turnType: "confirmation",
+        resolvedProposalId: "proposal-1"
+      },
+      policy: {
+        action: "recover_and_execute",
+        targetProposalId: "proposal-1"
+      }
+    });
+  });
 });
