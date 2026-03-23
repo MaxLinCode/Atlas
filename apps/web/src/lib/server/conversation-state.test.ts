@@ -33,7 +33,8 @@ describe("deriveConversationReplyState", () => {
     const result = deriveConversationReplyState({
       snapshot: buildSnapshot(),
       policy: {
-        action: "ask_clarification"
+        action: "ask_clarification",
+        committedSlots: {}
       },
       interpretation: {
         turnType: "planning_request",
@@ -71,7 +72,8 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        clarificationSlots: ["proposal"]
+        clarificationSlots: ["proposal"],
+        committedSlots: {}
       },
       interpretation: {
         turnType: "confirmation",
@@ -94,7 +96,8 @@ describe("deriveConversationReplyState", () => {
     const result = deriveConversationReplyState({
       snapshot: buildSnapshot(),
       policy: {
-        action: "ask_clarification"
+        action: "ask_clarification",
+        committedSlots: {}
       },
       interpretation: {
         turnType: "unknown",
@@ -154,7 +157,8 @@ describe("deriveConversationReplyState", () => {
     const result = deriveConversationReplyState({
       snapshot,
       policy: {
-        action: "present_proposal"
+        action: "present_proposal",
+        committedSlots: {}
       },
       interpretation: {
         turnType: "clarification_answer",

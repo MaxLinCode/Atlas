@@ -8,6 +8,14 @@ vi.mock("./llm-classifier", () => ({
   classifyTurn: vi.fn()
 }));
 
+vi.mock("./slot-extractor", () => ({
+  extractSlots: vi.fn().mockResolvedValue({
+    extractedValues: {},
+    confidence: {},
+    unresolvable: []
+  })
+}));
+
 import { classifyTurn } from "./llm-classifier";
 
 const mockClassifyTurn = vi.mocked(classifyTurn);
@@ -48,7 +56,6 @@ describe("turn router", () => {
   });
 
   it("represents recoverable confirmation as confirmation plus recover-and-execute", async () => {
-    // Confirmation with single proposal is handled by pre-filter — no LLM mock needed
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
@@ -100,7 +107,6 @@ describe("turn router", () => {
   });
 
   it("routes punctuated consent on an active proposal to recover-and-execute", async () => {
-    // Punctuated "Ok," is handled by pre-filter when single proposal exists
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
@@ -148,5 +154,20 @@ describe("turn router", () => {
         targetProposalId: "proposal-1"
       }
     });
+  });
+
+  it("includes committedSlots on policy output", async () => {
+    mockClassification({
+      turnType: "informational",
+      confidence: 0.93
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "What's on my schedule?",
+      normalizedText: "What's on my schedule?",
+      recentTurns: []
+    });
+
+    expect(result.policy.committedSlots).toEqual({});
   });
 });

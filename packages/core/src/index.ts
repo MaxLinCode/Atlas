@@ -7,6 +7,7 @@ import {
   resolvedSlotsSchema
 } from "./discourse-state";
 
+export * from "./commit-policy";
 export * from "./discourse-state";
 export * from "./slot-normalizer";
 export * from "./telegram";
@@ -830,7 +831,8 @@ export const turnPolicyDecisionSchema = z.object({
   targetEntityId: z.string().min(1).optional(),
   targetProposalId: z.string().min(1).optional(),
   mutationInputSource: z.enum(["direct_user_turn", "recovered_proposal"]).optional(),
-  clarificationSlots: z.array(z.string().min(1)).optional()
+  clarificationSlots: z.array(z.string().min(1)).optional(),
+  committedSlots: resolvedSlotsSchema.optional().default({})
 });
 
 export const routedTurnSchema = z.object({

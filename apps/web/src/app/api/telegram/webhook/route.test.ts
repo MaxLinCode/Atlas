@@ -150,7 +150,8 @@ function buildRoutedTurn(input: {
         ? { mutationInputSource: "recovered_proposal" as const }
         : input.action === "execute_mutation"
           ? { mutationInputSource: "direct_user_turn" as const }
-          : {})
+          : {}),
+      committedSlots: {}
     }
   };
 }
