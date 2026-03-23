@@ -31,7 +31,8 @@ const {
   classifyTurnWithResponsesMock,
   summarizeConversationMemoryWithResponsesMock,
   respondToConversationTurnWithResponsesMock,
-  recoverConfirmedMutationWithResponsesMock
+  recoverConfirmedMutationWithResponsesMock,
+  extractSlotsWithResponsesMock
 } = vi.hoisted(() => ({
   editTelegramMessageMock: vi.fn(),
   sendTelegramMessageMock: vi.fn(),
@@ -40,7 +41,8 @@ const {
   classifyTurnWithResponsesMock: vi.fn(),
   summarizeConversationMemoryWithResponsesMock: vi.fn(),
   respondToConversationTurnWithResponsesMock: vi.fn(),
-  recoverConfirmedMutationWithResponsesMock: vi.fn()
+  recoverConfirmedMutationWithResponsesMock: vi.fn(),
+  extractSlotsWithResponsesMock: vi.fn()
 }));
 
 vi.mock("@atlas/integrations", async () => {
@@ -84,6 +86,7 @@ vi.mock("@atlas/integrations", async () => {
     recoverConfirmedMutationWithResponses: recoverConfirmedMutationWithResponsesMock,
     classifyTurnWithResponses: classifyTurnWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
+    extractSlotsWithResponses: extractSlotsWithResponsesMock,
     sendTelegramChatAction: sendTelegramChatActionMock,
     sendTelegramMessage: sendTelegramMessageMock,
     summarizeConversationMemoryWithResponses: summarizeConversationMemoryWithResponsesMock
@@ -283,6 +286,15 @@ beforeEach(async () => {
   summarizeConversationMemoryWithResponsesMock.mockReset();
   respondToConversationTurnWithResponsesMock.mockReset();
   recoverConfirmedMutationWithResponsesMock.mockReset();
+  extractSlotsWithResponsesMock.mockReset();
+  extractSlotsWithResponsesMock.mockResolvedValue({
+    time: { hour: 9, minute: 0 },
+    day: { kind: "relative", value: "tomorrow" },
+    duration: null,
+    target: null,
+    confidence: { day: 0.95, time: 0.95 },
+    unresolvable: []
+  });
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
     reason: "Direct scheduling request."
@@ -715,8 +727,16 @@ describe("telegram webhook route", () => {
     expect(listInboxItemsForTests()).toHaveLength(1);
   });
 
-  it("normalizes a Telegram text message and hands it to app services", async () => {
+  it("normalizes a Telegram text message and routes to clarification when slots are missing", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    extractSlotsWithResponsesMock.mockResolvedValueOnce({
+      time: null,
+      day: null,
+      duration: null,
+      target: null,
+      confidence: {},
+      unresolvable: []
+    });
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -773,42 +793,23 @@ describe("telegram webhook route", () => {
         processingStatus: "received",
         linkedTaskIds: []
       },
-      processing: {
-        outcome: "planned"
-      },
-      outboundDelivery: {
-        status: "edited",
-        attempts: 1
-      }
-    });
-    expect(response.body).toMatchObject({
-      outboundDelivery: {
-        idempotencyKey: expect.any(String),
-        message: {
-          message_id: 88
+      routing: {
+        interpretation: {
+          turnType: "planning_request",
+          ambiguity: "high"
+        },
+        policy: {
+          action: "ask_clarification"
         }
+      },
+      processing: {
+        outcome: "conversation_replied"
       }
     });
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
-    expect(listOutgoingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
-    expect(listPlannerRunsForTests()).toHaveLength(1);
-    expect(listTasksForTests()).toHaveLength(1);
-    expect(listScheduleBlocksForTests()).toHaveLength(1);
-    expect(sendTelegramChatActionMock).toHaveBeenCalledWith({
-      chatId: "999",
-      action: "typing"
-    });
-    expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
-    expect(sendTelegramMessageMock).toHaveBeenCalledWith({
-      chatId: "999",
-      text: "Checking your schedule"
-    });
-    expect(editTelegramMessageMock).toHaveBeenCalledWith({
-      chatId: "999",
-      messageId: 88,
-      text: expect.stringContaining("Scheduled 'Review launch checklist'")
-    });
+    expect(listPlannerRunsForTests()).toHaveLength(0);
+    expect(listTasksForTests()).toHaveLength(0);
   });
 
   it("preserves mutation behavior when the turn router explicitly returns mutation", async () => {
@@ -865,6 +866,14 @@ describe("telegram webhook route", () => {
 
   it("does not keep clear scheduling requests in discuss-first mode", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    extractSlotsWithResponsesMock.mockResolvedValueOnce({
+      time: { hour: 18, minute: 0 },
+      day: { kind: "relative", value: "tomorrow" },
+      duration: { minutes: 60 },
+      target: null,
+      confidence: { day: 0.95, time: 0.95, duration: 0.9 },
+      unresolvable: []
+    });
 
     const response = await handleTelegramWebhook(
       buildRequest({
