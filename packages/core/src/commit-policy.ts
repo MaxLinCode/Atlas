@@ -16,7 +16,7 @@ export type CommitPolicyOutput = {
   missingSlots: SlotKey[];
 };
 
-const SLOT_COMMITTING_TURN_TYPES = new Set<TurnInterpretation["turnType"]>([
+export const SLOT_COMMITTING_TURN_TYPES = new Set<TurnInterpretation["turnType"]>([
   "clarification_answer",
   "planning_request",
   "edit_request"

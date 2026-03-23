@@ -266,20 +266,49 @@ DB rollout hardening is now part of the active release path: `packages/db` owns 
 
 ## Next Handoff
 
-- Next implementation task: stabilize the planner contract and prompt iteration loop now that the live eval harness is in place.
-- Start by using `pnpm eval:planner` and `pnpm eval:all` as the gating loop for any planner or router change.
-- Keep the next slice focused:
-  - eliminate remaining planner output flakiness around `scheduleConstraint` shape so live evals do not intermittently fail on otherwise valid scheduling intent
-  - add deterministic contract coverage for the planner normalization path that converts the API-facing response shape into the strict runtime schema
-  - verify the generated `*.prompt-improvement.md` artifacts are useful in practice on at least one real failing eval case, and refine the brief format if it is too noisy or too narrow
-  - keep `manual-eval-report.json` as the canonical full-suite artifact and suite-specific report/brief files as targeted iteration tools only
-- After that slice, return to the locked-down Google Calendar production-readiness work:
+PR #53 (`codex/turn-routing-refactor`) implements the 3-layer turn routing pipeline (classify → extract → commit). The 4 multi-turn loop bugs are fixed. A code review surfaced the following issues to address before merge:
+
+### Medium — fix before merge
+
+1. **`interpretTurn.ts` is now a divergent partial pipeline.** `turn-router.ts` runs the full 3-layer pipeline and builds `TurnInterpretation` via `buildInterpretation()`. `interpretTurn.ts` does its own classification + ambiguity derivation without slot extraction or commit policy. The two files derive ambiguity differently — `turn-router.ts` considers `commitResult.missingSlots` and `needsClarification`, `interpretTurn.ts` does not. Either consolidate into one entry point or remove `interpretTurn` if nothing calls it directly anymore.
+
+2. **`SLOT_COMMITTING_TURN_TYPES` is duplicated** in `packages/core/src/commit-policy.ts:20` and `apps/web/src/lib/server/turn-router.ts:27`. Export from one location (core) and import in the other. If they diverge, the pipeline gate breaks silently.
+
+3. **No hour/minute range validation in `slot-normalizer.ts`.** The zod schema validates `z.number().int()` but not 0–23 for hour or 0–59 for minute. If the LLM returns `{ hour: 25, minute: 70 }`, it becomes `"25:70"` — an invalid time committed as a resolved slot. Add range constraints to the schema or a guard in the normalizer.
+
+4. **Business logic growing in `decide-turn-policy.ts`** (`deriveConsentRequirement`, `deriveProposalCompatibility`, `deriveParameterFingerprint`, `deriveActionKind`) — these are product-level decision functions that should live in `packages/core` per the architecture rules. The file grew from ~70 to ~375 lines.
+
+5. **Slot extraction is gated on `pending_write_contract` being truthy** (`turn-router.ts:53-55`), not just on turn type. The first planning request in a conversation (before any contract is set) skips extraction entirely. `DEFAULT_CONTRACT` is defined but only used for `applyCommitPolicy`. This may cause the initial "schedule gym tomorrow at 6pm" to get no extracted slots. Decide whether this is intentional or whether extraction should run against `DEFAULT_CONTRACT` when no contract exists.
+
+### Low — address in follow-up
+
+6. **`resolved_slots` is `.optional()` in the discourse state schema** but `createEmptyDiscourseState` always initializes it to `{}`. Defensive `?? {}` fallbacks are scattered throughout. Make it required in the schema.
+
+7. **Nullable confidence types in schema vs non-nullable in policy.** `slotConfidenceSchema` uses `.nullable().optional()` per slot but `CommitPolicyInput` types confidence as `Partial<Record<SlotKey, number>>`. The `compactConfidence` bridge function handles the mismatch, but the schema should be non-nullable to match.
+
+8. **`TurnTrace` and `_provenance` from the spec are not implemented.** The observability and provenance section calls for fire-and-forget turn traces and a provenance map on `ResolvedSlots`. These may be intentionally deferred but should be tracked.
+
+9. **No integration test for multi-turn slot accumulation.** Commit policy tests verify slot preservation in isolation, but no test exercises the full path where `committedSlots` are persisted through `conversation-state.ts` and used as `priorResolvedSlots` in a subsequent turn.
+
+10. **`deriveParameterFingerprint` regex** (`\b\d{1,2}(?::\d{2})?\s?(?:am|pm)?\b`) matches bare numbers like "3" in any context, which may trigger unnecessary re-consent in proposal compatibility checks.
+
+### Recommended merge sequence
+
+1. Fix items 1–5 on the existing branch
+2. Run `pnpm typecheck && pnpm --filter @atlas/core test && pnpm --filter @atlas/web test`
+3. Merge PR #53
+4. Open follow-up issue for items 6–10
+
+### After merge — next priorities
+
+- Stabilize the planner contract and prompt iteration loop using `pnpm eval:planner` and `pnpm eval:all` as the gating loop
+- Return to locked-down Google Calendar production-readiness work:
   - validate the Telegram-to-browser Google link handoff in a real deployed environment
   - finish disconnect/revocation UX and operator visibility for linked accounts
-  - decide and implement retention jobs for `bot_events` and `planner_runs` rather than leaving them as undocumented indefinite operational history
+  - decide and implement retention jobs for `bot_events` and `planner_runs`
   - add abuse controls and rate limiting around the remaining public surfaces
-  - refactor `telegram-webhook.ts` so pre-ingress Google-link gating is a small app-layer helper instead of inline policy inside the main webhook function
-  - split `google-calendar.ts` into narrower app services rather than keeping link flow, runtime adapter resolution, token refresh, and reconciliation in one module
+  - refactor `telegram-webhook.ts` so pre-ingress Google-link gating is a small app-layer helper
+  - split `google-calendar.ts` into narrower app services
   - separate pre-ingress lazy-link replies from inbox-linked follow-up delivery semantics
 
 ### Locked runtime semantics
