@@ -16,7 +16,9 @@ import {
   type TurnRoutingInput,
   type WriteContract,
   type CommitPolicyOutput,
-  SLOT_COMMITTING_TURN_TYPES
+  SLOT_COMMITTING_TURN_TYPES,
+  DEFAULT_WRITE_CONTRACT,
+  resolveWriteContract
 } from "@atlas/core";
 
 import { decideTurnPolicy } from "./decide-turn-policy";
@@ -26,10 +28,6 @@ import { extractSlots } from "./slot-extractor";
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
 
-const DEFAULT_CONTRACT: WriteContract = {
-  requiredSlots: ["day", "time"],
-  intentKind: "plan"
-};
 
 export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRouterResult> {
   const discourseState = input.discourseState ?? createEmptyDiscourseState();
@@ -43,7 +41,11 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
   });
 
   // Pipeline B: extract slots (conditional)
-  const activeContract = discourseState.pending_write_contract ?? DEFAULT_CONTRACT;
+  const priorContract = discourseState.pending_write_contract;
+  const activeContract = resolveWriteContract({
+    turnType: classification.turnType,
+    priorContract
+  }) ?? DEFAULT_WRITE_CONTRACT;
   let slotExtraction = null;
 
   if (SLOT_COMMITTING_TURN_TYPES.has(classification.turnType)) {
@@ -62,7 +64,8 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
     confidence: compactConfidence(slotExtraction?.confidence ?? {}),
     unresolvable: slotExtraction?.unresolvable ?? [],
     priorResolvedSlots: discourseState.resolved_slots ?? {},
-    activeContract
+    activeContract,
+    priorContract
   });
 
   const policy = decideTurnPolicy({
@@ -76,7 +79,7 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
 
   return routedTurnSchema.parse({
     interpretation,
-    policy
+    policy: { ...policy, resolvedContract: activeContract }
   });
 }
 

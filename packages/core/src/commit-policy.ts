@@ -7,7 +7,7 @@ export type CommitPolicyInput = {
   unresolvable: SlotKey[];
   priorResolvedSlots: ResolvedSlots;
   activeContract: WriteContract;
-  priorContract?: WriteContract;
+  priorContract?: WriteContract | undefined;
 };
 
 export type CommitPolicyOutput = {

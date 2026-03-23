@@ -193,6 +193,54 @@ describe("deriveConversationReplyState", () => {
     ]);
     expect(result.discourseState?.mode).toBe("confirming");
   });
+
+  it("persists pending_write_contract when resolvedContract is provided", () => {
+    const contract = { requiredSlots: ["day", "time"] as ("day" | "time" | "duration" | "target")[], intentKind: "plan" as const };
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        committedSlots: { day: "tomorrow" },
+        resolvedContract: contract
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingSlots: ["time"]
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z"
+    });
+
+    expect(result.discourseState?.pending_write_contract).toEqual(contract);
+  });
+
+  it("does not set pending_write_contract when resolvedContract is absent", () => {
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "reply_only",
+        committedSlots: {}
+      },
+      interpretation: {
+        turnType: "informational",
+        confidence: 0.93,
+        resolvedEntityIds: [],
+        ambiguity: "none"
+      },
+      reply: "Your schedule is empty.",
+      userTurnText: "what's on my schedule?",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z"
+    });
+
+    expect(result.discourseState?.pending_write_contract).toBeUndefined();
+  });
 });
 
 describe("deriveMutationState", () => {
@@ -305,5 +353,127 @@ describe("deriveMutationState", () => {
       })
     ]);
     expect(result.discourseState.mode).toBe("editing");
+  });
+
+  it("clears resolved_slots and pending_write_contract on successful mutation", () => {
+    const snapshot = buildSnapshot();
+    snapshot.discourseState = {
+      ...snapshot.discourseState!,
+      resolved_slots: { day: "tomorrow", time: "17:00" },
+      pending_write_contract: { requiredSlots: ["day", "time"], intentKind: "plan" }
+    };
+
+    const processing: ProcessedInboxResult = {
+      outcome: "planned",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "user-1",
+        rawText: "schedule gym",
+        normalizedText: "schedule gym",
+        processingStatus: "planned",
+        linkedTaskIds: ["task-1"],
+        createdAt: "2026-03-22T16:00:00.000Z"
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "user-1",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.92
+      },
+      createdTasks: [
+        {
+          id: "task-1",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Gym",
+          lifecycleState: "scheduled",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: "2026-03-23T17:00:00.000Z",
+          scheduledEndAt: "2026-03-23T18:00:00.000Z",
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium"
+        }
+      ],
+      scheduleBlocks: [
+        {
+          id: "block-1",
+          userId: "user-1",
+          taskId: "task-1",
+          startAt: "2026-03-23T17:00:00.000Z",
+          endAt: "2026-03-23T18:00:00.000Z",
+          confidence: 0.92,
+          reason: "User requested 5 PM.",
+          rescheduleCount: 0,
+          externalCalendarId: null
+        }
+      ],
+      followUpMessage: "Scheduled gym for 5 PM."
+    };
+
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-03-22T16:10:00.000Z"
+    });
+
+    expect(result.discourseState.resolved_slots).toEqual({});
+    expect(result.discourseState.pending_write_contract).toBeUndefined();
+  });
+
+  it("preserves resolved_slots and pending_write_contract on needs_clarification", () => {
+    const snapshot = buildSnapshot();
+    snapshot.discourseState = {
+      ...snapshot.discourseState!,
+      resolved_slots: { day: "tomorrow" },
+      pending_write_contract: { requiredSlots: ["day", "time"], intentKind: "plan" }
+    };
+
+    const processing: ProcessedInboxResult = {
+      outcome: "needs_clarification",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "user-1",
+        rawText: "schedule gym tomorrow",
+        normalizedText: "schedule gym tomorrow",
+        processingStatus: "needs_clarification",
+        linkedTaskIds: [],
+        createdAt: "2026-03-22T16:00:00.000Z"
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "user-1",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.5
+      },
+      reason: "time",
+      followUpMessage: "What time should I schedule the gym?"
+    };
+
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-03-22T16:10:00.000Z"
+    });
+
+    expect(result.discourseState.resolved_slots).toEqual({ day: "tomorrow" });
+    expect(result.discourseState.pending_write_contract).toEqual({
+      requiredSlots: ["day", "time"],
+      intentKind: "plan"
+    });
   });
 });
