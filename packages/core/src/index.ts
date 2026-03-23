@@ -851,12 +851,12 @@ const slotConfidenceSchema = z.object({
 });
 
 export const rawSlotExtractionSchema = z.object({
-  time: z.object({ hour: z.number().int(), minute: z.number().int() }).nullable(),
+  time: z.object({ hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }).nullable(),
   day: z.object({
     kind: z.enum(["relative", "weekday", "absolute"]),
     value: z.string()
   }).nullable(),
-  duration: z.object({ minutes: z.number().int() }).nullable(),
+  duration: z.object({ minutes: z.number().int().min(0) }).nullable(),
   target: z.object({ entityId: z.string() }).nullable(),
   confidence: slotConfidenceSchema,
   unresolvable: z.array(slotKeySchema)

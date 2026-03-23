@@ -46,6 +46,22 @@ describe("normalizeRawExtraction", () => {
     });
   });
 
+  it("drops time when hour is out of range", () => {
+    expect(normalizeRawExtraction(extraction({ time: { hour: 25, minute: 0 } }))).toEqual({});
+  });
+
+  it("drops time when minute is out of range", () => {
+    expect(normalizeRawExtraction(extraction({ time: { hour: 10, minute: 70 } }))).toEqual({});
+  });
+
+  it("drops time when hour is negative", () => {
+    expect(normalizeRawExtraction(extraction({ time: { hour: -1, minute: 0 } }))).toEqual({});
+  });
+
+  it("drops duration when minutes is negative", () => {
+    expect(normalizeRawExtraction(extraction({ duration: { minutes: -30 } }))).toEqual({});
+  });
+
   it("returns empty object when no slots present", () => {
     expect(normalizeRawExtraction(extraction({}))).toEqual({});
   });
