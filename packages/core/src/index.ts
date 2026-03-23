@@ -679,7 +679,7 @@ const conversationEntityBaseSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
   label: z.string().min(1),
-  status: z.enum(["active", "resolved", "superseded"]),
+  status: z.enum(["active", "presented", "confirmed", "resolved", "superseded"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });
