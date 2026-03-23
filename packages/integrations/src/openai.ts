@@ -17,18 +17,23 @@ import {
   confirmedMutationRecoveryOutputSchema,
   rawSlotExtractionSchema,
   slotExtractorInputSchema,
+  turnClassifierInputSchema,
+  turnClassifierResponseSchema,
   type TurnRoutingInput,
   type TurnRoutingOutput,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
   type SlotExtractorInput,
-  type RawSlotExtraction
+  type RawSlotExtraction,
+  type TurnClassifierInput,
+  type TurnClassifierResponse
 } from "@atlas/core";
 import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
 import { inboxPlannerSystemPrompt } from "./prompts/planner";
 import { slotExtractorSystemPrompt } from "./prompts/slot-extractor";
+import { turnClassifierSystemPrompt } from "./prompts/turn-classifier";
 import { turnRouterSystemPrompt } from "./prompts/turn-router";
 
 export const DEFAULT_INBOX_PLANNER_MODEL = "gpt-4o-mini";
@@ -37,6 +42,7 @@ export const DEFAULT_CONVERSATION_RESPONSE_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL = "gpt-4o-mini";
 export const DEFAULT_SLOT_EXTRACTOR_MODEL = "gpt-4o-mini";
+export const DEFAULT_TURN_CLASSIFIER_MODEL = "gpt-4o-mini";
 
 export const conversationMemorySummaryInputSchema = z.object({
   recentTurns: z.array(conversationTurnSchema)
@@ -265,6 +271,50 @@ export async function extractSlotsWithResponses(
   });
 
   return rawSlotExtractionSchema.parse(response.output_parsed);
+}
+
+export async function classifyTurnWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient()
+): Promise<TurnClassifierResponse> {
+  const context = turnClassifierInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_TURN_CLASSIFIER_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: turnClassifierSystemPrompt
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(buildTurnClassifierPromptContext(context))
+          }
+        ]
+      }
+    ],
+    text: {
+      format: zodTextFormat(turnClassifierResponseSchema, "atlas_turn_classifier_output")
+    }
+  });
+
+  return turnClassifierResponseSchema.parse(response.output_parsed);
+}
+
+function buildTurnClassifierPromptContext(context: TurnClassifierInput) {
+  return {
+    normalizedText: context.normalizedText,
+    discourseState: context.discourseState ?? null,
+    entityRegistry: context.entityRegistry ?? []
+  };
 }
 
 function buildSlotExtractorPromptContext(context: SlotExtractorInput) {

@@ -872,6 +872,25 @@ export const slotExtractorOutputSchema = z.object({
   unresolvable: z.array(slotKeySchema)
 });
 
+export const turnClassifierInputSchema = z.object({
+  normalizedText: z.string().min(1),
+  discourseState: conversationDiscourseStateSchema.nullable(),
+  entityRegistry: z.array(conversationEntitySchema).optional().default([])
+});
+
+export const turnClassifierResponseSchema = z.object({
+  turnType: turnInterpretationTypeSchema,
+  confidence: z.number(),
+  reasoning: z.string().nullable()
+});
+
+export const turnClassifierOutputSchema = z.object({
+  turnType: turnInterpretationTypeSchema,
+  confidence: z.number().min(0).max(1),
+  resolvedEntityIds: z.array(z.string().min(1)).default([]),
+  resolvedProposalId: z.string().min(1).optional()
+});
+
 export const confirmedMutationRecoveryInputSchema = z.object({
   rawText: z.string().min(1),
   normalizedText: z.string().min(1),
@@ -960,6 +979,9 @@ export type SlotKey = z.infer<typeof slotKeySchema>;
 export type RawSlotExtraction = z.infer<typeof rawSlotExtractionSchema>;
 export type SlotExtractorInput = z.infer<typeof slotExtractorInputSchema>;
 export type SlotExtractorOutput = z.infer<typeof slotExtractorOutputSchema>;
+export type TurnClassifierInput = z.input<typeof turnClassifierInputSchema>;
+export type TurnClassifierResponse = z.infer<typeof turnClassifierResponseSchema>;
+export type TurnClassifierOutput = z.infer<typeof turnClassifierOutputSchema>;
 export type ConfirmedMutationRecoveryInput = z.input<typeof confirmedMutationRecoveryInputSchema>;
 export type ConfirmedMutationRecoveryOutput = z.infer<typeof confirmedMutationRecoveryOutputSchema>;
 export type CapturedTaskInput = {
