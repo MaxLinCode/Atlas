@@ -19,7 +19,7 @@ import { type ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
-  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId" | "committedSlots"> & {
+  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId" | "committedSlots" | "resolvedContract"> & {
     action: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
   };
   interpretation: TurnInterpretation;
@@ -144,10 +144,15 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
   }).state;
 
   const committedSlots = input.policy.committedSlots;
-  const nextDiscourseState =
-    committedSlots && Object.keys(committedSlots).length > 0
-      ? { ...updatedDiscourseState, resolved_slots: committedSlots }
-      : updatedDiscourseState;
+  const nextDiscourseState = {
+    ...updatedDiscourseState,
+    ...(committedSlots && Object.keys(committedSlots).length > 0
+      ? { resolved_slots: committedSlots }
+      : {}),
+    ...(input.policy.resolvedContract
+      ? { pending_write_contract: input.policy.resolvedContract }
+      : {})
+  };
 
   return {
     summaryText: input.summaryText,
@@ -268,11 +273,16 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
     }
   ).state;
 
+  const isFlowComplete = input.processing.outcome !== "needs_clarification";
+  const finalDiscourseState = isFlowComplete
+    ? { ...discourseState, resolved_slots: {}, pending_write_contract: undefined }
+    : discourseState;
+
   return {
     mode: (input.processing.outcome === "needs_clarification" ? "conversation_then_mutation" : "mutation") as
       ConversationRecordMode,
     entityRegistry: trimEntityRegistry(entityRegistry),
-    discourseState
+    discourseState: finalDiscourseState
   };
 }
 

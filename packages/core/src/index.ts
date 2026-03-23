@@ -4,7 +4,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   conversationDiscourseStateSchema,
-  resolvedSlotsSchema
+  resolvedSlotsSchema,
+  writeContractSchema
 } from "./discourse-state";
 
 export * from "./ambiguity";
@@ -13,6 +14,7 @@ export * from "./discourse-state";
 export * from "./proposal-rules";
 export * from "./slot-normalizer";
 export * from "./telegram";
+export * from "./write-contract";
 
 const postgresConnectionStringSchema = z.string().refine((value) => {
   try {
@@ -834,7 +836,8 @@ export const turnPolicyDecisionSchema = z.object({
   targetProposalId: z.string().min(1).optional(),
   mutationInputSource: z.enum(["direct_user_turn", "recovered_proposal"]).optional(),
   clarificationSlots: z.array(z.string().min(1)).optional(),
-  committedSlots: resolvedSlotsSchema.optional().default({})
+  committedSlots: resolvedSlotsSchema.optional().default({}),
+  resolvedContract: writeContractSchema.optional()
 });
 
 export const routedTurnSchema = z.object({

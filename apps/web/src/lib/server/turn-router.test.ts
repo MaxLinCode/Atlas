@@ -177,4 +177,81 @@ describe("turn router", () => {
 
     expect(result.policy.committedSlots).toEqual({});
   });
+
+  it("includes resolvedContract on policy output for planning_request", async () => {
+    mockClassification({
+      turnType: "planning_request",
+      confidence: 0.95
+    });
+    mockExtractSlots.mockResolvedValueOnce({
+      extractedValues: { day: "tomorrow", time: "18:00" },
+      confidence: { day: 0.95, time: 0.95 },
+      unresolvable: []
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "Schedule gym tomorrow at 6pm",
+      normalizedText: "Schedule gym tomorrow at 6pm",
+      recentTurns: []
+    });
+
+    expect(result.policy.resolvedContract).toEqual({
+      requiredSlots: ["day", "time"],
+      intentKind: "plan"
+    });
+  });
+
+  it("carries forward priorContract from discourse state for clarification_answer", async () => {
+    const priorContract = { requiredSlots: ["time"] as ("day" | "time" | "duration" | "target")[], intentKind: "edit" as const };
+
+    mockClassification({
+      turnType: "clarification_answer",
+      confidence: 0.9
+    });
+    mockExtractSlots.mockResolvedValueOnce({
+      extractedValues: { time: "17:00" },
+      confidence: { time: 0.92 },
+      unresolvable: []
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "5pm",
+      normalizedText: "5pm",
+      recentTurns: [],
+      discourseState: {
+        focus_entity_id: null,
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        pending_write_contract: priorContract,
+        mode: "clarifying"
+      }
+    });
+
+    expect(result.policy.resolvedContract).toEqual(priorContract);
+  });
+
+  it("falls back to default contract when no prior contract exists", async () => {
+    mockClassification({
+      turnType: "clarification_answer",
+      confidence: 0.9
+    });
+    mockExtractSlots.mockResolvedValueOnce({
+      extractedValues: { time: "17:00" },
+      confidence: { time: 0.92 },
+      unresolvable: []
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "5pm",
+      normalizedText: "5pm",
+      recentTurns: []
+    });
+
+    expect(result.policy.resolvedContract).toEqual({
+      requiredSlots: ["day", "time"],
+      intentKind: "plan"
+    });
+  });
 });
