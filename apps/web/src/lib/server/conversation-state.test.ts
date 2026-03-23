@@ -34,6 +34,7 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
+        clarificationSlots: ["time"],
         committedSlots: {}
       },
       interpretation: {
@@ -201,6 +202,7 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
+        clarificationSlots: ["time"],
         committedSlots: { day: "tomorrow" },
         resolvedContract: contract
       },
@@ -240,6 +242,78 @@ describe("deriveConversationReplyState", () => {
     });
 
     expect(result.discourseState?.pending_write_contract).toBeUndefined();
+  });
+
+  it("clears active clarifications when a clarification_answer resolves all slots", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "clar-1",
+        conversationId: "conversation-1",
+        kind: "clarification",
+        label: "Need a time",
+        status: "active",
+        createdAt: "2026-03-22T16:01:00.000Z",
+        updatedAt: "2026-03-22T16:01:00.000Z",
+        data: {
+          prompt: "What time should I schedule it?",
+          reason: "time",
+          open: true
+        }
+      }
+    ];
+    snapshot.discourseState = {
+      focus_entity_id: "clar-1",
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [
+        {
+          id: "clar-1",
+          slot: "time",
+          question: "What time should I schedule it?",
+          status: "pending",
+          blocking: true,
+          createdAt: "2026-03-22T16:01:00.000Z",
+          createdTurnId: "assistant:1"
+        }
+      ],
+      mode: "clarifying"
+    };
+
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "present_proposal",
+        committedSlots: { day: "tomorrow", time: "17:00" }
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.93,
+        resolvedEntityIds: [],
+        ambiguity: "none"
+      },
+      reply: "I'll schedule gym at 5 PM tomorrow. Sound good?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z"
+    });
+
+    expect(result.discourseState?.pending_clarifications).toEqual([
+      expect.objectContaining({
+        id: "clar-1",
+        status: "resolved"
+      })
+    ]);
+    expect(result.entityRegistry).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "clar-1",
+          kind: "clarification",
+          status: "resolved"
+        })
+      ])
+    );
   });
 });
 
