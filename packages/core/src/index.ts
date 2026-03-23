@@ -7,6 +7,7 @@ import {
   resolvedSlotsSchema
 } from "./discourse-state";
 
+export * from "./ambiguity";
 export * from "./commit-policy";
 export * from "./discourse-state";
 export * from "./slot-normalizer";

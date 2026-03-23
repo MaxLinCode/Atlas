@@ -7,6 +7,7 @@ import {
   type DiscourseState,
   type RoutedTurn,
   type SlotKey,
+  deriveAmbiguity,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
@@ -14,7 +15,8 @@ import {
   type TurnRoute,
   type TurnRoutingInput,
   type WriteContract,
-  type CommitPolicyOutput
+  type CommitPolicyOutput,
+  SLOT_COMMITTING_TURN_TYPES
 } from "@atlas/core";
 
 import { decideTurnPolicy } from "./decide-turn-policy";
@@ -23,12 +25,6 @@ import { extractSlots } from "./slot-extractor";
 
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
-
-const SLOT_COMMITTING_TURN_TYPES = new Set([
-  "clarification_answer",
-  "planning_request",
-  "edit_request"
-]);
 
 const DEFAULT_CONTRACT: WriteContract = {
   requiredSlots: [],
@@ -114,7 +110,12 @@ function buildInterpretation(
     ...commitResult.needsClarification,
     ...blockingSlots
   ]);
-  const ambiguity = deriveAmbiguity(classification, commitResult, blockingSlots);
+  const ambiguity = deriveAmbiguity({
+    classifierConfidence: classification.confidence,
+    missingSlots: commitResult.missingSlots,
+    needsClarification: commitResult.needsClarification,
+    blockingSlots
+  });
 
   return {
     turnType: classification.turnType,
@@ -127,19 +128,6 @@ function buildInterpretation(
       : {}),
     ...(allMissingSlots.length > 0 ? { missingSlots: allMissingSlots } : {})
   };
-}
-
-function deriveAmbiguity(
-  classification: TurnClassifierOutput,
-  commitResult: CommitPolicyOutput,
-  blockingSlots: string[]
-): TurnAmbiguity {
-  if (blockingSlots.length > 0) return "high";
-  if (classification.confidence < 0.6) return "high";
-  if (commitResult.missingSlots.length > 0) return "high";
-  if (commitResult.needsClarification.length > 0) return "high";
-  if (classification.confidence < 0.8) return "low";
-  return "none";
 }
 
 function deriveAmbiguityReason(

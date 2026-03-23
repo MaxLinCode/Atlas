@@ -1,4 +1,5 @@
 import {
+  deriveAmbiguity,
   type CommitPolicyOutput,
   type ConversationEntity,
   type TurnAmbiguity,
@@ -33,7 +34,12 @@ type StructuredWriteReadiness =
 export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecision {
   const { classification, commitResult } = input;
   const targetEntityId = classification.resolvedEntityIds[0];
-  const ambiguity = deriveAmbiguity(classification, commitResult);
+  const ambiguity = deriveAmbiguity({
+    classifierConfidence: classification.confidence,
+    missingSlots: commitResult.missingSlots,
+    needsClarification: commitResult.needsClarification,
+    blockingSlots: []
+  });
 
   switch (classification.turnType) {
     case "informational":
@@ -107,17 +113,6 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
       };
     }
   }
-}
-
-function deriveAmbiguity(
-  classification: TurnClassifierOutput,
-  commitResult: CommitPolicyOutput
-): TurnAmbiguity {
-  if (classification.confidence < 0.6) return "high";
-  if (commitResult.missingSlots.length > 0) return "high";
-  if (commitResult.needsClarification.length > 0) return "high";
-  if (classification.confidence < 0.8) return "low";
-  return "none";
 }
 
 function deriveStructuredWriteReadiness(
