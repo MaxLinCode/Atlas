@@ -42,7 +42,7 @@ export const turnClassifierSystemPrompt = buildPromptSpec([
   {
     title: "Context Interpretation",
     lines: [
-      "discourseState.pending_clarifications: Active clarifications the assistant is waiting on. If blocking clarifications exist, the user is likely answering one.",
+      "discourseState.pending_clarifications: Active clarifications the assistant is waiting on. If pending clarifications exist, the user is likely answering one.",
       "discourseState.focus_entity_id / currently_editable_entity_id: The entity the conversation is focused on. Edit verbs with pronouns ('move it', 'reschedule that') refer to this entity.",
       "discourseState.mode: Current conversation mode (planning, editing, clarifying, confirming).",
       "entityRegistry: List of conversation entities including proposal_option (pending proposals), task, clarification, etc. Check for active proposals when classifying confirmation.",

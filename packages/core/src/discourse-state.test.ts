@@ -16,7 +16,6 @@ import {
 function buildClarification(input: Partial<PendingClarification> & Pick<PendingClarification, "id" | "slot" | "question">): PendingClarification {
   return {
     status: "pending",
-    blocking: true,
     createdAt: "2026-03-22T10:00:00.000Z",
     createdTurnId: "assistant:turn-1",
     ...input

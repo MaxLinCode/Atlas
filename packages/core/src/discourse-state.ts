@@ -38,7 +38,6 @@ export const pendingClarificationSchema = z.object({
   slot: z.string().min(1),
   question: z.string().min(1),
   status: z.enum(["pending", "resolved", "cancelled"]),
-  blocking: z.boolean(),
   createdAt: z.string().datetime(),
   createdTurnId: z.string().min(1),
   priority: z.number().int().optional()
@@ -265,11 +264,7 @@ export function deriveMode(
   state: DiscourseState,
   signals: ModeDerivationSignals = {}
 ): ConversationMode {
-  const hasBlockingClarification = getActivePendingClarifications(state).some(
-    (clarification) => clarification.blocking
-  );
-
-  if (hasBlockingClarification) {
+  if (hasContractGaps(state) || getActivePendingClarifications(state).length > 0) {
     return "clarifying";
   }
 
@@ -282,6 +277,13 @@ export function deriveMode(
   }
 
   return "planning";
+}
+
+function hasContractGaps(state: DiscourseState): boolean {
+  const contract = state.pending_write_contract;
+  if (!contract) return false;
+  const resolved = state.resolved_slots ?? {};
+  return contract.requiredSlots.some((slot) => resolved[slot] === undefined);
 }
 
 export function cleanupDiscourseState(
@@ -524,6 +526,7 @@ export function updateDiscourseStateFromUserTurn(
     nextState = setEditableEntity(nextState, input.editableEntityId);
   }
 
+  nextState = pruneStaleClarifications(nextState);
   nextState = cleanupDiscourseState(nextState, compactObject({
     validEntityIds: input.validEntityIds
   }));
@@ -590,6 +593,7 @@ export function updateDiscourseStateFromAssistantTurn(
     nextState = setEditableEntity(nextState, input.editableEntityId);
   }
 
+  nextState = pruneStaleClarifications(nextState);
   nextState = cleanupDiscourseState(nextState, compactObject({
     validEntityIds: input.validEntityIds
   }));
@@ -611,6 +615,15 @@ export function updateDiscourseStateFromAssistantTurn(
         }
       : null
   };
+}
+
+function pruneStaleClarifications(state: DiscourseState): DiscourseState {
+  const pending = state.pending_clarifications.filter((c) => c.status === "pending");
+  if (pending.length === state.pending_clarifications.length) return state;
+  return discourseStateSchema.parse({
+    ...state,
+    pending_clarifications: pending
+  });
 }
 
 function findPresentedItemByOrdinalOrOption(
