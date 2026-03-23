@@ -62,7 +62,7 @@ describe("deriveConversationReplyState", () => {
       expect.objectContaining({
         slot: "time",
         status: "pending",
-        blocking: true
+
       })
     ]);
     expect(result.discourseState?.mode).toBe("clarifying");
@@ -147,7 +147,7 @@ describe("deriveConversationReplyState", () => {
           slot: "time",
           question: "What time should I schedule it?",
           status: "pending",
-          blocking: true,
+
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1"
         }
@@ -186,12 +186,7 @@ describe("deriveConversationReplyState", () => {
         })
       ])
     );
-    expect(result.discourseState?.pending_clarifications).toEqual([
-      expect.objectContaining({
-        id: "clar-1",
-        status: "resolved"
-      })
-    ]);
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
     expect(result.discourseState?.mode).toBe("confirming");
   });
 
@@ -273,7 +268,6 @@ describe("deriveConversationReplyState", () => {
           slot: "time",
           question: "What time should I schedule it?",
           status: "pending",
-          blocking: true,
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1"
         }
@@ -299,12 +293,7 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z"
     });
 
-    expect(result.discourseState?.pending_clarifications).toEqual([
-      expect.objectContaining({
-        id: "clar-1",
-        status: "resolved"
-      })
-    ]);
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
     expect(result.entityRegistry).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -347,7 +336,7 @@ describe("deriveMutationState", () => {
           slot: "time",
           question: "What time should I schedule it?",
           status: "pending",
-          blocking: true,
+
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1"
         }
@@ -420,12 +409,7 @@ describe("deriveMutationState", () => {
       occurredAt: "2026-03-22T16:10:00.000Z"
     });
 
-    expect(result.discourseState.pending_clarifications).toEqual([
-      expect.objectContaining({
-        id: "clar-1",
-        status: "resolved"
-      })
-    ]);
+    expect(result.discourseState.pending_clarifications).toEqual([]);
     expect(result.discourseState.mode).toBe("editing");
   });
 

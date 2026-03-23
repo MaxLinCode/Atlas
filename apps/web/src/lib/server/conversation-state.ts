@@ -129,7 +129,6 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       slot: clarificationSlot,
       question: input.reply,
       status: "pending",
-      blocking: true,
       createdAt: occurredAt,
       createdTurnId: `assistant:${occurredAt}`
     });
@@ -256,7 +255,6 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
       slot: input.processing.reason,
       question: input.processing.followUpMessage,
       status: "pending",
-      blocking: true,
       createdAt: occurredAt,
       createdTurnId: `assistant:${occurredAt}`
     });

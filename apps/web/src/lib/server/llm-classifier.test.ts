@@ -156,7 +156,6 @@ describe("classifyTurn", () => {
                 slot: "time",
                 question: "What time?",
                 status: "pending",
-                blocking: true,
                 createdAt: "2026-03-20T16:00:00.000Z",
                 createdTurnId: "t-1"
               }
@@ -247,7 +246,6 @@ describe("classifyTurn", () => {
                 slot: "time",
                 question: "What time?",
                 status: "pending",
-                blocking: true,
                 createdAt: "2026-03-20T16:00:00.000Z",
                 createdTurnId: "t-1"
               }

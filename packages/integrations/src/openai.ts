@@ -310,9 +310,17 @@ export async function classifyTurnWithResponses(
 }
 
 function buildTurnClassifierPromptContext(context: TurnClassifierInput) {
+  const discourseState = context.discourseState ?? null;
   return {
     normalizedText: context.normalizedText,
-    discourseState: context.discourseState ?? null,
+    discourseState: discourseState
+      ? {
+          ...discourseState,
+          pending_clarifications: discourseState.pending_clarifications.filter(
+            (c) => c.status === "pending"
+          )
+        }
+      : null,
     entityRegistry: context.entityRegistry ?? []
   };
 }
