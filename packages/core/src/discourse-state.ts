@@ -44,12 +44,31 @@ export const pendingClarificationSchema = z.object({
   priority: z.number().int().optional()
 });
 
+export const resolvedSlotsSchema = z.object({
+  day: z.string().optional(),
+  time: z.string().optional(),
+  duration: z.number().optional(),
+  target: z.string().optional()
+});
+
+export type ResolvedSlots = z.infer<typeof resolvedSlotsSchema>;
+
+export const writeContractSchema = z.object({
+  requiredSlots: z.array(z.enum(["day", "time", "duration", "target"])),
+  optionalSlots: z.array(z.enum(["day", "time", "duration", "target"])).optional(),
+  intentKind: z.enum(["plan", "edit"])
+});
+
+export type WriteContract = z.infer<typeof writeContractSchema>;
+
 export const discourseStateSchema = z.object({
   focus_entity_id: z.string().min(1).nullable(),
   currently_editable_entity_id: z.string().min(1).nullable(),
   last_user_mentioned_entity_ids: z.array(z.string().min(1)),
   last_presented_items: z.array(presentedItemSchema),
   pending_clarifications: z.array(pendingClarificationSchema),
+  resolved_slots: resolvedSlotsSchema.optional(),
+  pending_write_contract: writeContractSchema.optional(),
   mode: conversationModeSchema
 });
 
@@ -140,6 +159,7 @@ export function createEmptyDiscourseState(): DiscourseState {
     last_user_mentioned_entity_ids: [],
     last_presented_items: [],
     pending_clarifications: [],
+    resolved_slots: {},
     mode: "planning"
   });
 }

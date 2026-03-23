@@ -369,7 +369,8 @@ export async function handleTelegramWebhook(
             policy: {
               action: routedWithContext.policy.action,
               clarificationSlots: routedWithContext.policy.clarificationSlots,
-              targetProposalId: routedWithContext.policy.targetProposalId
+              targetProposalId: routedWithContext.policy.targetProposalId,
+              committedSlots: routedWithContext.policy.committedSlots
             },
             interpretation: routedWithContext.interpretation,
             reply: conversationResponse.reply,
@@ -436,7 +437,8 @@ export async function handleTelegramWebhook(
             ...deriveConversationReplyState({
               snapshot: conversationState,
               policy: {
-                action: "ask_clarification"
+                action: "ask_clarification",
+                committedSlots: routedWithContext.policy.committedSlots
               },
               interpretation: routedWithContext.interpretation,
               reply: recoveredMutation.userReplyMessage,

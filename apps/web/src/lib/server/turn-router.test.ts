@@ -1,9 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import type { TurnClassifierOutput } from "@atlas/core";
 
 import { routeMessageTurn } from "./turn-router";
 
+vi.mock("./llm-classifier", () => ({
+  classifyTurn: vi.fn()
+}));
+
+vi.mock("./slot-extractor", () => ({
+  extractSlots: vi.fn().mockResolvedValue({
+    extractedValues: {},
+    confidence: {},
+    unresolvable: []
+  })
+}));
+
+import { classifyTurn } from "./llm-classifier";
+
+const mockClassifyTurn = vi.mocked(classifyTurn);
+
+function mockClassification(output: Partial<TurnClassifierOutput>) {
+  const full: TurnClassifierOutput = {
+    turnType: "unknown",
+    confidence: 0.5,
+    resolvedEntityIds: [],
+    ...output
+  };
+  mockClassifyTurn.mockResolvedValue(full);
+}
+
 describe("turn router", () => {
   it("returns interpretation and direct-write policy for clear scheduling requests", async () => {
+    mockClassification({
+      turnType: "planning_request",
+      confidence: 0.95
+    });
+
     const result = await routeMessageTurn({
       rawText: "Schedule gym tomorrow at 6pm for 1 hour",
       normalizedText: "Schedule gym tomorrow at 6pm for 1 hour",
@@ -23,6 +56,12 @@ describe("turn router", () => {
   });
 
   it("represents recoverable confirmation as confirmation plus recover-and-execute", async () => {
+    mockClassification({
+      turnType: "confirmation",
+      confidence: 0.97,
+      resolvedProposalId: "proposal-1"
+    });
+
     const result = await routeMessageTurn({
       rawText: "Yes",
       normalizedText: "Yes",
@@ -68,6 +107,12 @@ describe("turn router", () => {
   });
 
   it("routes punctuated consent on an active proposal to recover-and-execute", async () => {
+    mockClassification({
+      turnType: "confirmation",
+      confidence: 0.97,
+      resolvedProposalId: "proposal-1"
+    });
+
     const result = await routeMessageTurn({
       rawText: "Ok,",
       normalizedText: "Ok,",
@@ -109,5 +154,20 @@ describe("turn router", () => {
         targetProposalId: "proposal-1"
       }
     });
+  });
+
+  it("includes committedSlots on policy output", async () => {
+    mockClassification({
+      turnType: "informational",
+      confidence: 0.93
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "What's on my schedule?",
+      normalizedText: "What's on my schedule?",
+      recentTurns: []
+    });
+
+    expect(result.policy.committedSlots).toEqual({});
   });
 });

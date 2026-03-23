@@ -19,7 +19,7 @@ import { type ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
-  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId"> & {
+  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId" | "committedSlots"> & {
     action: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
   };
   interpretation: TurnInterpretation;
@@ -134,7 +134,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     });
     nextFocusEntityId ??= clarificationEntity.id;
   }
-  const nextDiscourseState = updateDiscourseStateFromAssistantTurn(discourseState, {
+  const updatedDiscourseState = updateDiscourseStateFromAssistantTurn(discourseState, {
     ...(presentedItems.length > 0 ? { presentedItems } : {}),
     ...(newClarifications.length > 0 ? { newClarifications } : {}),
     ...(resolvedClarificationIds.length > 0 ? { resolvedClarificationIds } : {}),
@@ -142,6 +142,12 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     pendingConfirmation: input.policy.action === "present_proposal",
     validEntityIds: entityRegistry.map((entity) => entity.id)
   }).state;
+
+  const committedSlots = input.policy.committedSlots;
+  const nextDiscourseState =
+    committedSlots && Object.keys(committedSlots).length > 0
+      ? { ...updatedDiscourseState, resolved_slots: committedSlots }
+      : updatedDiscourseState;
 
   return {
     summaryText: input.summaryText,

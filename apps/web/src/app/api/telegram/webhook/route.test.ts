@@ -28,6 +28,7 @@ const {
   sendTelegramMessageMock,
   sendTelegramChatActionMock,
   routeTurnWithResponsesMock,
+  classifyTurnWithResponsesMock,
   summarizeConversationMemoryWithResponsesMock,
   respondToConversationTurnWithResponsesMock,
   recoverConfirmedMutationWithResponsesMock
@@ -36,6 +37,7 @@ const {
   sendTelegramMessageMock: vi.fn(),
   sendTelegramChatActionMock: vi.fn(),
   routeTurnWithResponsesMock: vi.fn(),
+  classifyTurnWithResponsesMock: vi.fn(),
   summarizeConversationMemoryWithResponsesMock: vi.fn(),
   respondToConversationTurnWithResponsesMock: vi.fn(),
   recoverConfirmedMutationWithResponsesMock: vi.fn()
@@ -80,6 +82,7 @@ vi.mock("@atlas/integrations", async () => {
     editTelegramMessage: editTelegramMessageMock,
     respondToConversationTurnWithResponses: respondToConversationTurnWithResponsesMock,
     recoverConfirmedMutationWithResponses: recoverConfirmedMutationWithResponsesMock,
+    classifyTurnWithResponses: classifyTurnWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
     sendTelegramChatAction: sendTelegramChatActionMock,
     sendTelegramMessage: sendTelegramMessageMock,
@@ -147,7 +150,8 @@ function buildRoutedTurn(input: {
         ? { mutationInputSource: "recovered_proposal" as const }
         : input.action === "execute_mutation"
           ? { mutationInputSource: "direct_user_turn" as const }
-          : {})
+          : {}),
+      committedSlots: {}
     }
   };
 }
@@ -275,12 +279,18 @@ beforeEach(async () => {
   sendTelegramMessageMock.mockReset();
   sendTelegramChatActionMock.mockReset();
   routeTurnWithResponsesMock.mockReset();
+  classifyTurnWithResponsesMock.mockReset();
   summarizeConversationMemoryWithResponsesMock.mockReset();
   respondToConversationTurnWithResponsesMock.mockReset();
   recoverConfirmedMutationWithResponsesMock.mockReset();
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
     reason: "Direct scheduling request."
+  });
+  classifyTurnWithResponsesMock.mockResolvedValue({
+    turnType: "planning_request",
+    confidence: 0.92,
+    reasoning: "User wants to schedule or plan something."
   });
   summarizeConversationMemoryWithResponsesMock.mockResolvedValue({
     summary: "Recent conversation summary."
@@ -522,6 +532,11 @@ describe("telegram webhook route", () => {
     const conversationResponder = vi.fn(async () => ({
       reply: "What time tomorrow should I schedule the dentist?"
     }));
+    classifyTurnWithResponsesMock.mockResolvedValue({
+      turnType: "planning_request",
+      confidence: 0.55,
+      reasoning: "Mixed-intent message with ambiguous scheduling request."
+    });
 
     const response = await handleTelegramWebhook(
       buildRequest({
