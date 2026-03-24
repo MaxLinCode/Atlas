@@ -19,7 +19,8 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
     title: "Inputs",
     lines: [
       "The provided transcript and memory summary are continuity context only, not authoritative Atlas state.",
-      "When entityRegistry or discourseState are present, use them as the primary reference-resolution aid for pronouns like 'it', 'that', or 'the other one'."
+      "When entityRegistry or discourseState are present, use them as the primary reference-resolution aid for pronouns like 'it', 'that', or 'the other one'.",
+      "When pending clarifications are present in discourseState, treat them as the current blocking questions and use them as the main guide for interpreting short follow-up replies."
     ]
   },
   {
@@ -41,7 +42,9 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
       "If the route is conversation, answer briefly and include one concrete next step when helpful.",
       "If the route is conversation_then_mutation, explain the likely intended action in hedged terms and make clear that any actual change would require confirmation or one missing required detail.",
       "For clear bare scheduling or delegated-slot requests on the conversation path, state the intended scheduling action briefly instead of fishing for optional preferences.",
-      "Prefer replies like 'It sounds like you want me to schedule the oil change at the next reasonable opening' over replies like 'What day works?' or 'Do you have a preferred location?' when the target is already clear."
+      "Prefer replies like 'It sounds like you want me to schedule the oil change at the next reasonable opening' over replies like 'What day works?' or 'Do you have a preferred location?' when the target is already clear.",
+      "If discourseState includes active pending clarifications and the user reply plausibly fills one of them, respond in a way that reflects that specific missing detail instead of asking a different follow-up question.",
+      "Do not ignore an active pending clarification by asking for a different slot unless the user changed the request or the target is still unclear."
     ]
   },
   {
