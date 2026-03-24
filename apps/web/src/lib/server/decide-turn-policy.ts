@@ -77,14 +77,23 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
       }
 
       return {
-        action: "ask_clarification",
-        reason: "Confirmation language without one recoverable proposal should ask which proposal to apply.",
-        requiresWrite: false,
-        requiresConfirmation: false,
+        action: "present_proposal",
+        reason: "Confirmation language arrived for a ready consent-gated write, but no recoverable proposal exists yet; present proposal now.",
+        requiresWrite: true,
+        requiresConfirmation: true,
         useMutationPipeline: false,
-        clarificationSlots: ["proposal"],
+        clarificationSlots: [],
         committedSlots: commitResult.committedSlots
       };
+      // return {
+      //   action: "ask_clarification",
+      //   reason: "Confirmation language without one recoverable proposal should ask which proposal to apply.",
+      //   requiresWrite: false,
+      //   requiresConfirmation: false,
+      //   useMutationPipeline: false,
+      //   clarificationSlots: ["proposal"],
+      //   committedSlots: commitResult.committedSlots
+      // };
     case "clarification_answer":
     case "planning_request":
     case "edit_request":
