@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { deriveProposalCompatibility } from "./proposal-rules";
 
-import type { ConversationEntity } from "./index";
+import type { ConversationEntity, ResolvedSlots } from "./index";
 
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 
-function makeProposal(overrides: Partial<ProposalOption["data"]> = {}): ProposalOption {
+function makeProposal(overrides: Partial<ProposalOption["data"]> & { slotSnapshot: ResolvedSlots }): ProposalOption {
   return {
     id: "proposal-1",
     conversationId: "c-1",
@@ -25,57 +25,110 @@ function makeProposal(overrides: Partial<ProposalOption["data"]> = {}): Proposal
 }
 
 describe("deriveProposalCompatibility", () => {
-  describe("clarification_answer parameter fingerprint check", () => {
-    it("is compatible when parameters match", () => {
+  describe("slot-based compatibility", () => {
+    it("is compatible when committed slots match the snapshot", () => {
       const proposal = makeProposal({
-        replyText: "Would you like me to move it to 3:15pm?"
+        slotSnapshot: { time: "15:00", day: "friday" }
       });
 
-      const result = deriveProposalCompatibility("clarification_answer", "3:15pm", proposal);
+      const result = deriveProposalCompatibility(
+        "clarification_answer",
+        { time: "15:00", day: "friday" },
+        proposal
+      );
 
       expect(result.compatible).toBe(true);
     });
 
-    it("is incompatible when parameters differ", () => {
+    it("is incompatible when a committed slot differs from the snapshot", () => {
       const proposal = makeProposal({
-        replyText: "Would you like me to schedule it at 3pm?"
+        slotSnapshot: { time: "15:00" }
       });
 
-      const result = deriveProposalCompatibility("clarification_answer", "5pm", proposal);
+      const result = deriveProposalCompatibility(
+        "clarification_answer",
+        { time: "17:00" },
+        proposal
+      );
 
       expect(result.compatible).toBe(false);
-      expect(result.reason).toMatch(/changes proposal parameters/);
+      expect(result.reason).toMatch(/differs from proposal snapshot/);
     });
 
-    it("is compatible when clarification has no explicit parameters", () => {
+    it("is compatible when committed slot is new (not in snapshot)", () => {
       const proposal = makeProposal({
-        replyText: "Would you like me to schedule it at 3pm?"
+        slotSnapshot: { day: "friday" }
       });
 
-      const result = deriveProposalCompatibility("clarification_answer", "yes", proposal);
+      const result = deriveProposalCompatibility(
+        "clarification_answer",
+        { day: "friday", time: "17:00" },
+        proposal
+      );
 
       expect(result.compatible).toBe(true);
     });
 
-    it("is compatible when proposal has no explicit parameters", () => {
+    it("is compatible when committed slots are empty", () => {
       const proposal = makeProposal({
-        replyText: "Would you like me to schedule it?"
+        slotSnapshot: { time: "15:00", day: "friday" }
       });
 
-      const result = deriveProposalCompatibility("clarification_answer", "5pm", proposal);
+      const result = deriveProposalCompatibility(
+        "clarification_answer",
+        {},
+        proposal
+      );
 
       expect(result.compatible).toBe(true);
     });
 
-    it("uses originatingTurnText over replyText when available", () => {
+    it("detects duration change as incompatible", () => {
       const proposal = makeProposal({
-        replyText: "Would you like me to move it to 3pm?",
-        originatingTurnText: "move it to 3pm"
+        slotSnapshot: { duration: 30 }
       });
 
-      const result = deriveProposalCompatibility("clarification_answer", "5pm", proposal);
+      const result = deriveProposalCompatibility(
+        "planning_request",
+        { duration: 60 },
+        proposal
+      );
 
       expect(result.compatible).toBe(false);
+      expect(result.reason).toMatch(/duration.*differs/);
+    });
+  });
+
+  describe("action kind check for non-clarification turns", () => {
+    it("is incompatible when action kind changes from plan to edit", () => {
+      const proposal = makeProposal({
+        originatingTurnText: "schedule a meeting",
+        slotSnapshot: { time: "15:00" }
+      });
+
+      const result = deriveProposalCompatibility(
+        "edit_request",
+        { time: "15:00" },
+        proposal
+      );
+
+      expect(result.compatible).toBe(false);
+      expect(result.reason).toMatch(/action type/);
+    });
+
+    it("skips action kind check for clarification answers", () => {
+      const proposal = makeProposal({
+        originatingTurnText: "move the meeting",
+        slotSnapshot: { time: "15:00" }
+      });
+
+      const result = deriveProposalCompatibility(
+        "clarification_answer",
+        { time: "15:00" },
+        proposal
+      );
+
+      expect(result.compatible).toBe(true);
     });
   });
 });

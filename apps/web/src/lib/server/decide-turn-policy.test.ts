@@ -129,7 +129,8 @@ describe("decideTurnPolicy", () => {
                 data: {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it at 3pm?",
-                  confirmationRequired: true
+                  confirmationRequired: true,
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -165,7 +166,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to move it to 3pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -216,7 +218,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it tomorrow at 6pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -252,7 +255,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to move it to 3:15pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -270,7 +274,7 @@ describe("decideTurnPolicy", () => {
     const result = decideTurnPolicy(
       input(
         { turnType: "edit_request", confidence: 0.9, resolvedEntityIds: ["task-1"], resolvedProposalId: "proposal-1" },
-        {},
+        { committedSlots: { time: "15:00", day: "tomorrow" } },
         {
           rawText: "make it 3 instead",
           normalizedText: "make it 3 instead",
@@ -289,7 +293,8 @@ describe("decideTurnPolicy", () => {
                 replyText: "Would you like me to move it to tomorrow 2pm?",
                 confirmationRequired: true,
                 targetEntityId: "task-1",
-                originatingTurnText: "move it to tomorrow 2pm"
+                originatingTurnText: "move it to tomorrow 2pm",
+                slotSnapshot: { time: "14:00", day: "tomorrow" }
               }
             }
           ]
@@ -327,7 +332,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to move task one to 2pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -364,7 +370,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it tomorrow at 6pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -402,7 +409,8 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it at 5pm?",
                   confirmationRequired: true,
-                  targetEntityId: "task-1"
+                  targetEntityId: "task-1",
+                  slotSnapshot: {}
                 }
               }
             ]
@@ -438,7 +446,8 @@ describe("decideTurnPolicy", () => {
                 route: "conversation_then_mutation",
                 replyText: "Would you like me to schedule it tomorrow at 3pm?",
                 confirmationRequired: true,
-                targetEntityId: "task-1"
+                targetEntityId: "task-1",
+                slotSnapshot: { day: "tomorrow", time: "15:00" }
               }
             }
           ]
@@ -476,7 +485,8 @@ describe("decideTurnPolicy", () => {
                 data: {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it at 3pm?",
-                  confirmationRequired: true
+                  confirmationRequired: true,
+                  slotSnapshot: { time: "15:00" }
                 }
               }
             ]

@@ -30,7 +30,8 @@ function buildProposalEntity(
       replyText: overrides.replyText ?? "Shall I schedule that?",
       originatingTurnText: "originatingTurnText" in overrides ? overrides.originatingTurnText! : "schedule dentist tomorrow",
       targetEntityId: overrides.targetEntityId ?? null,
-      missingSlots: overrides.missingSlots ?? []
+      missingSlots: overrides.missingSlots ?? [],
+      slotSnapshot: {}
     }
   };
 }

@@ -1,5 +1,6 @@
 import type {
   ConversationEntity,
+  ResolvedSlots,
   TurnClassifierOutput,
   TurnInterpretationType
 } from "./index";
@@ -9,7 +10,7 @@ type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 export type ConsentRequirementInput = {
   classification: TurnClassifierOutput;
   entityRegistry: ConversationEntity[];
-  normalizedText: string;
+  committedSlots: ResolvedSlots;
 };
 
 export function deriveConsentRequirement(input: ConsentRequirementInput) {
@@ -49,7 +50,7 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
 
   const compatibility = deriveProposalCompatibility(
     classification.turnType,
-    input.normalizedText,
+    input.committedSlots,
     activeProposal
   );
 
@@ -87,36 +88,15 @@ export function matchesProposalTarget(targetEntityId: string | null, resolvedEnt
 
 export function deriveProposalCompatibility(
   turnType: TurnInterpretationType,
-  normalizedText: string,
+  committedSlots: ResolvedSlots,
   proposal: ProposalOption
 ) {
   if (turnType === "clarification_answer") {
-    // Skip action kind check — clarification answers provide slot values, not action
-    // intent ("5pm" isn't a "plan" or "edit"). But still check parameter fingerprints:
-    // if the user provides explicitly different parameters, the proposal is stale.
-    const currentFingerprint = deriveParameterFingerprint(normalizedText);
-    const proposalFingerprint = deriveParameterFingerprint(
-      proposal.data.originatingTurnText ?? proposal.data.replyText
-    );
-
-    if (currentFingerprint.explicit && proposalFingerprint.explicit && currentFingerprint.value !== proposalFingerprint.value) {
-      return {
-        compatible: false,
-        reason: "The clarification answer changes proposal parameters, so it needs fresh consent."
-      };
-    }
-
-    return {
-      compatible: true,
-      reason: "Clarification answer is compatible with the pending proposal."
-    };
+    return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
   }
 
-  const currentActionKind = deriveActionKind(normalizedText, turnType);
-  const proposalActionKind = deriveActionKind(
-    proposal.data.originatingTurnText ?? proposal.data.replyText,
-    inferProposalTurnType(proposal)
-  );
+  const currentActionKind = turnType === "edit_request" ? "edit" : "plan";
+  const proposalActionKind = inferProposalTurnType(proposal) === "edit_request" ? "edit" : "plan";
 
   if (currentActionKind !== proposalActionKind) {
     return {
@@ -125,19 +105,30 @@ export function deriveProposalCompatibility(
     };
   }
 
-  const currentFingerprint = deriveParameterFingerprint(normalizedText);
-  const proposalFingerprint = deriveParameterFingerprint(proposal.data.originatingTurnText ?? proposal.data.replyText);
+  return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
+}
 
-  if (currentFingerprint.explicit && proposalFingerprint.explicit && currentFingerprint.value !== proposalFingerprint.value) {
-    return {
-      compatible: false,
-      reason: "The new turn changes proposal parameters, so it needs fresh consent."
-    };
+function deriveSlotsCompatibility(
+  committedSlots: ResolvedSlots,
+  snapshotSlots: ResolvedSlots
+) {
+  const slotKeys = ["day", "time", "duration", "target"] as const;
+
+  for (const key of slotKeys) {
+    const committed = committedSlots[key];
+    const snapshot = snapshotSlots[key];
+
+    if (committed !== undefined && snapshot !== undefined && committed !== snapshot) {
+      return {
+        compatible: false,
+        reason: `Committed slot "${key}" differs from proposal snapshot, so it needs fresh consent.`
+      };
+    }
   }
 
   return {
     compatible: true,
-    reason: "The pending proposal still matches the current turn."
+    reason: "Committed slots are compatible with the proposal snapshot."
   };
 }
 
@@ -151,41 +142,6 @@ export function inferProposalTurnType(
   }
 
   return "planning_request";
-}
-
-export function deriveActionKind(text: string, turnType: TurnInterpretationType) {
-  if (turnType === "edit_request") {
-    return "edit";
-  }
-
-  if (turnType === "planning_request") {
-    return "plan";
-  }
-
-  const lower = text.toLowerCase();
-
-  if (/\b(move|reschedule|shift|push|pull|complete|archive|cancel|delete|update|change|mark)\b/.test(lower)) {
-    return "edit";
-  }
-
-  return "plan";
-}
-
-export function deriveParameterFingerprint(text: string) {
-  const lower = text.toLowerCase();
-  const dayTokens = lower.match(
-    /\b(today|tonight|tomorrow|tmr|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|next week|next month|morning|afternoon|evening)\b/g
-  ) ?? [];
-  const timeTokens =
-    lower.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)?\b|\bnoon\b|\bmidnight\b/g) ?? [];
-  const durationTokens =
-    lower.match(/\bfor\s+\d+\s*(?:minutes?|mins?|hours?|hrs?)\b|\b\d+\s*(?:minutes?|mins?|hours?|hrs?)\b/g) ?? [];
-  const fingerprintParts = [...dayTokens, ...timeTokens, ...durationTokens].map((part) => part.trim()).sort();
-
-  return {
-    explicit: fingerprintParts.length > 0,
-    value: fingerprintParts.join("|")
-  };
 }
 
 export function containsWriteVerb(text: string) {

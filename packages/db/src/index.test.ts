@@ -199,7 +199,8 @@ describe("db package", () => {
           updatedAt: "2026-03-20T16:01:00.000Z",
           data: {
             route: "conversation_then_mutation",
-            replyText: "It sounds like you want to move the dentist reminder after lunch."
+            replyText: "It sounds like you want to move the dentist reminder after lunch.",
+            slotSnapshot: {}
           }
         }
       ],

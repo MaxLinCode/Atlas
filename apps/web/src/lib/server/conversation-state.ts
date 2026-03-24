@@ -88,7 +88,8 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
           mutationInputSource: null,
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
-          missingSlots: input.policy.clarificationSlots
+          missingSlots: input.policy.clarificationSlots,
+          slotSnapshot: input.policy.committedSlots ?? {}
         }
       })
     );
