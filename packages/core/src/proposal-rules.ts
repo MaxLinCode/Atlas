@@ -91,9 +91,24 @@ export function deriveProposalCompatibility(
   proposal: ProposalOption
 ) {
   if (turnType === "clarification_answer") {
+    // Skip action kind check — clarification answers provide slot values, not action
+    // intent ("5pm" isn't a "plan" or "edit"). But still check parameter fingerprints:
+    // if the user provides explicitly different parameters, the proposal is stale.
+    const currentFingerprint = deriveParameterFingerprint(normalizedText);
+    const proposalFingerprint = deriveParameterFingerprint(
+      proposal.data.originatingTurnText ?? proposal.data.replyText
+    );
+
+    if (currentFingerprint.explicit && proposalFingerprint.explicit && currentFingerprint.value !== proposalFingerprint.value) {
+      return {
+        compatible: false,
+        reason: "The clarification answer changes proposal parameters, so it needs fresh consent."
+      };
+    }
+
     return {
       compatible: true,
-      reason: "Clarification answers may continue the same consent-required proposal."
+      reason: "Clarification answer is compatible with the pending proposal."
     };
   }
 
