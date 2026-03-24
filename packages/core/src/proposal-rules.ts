@@ -14,13 +14,24 @@ export type ConsentRequirementInput = {
 
 export function deriveConsentRequirement(input: ConsentRequirementInput) {
   const { classification } = input;
-  const activeProposal = input.entityRegistry.find(
+
+  const consentRequiringProposals = input.entityRegistry.filter(
     (entity): entity is ProposalOption =>
       entity.kind === "proposal_option" &&
       (entity.status === "active" || entity.status === "presented") &&
-      entity.id === classification.resolvedProposalId &&
       entity.data.confirmationRequired === true
   );
+
+  // Match by resolvedProposalId if available, otherwise fall back to the
+  // single active/presented proposal (covers modified-proposal case where
+  // the guard cleared resolvedProposalId).
+  const matchedById = classification.resolvedProposalId
+    ? consentRequiringProposals.find((p) => p.id === classification.resolvedProposalId)
+    : undefined;
+  const inferredProposal = !matchedById && consentRequiringProposals.length === 1
+    ? consentRequiringProposals[0]
+    : undefined;
+  const activeProposal = matchedById ?? inferredProposal;
 
   if (!activeProposal) {
     return {
@@ -46,6 +57,16 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
     return {
       required: true as const,
       reason: compatibility.reason
+    };
+  }
+
+  // When the proposal was inferred (not matched by ID), consent is required
+  // but we do NOT return targetProposalId — the caller should emit a new
+  // proposal rather than resurrecting the old one for direct execution.
+  if (inferredProposal) {
+    return {
+      required: true as const,
+      reason: "Write request is ready, but the proposal was modified and needs fresh consent."
     };
   }
 

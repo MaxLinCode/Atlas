@@ -104,10 +104,10 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
       );
     case "unknown": {
       const isNonWrite = ambiguity === "none" && !containsWriteVerb(input.routingContext.normalizedText);
-      const clarificationSlots = [
+      const clarificationSlots = Array.from(new Set([
         ...commitResult.missingSlots,
         ...commitResult.needsClarification
-      ];
+      ]));
       return {
         action: isNonWrite ? "reply_only" : "ask_clarification",
         reason: isNonWrite
@@ -128,10 +128,10 @@ function deriveStructuredWriteReadiness(
   ambiguity: TurnAmbiguity
 ): StructuredWriteReadiness {
   const { classification, commitResult } = input;
-  const allClarificationSlots = [
+  const allClarificationSlots = Array.from(new Set([
     ...commitResult.missingSlots,
     ...commitResult.needsClarification
-  ];
+  ]));
 
   if (ambiguity === "high") {
     return {
@@ -218,7 +218,7 @@ function buildPolicyFromStructuredReadiness(
       return {
         action: "present_proposal",
         reason: readiness.reason,
-        requiresWrite: false,
+        requiresWrite: true,
         requiresConfirmation: true,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),

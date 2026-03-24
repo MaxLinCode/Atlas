@@ -415,7 +415,7 @@ describe("decideTurnPolicy", () => {
     });
   });
 
-  it("routes compound confirmation (classified as clarification_answer) with enough info to execute_mutation when proposal ID cleared", () => {
+  it("routes compound confirmation (classified as clarification_answer) with enough info to present_proposal for modified proposal", () => {
     const result = decideTurnPolicy(
       input(
         // resolvedProposalId is cleared by the guard — no stale proposal binding
@@ -446,11 +446,12 @@ describe("decideTurnPolicy", () => {
       )
     );
 
+    // Modified proposal still requires consent — emits new proposal, not the old ID
     expect(result).toMatchObject({
-      action: "execute_mutation",
-      mutationInputSource: "direct_user_turn"
+      action: "present_proposal",
+      requiresWrite: true,
+      requiresConfirmation: true
     });
-    expect(result.targetProposalId).toBeUndefined();
   });
 
   it("routes compound confirmation (classified as clarification_answer) with missing slots to ask_clarification", () => {
