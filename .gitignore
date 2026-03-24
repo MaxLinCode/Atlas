@@ -11,4 +11,4 @@ coverage
 packages/integrations/*.manual-eval-report.json
 packages/integrations/manual-eval-report.json
 packages/integrations/*.prompt-improvement.md
-apps/web/src/lib/server/.DS_Store
+.DS_Store
