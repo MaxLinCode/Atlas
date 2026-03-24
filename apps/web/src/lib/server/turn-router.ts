@@ -2,6 +2,7 @@ import {
   applyCommitPolicy,
   createEmptyDiscourseState,
   routedTurnSchema,
+  type ConversationEntity,
   type ConversationTurn,
   type RoutedTurn,
   type SlotKey,
@@ -32,11 +33,30 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
   const entityRegistry = input.entityRegistry ?? [];
 
   // Pipeline A: classify intent
-  const classification = await classifyTurn({
+  let classification = await classifyTurn({
     normalizedText: input.normalizedText,
     discourseState,
     entityRegistry
   });
+
+  // Guard: reclassify compound confirmations (confirmation + modification payload)
+  // so slot extraction runs and the edit is not silently dropped.
+  // Scoped to active write/proposal context only.
+  if (classification.turnType === "confirmation") {
+    const hasActiveProposal = entityRegistry.some(
+      (e: ConversationEntity) =>
+        e.kind === "proposal_option" &&
+        (e.status === "active" || e.status === "presented")
+    );
+
+    if (hasActiveProposal && containsModificationPayload(input.normalizedText)) {
+      classification = {
+        ...classification,
+        turnType: "clarification_answer",
+        resolvedProposalId: undefined
+      };
+    }
+  }
 
   // Pipeline B: extract slots (conditional)
   const priorContract = discourseState.pending_write_contract;
@@ -162,4 +182,19 @@ export function getConversationRouteForPolicy(action: TurnPolicyAction): Extract
   "conversation" | "conversation_then_mutation"
 > {
   return action === "reply_only" ? "conversation" : "conversation_then_mutation";
+}
+
+export function containsModificationPayload(text: string): boolean {
+  const lower = text.toLowerCase();
+  // Time patterns: "5pm", "17:00", "at 3"
+  if (/\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)/i.test(lower)) return true;
+  if (/\d{1,2}:\d{2}/.test(lower)) return true;
+  if (/\bat\s+\d{1,2}\b/.test(lower)) return true;
+  // Day patterns: "tomorrow", "friday", "next week"
+  if (/\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+\w+)\b/.test(lower)) return true;
+  // Duration: "for 1 hour", "30 minutes"
+  if (/\b\d+\s*(hour|minute|min|hr)s?\b/.test(lower)) return true;
+  // Modification signals: "but", "change", "make it", "instead", "actually"
+  if (/\b(but|change|make it|instead|switch|rather|actually|different)\b/.test(lower)) return true;
+  return false;
 }

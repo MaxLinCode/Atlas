@@ -36,6 +36,7 @@ export const turnClassifierSystemPrompt = buildPromptSpec([
       "Bare noun phrases without question marks or write verbs in planning context are likely planning_request (task capture).",
       "Questions starting with what/when/where/why/how/who/which are typically informational.",
       "When uncertain between planning_request and informational, consider whether the text implies action or just discussion.",
+      "If the user confirms a proposal but also provides new or changed scheduling details (time, day, duration, target), classify as clarification_answer, not confirmation. Examples: 'ok but make it 5pm', 'yes but on friday', 'sounds good, change the time to 3'. Pure confirmation without modifications ('ok', 'yes', 'do it') remains confirmation.",
       "Set confidence between 0 and 1. Use higher confidence (>0.85) when context strongly supports the classification. Use lower confidence (<0.7) when the classification is uncertain."
     ]
   },

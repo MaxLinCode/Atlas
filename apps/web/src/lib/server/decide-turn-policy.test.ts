@@ -415,6 +415,79 @@ describe("decideTurnPolicy", () => {
     });
   });
 
+  it("routes compound confirmation (classified as clarification_answer) with enough info to execute_mutation when proposal ID cleared", () => {
+    const result = decideTurnPolicy(
+      input(
+        // resolvedProposalId is cleared by the guard — no stale proposal binding
+        { turnType: "clarification_answer", confidence: 0.9, resolvedEntityIds: ["task-1"] },
+        { committedSlots: { day: "tomorrow", time: "17:00" } },
+        {
+          rawText: "ok but make it 5pm",
+          normalizedText: "ok but make it 5pm",
+          recentTurns: [],
+          entityRegistry: [
+            {
+              id: "proposal-1",
+              conversationId: "conversation-1",
+              kind: "proposal_option",
+              label: "Schedule it tomorrow at 3pm",
+              status: "presented",
+              createdAt: "2026-03-20T16:00:00.000Z",
+              updatedAt: "2026-03-20T16:00:00.000Z",
+              data: {
+                route: "conversation_then_mutation",
+                replyText: "Would you like me to schedule it tomorrow at 3pm?",
+                confirmationRequired: true,
+                targetEntityId: "task-1"
+              }
+            }
+          ]
+        }
+      )
+    );
+
+    expect(result).toMatchObject({
+      action: "execute_mutation",
+      mutationInputSource: "direct_user_turn"
+    });
+    expect(result.targetProposalId).toBeUndefined();
+  });
+
+  it("routes compound confirmation (classified as clarification_answer) with missing slots to ask_clarification", () => {
+    expect(
+      decideTurnPolicy(
+        input(
+          { turnType: "clarification_answer", confidence: 0.9 },
+          { committedSlots: { day: "tomorrow" }, missingSlots: ["time"], needsClarification: ["time"] },
+          {
+            rawText: "ok but tomorrow",
+            normalizedText: "ok but tomorrow",
+            recentTurns: [],
+            entityRegistry: [
+              {
+                id: "proposal-1",
+                conversationId: "conversation-1",
+                kind: "proposal_option",
+                label: "Schedule it at 3pm",
+                status: "presented",
+                createdAt: "2026-03-20T16:00:00.000Z",
+                updatedAt: "2026-03-20T16:00:00.000Z",
+                data: {
+                  route: "conversation_then_mutation",
+                  replyText: "Would you like me to schedule it at 3pm?",
+                  confirmationRequired: true
+                }
+              }
+            ]
+          }
+        )
+      )
+    ).toMatchObject({
+      action: "ask_clarification",
+      clarificationSlots: expect.arrayContaining(["time"])
+    });
+  });
+
   it("returns committedSlots on every policy decision", () => {
     const slots = { day: "tomorrow", time: "17:00" };
     const result = decideTurnPolicy(
