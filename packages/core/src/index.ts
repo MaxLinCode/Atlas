@@ -715,7 +715,8 @@ export const conversationProposalOptionEntitySchema = conversationEntityBaseSche
     mutationInputSource: z.enum(["direct_user_turn", "recovered_proposal"]).nullable().optional(),
     confirmationRequired: z.boolean().optional(),
     originatingTurnText: z.string().min(1).nullable().optional(),
-    missingSlots: z.array(z.string().min(1)).optional()
+    missingSlots: z.array(z.string().min(1)).optional(),
+    slotSnapshot: resolvedSlotsSchema
   })
 });
 

@@ -179,7 +179,8 @@ async function seedProposalEntity(input: {
       route: "conversation_then_mutation",
       replyText: input.replyText ?? "Shall I schedule that?",
       originatingTurnText: input.originatingTurnText,
-      missingSlots: input.missingSlots ?? []
+      missingSlots: input.missingSlots ?? [],
+      slotSnapshot: {}
     }
   };
 

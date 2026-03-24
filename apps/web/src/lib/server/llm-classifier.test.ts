@@ -39,7 +39,8 @@ describe("classifyTurn", () => {
               route: "conversation_then_mutation",
               replyText: "Would you like me to schedule it at 3pm?",
               confirmationRequired: true,
-              targetEntityId: "task-1"
+              targetEntityId: "task-1",
+              slotSnapshot: {}
             }
           }
         ]
@@ -69,7 +70,8 @@ describe("classifyTurn", () => {
             data: {
               route: "conversation_then_mutation",
               replyText: "Move it to 3pm?",
-              confirmationRequired: true
+              confirmationRequired: true,
+              slotSnapshot: {}
             }
           }
         ]
@@ -101,7 +103,7 @@ describe("classifyTurn", () => {
               status: "active",
               createdAt: "2026-03-20T16:00:00.000Z",
               updatedAt: "2026-03-20T16:00:00.000Z",
-              data: { route: "conversation_then_mutation", replyText: "A?", confirmationRequired: true }
+              data: { route: "conversation_then_mutation", replyText: "A?", confirmationRequired: true, slotSnapshot: {} }
             },
             {
               id: "p-2",
@@ -111,7 +113,7 @@ describe("classifyTurn", () => {
               status: "active",
               createdAt: "2026-03-20T16:00:00.000Z",
               updatedAt: "2026-03-20T16:00:00.000Z",
-              data: { route: "conversation_then_mutation", replyText: "B?", confirmationRequired: true }
+              data: { route: "conversation_then_mutation", replyText: "B?", confirmationRequired: true, slotSnapshot: {} }
             }
           ]
         },
@@ -296,7 +298,8 @@ describe("classifyTurn", () => {
               data: {
                 route: "conversation_then_mutation",
                 replyText: "Schedule at 3pm?",
-                confirmationRequired: true
+                confirmationRequired: true,
+                slotSnapshot: {}
               }
             }
           ]

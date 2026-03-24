@@ -94,7 +94,8 @@ describe("turn router", () => {
             confirmationRequired: true,
             originatingTurnText: "Schedule dentist reminder tomorrow",
             targetEntityId: null,
-            mutationInputSource: null
+            mutationInputSource: null,
+            slotSnapshot: {}
           }
         }
       ]
@@ -145,7 +146,8 @@ describe("turn router", () => {
             confirmationRequired: true,
             originatingTurnText: "Schedule Malaysia trip planning at 5pm",
             targetEntityId: null,
-            mutationInputSource: null
+            mutationInputSource: null,
+            slotSnapshot: {}
           }
         }
       ]
@@ -285,7 +287,8 @@ describe("turn router", () => {
             replyText: "Would you like me to schedule it at 3pm?",
             confirmationRequired: true,
             targetEntityId: null,
-            mutationInputSource: null
+            mutationInputSource: null,
+            slotSnapshot: {}
           }
         }
       ]
@@ -321,7 +324,8 @@ describe("turn router", () => {
             replyText: "Would you like me to schedule it at 3pm?",
             confirmationRequired: true,
             targetEntityId: null,
-            mutationInputSource: null
+            mutationInputSource: null,
+            slotSnapshot: {}
           }
         }
       ]

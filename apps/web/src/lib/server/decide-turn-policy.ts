@@ -175,7 +175,7 @@ function deriveStructuredWriteReadiness(
   const consentRequirement = deriveConsentRequirement({
     classification,
     entityRegistry: input.routingContext.entityRegistry ?? [],
-    normalizedText: input.routingContext.normalizedText
+    committedSlots: commitResult.committedSlots
   });
 
   if (consentRequirement.required) {
