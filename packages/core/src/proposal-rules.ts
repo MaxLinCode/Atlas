@@ -14,13 +14,24 @@ export type ConsentRequirementInput = {
 
 export function deriveConsentRequirement(input: ConsentRequirementInput) {
   const { classification } = input;
-  const activeProposal = input.entityRegistry.find(
+
+  const consentRequiringProposals = input.entityRegistry.filter(
     (entity): entity is ProposalOption =>
       entity.kind === "proposal_option" &&
       (entity.status === "active" || entity.status === "presented") &&
-      entity.id === classification.resolvedProposalId &&
       entity.data.confirmationRequired === true
   );
+
+  // Match by resolvedProposalId if available, otherwise fall back to the
+  // single active/presented proposal (covers modified-proposal case where
+  // the guard cleared resolvedProposalId).
+  const matchedById = classification.resolvedProposalId
+    ? consentRequiringProposals.find((p) => p.id === classification.resolvedProposalId)
+    : undefined;
+  const inferredProposal = !matchedById && consentRequiringProposals.length === 1
+    ? consentRequiringProposals[0]
+    : undefined;
+  const activeProposal = matchedById ?? inferredProposal;
 
   if (!activeProposal) {
     return {
@@ -49,6 +60,16 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
     };
   }
 
+  // When the proposal was inferred (not matched by ID), consent is required
+  // but we do NOT return targetProposalId — the caller should emit a new
+  // proposal rather than resurrecting the old one for direct execution.
+  if (inferredProposal) {
+    return {
+      required: true as const,
+      reason: "Write request is ready, but the proposal was modified and needs fresh consent."
+    };
+  }
+
   return {
     required: true as const,
     reason: "Write request is ready, but deterministic product policy still requires user consent.",
@@ -70,9 +91,24 @@ export function deriveProposalCompatibility(
   proposal: ProposalOption
 ) {
   if (turnType === "clarification_answer") {
+    // Skip action kind check — clarification answers provide slot values, not action
+    // intent ("5pm" isn't a "plan" or "edit"). But still check parameter fingerprints:
+    // if the user provides explicitly different parameters, the proposal is stale.
+    const currentFingerprint = deriveParameterFingerprint(normalizedText);
+    const proposalFingerprint = deriveParameterFingerprint(
+      proposal.data.originatingTurnText ?? proposal.data.replyText
+    );
+
+    if (currentFingerprint.explicit && proposalFingerprint.explicit && currentFingerprint.value !== proposalFingerprint.value) {
+      return {
+        compatible: false,
+        reason: "The clarification answer changes proposal parameters, so it needs fresh consent."
+      };
+    }
+
     return {
       compatible: true,
-      reason: "Clarification answers may continue the same consent-required proposal."
+      reason: "Clarification answer is compatible with the pending proposal."
     };
   }
 

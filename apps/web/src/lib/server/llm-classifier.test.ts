@@ -122,17 +122,27 @@ describe("classifyTurn", () => {
       expect(client.responses.parse).toHaveBeenCalledOnce();
     });
 
-    it("fast-exits informational when no clarifications and no write verbs", async () => {
-      const result = await classifyTurn({
-        normalizedText: "What do I have tomorrow?",
-        discourseState: null,
-        entityRegistry: []
+    it("routes informational questions through LLM when fast-exit is disabled", async () => {
+      const client = mockClient({
+        turnType: "informational",
+        confidence: 0.91,
+        reasoning: "User is asking about their schedule"
       });
+
+      const result = await classifyTurn(
+        {
+          normalizedText: "What do I have tomorrow?",
+          discourseState: null,
+          entityRegistry: []
+        },
+        client
+      );
 
       expect(result).toMatchObject({
         turnType: "informational",
-        confidence: 0.93
+        confidence: 0.91
       });
+      expect(client.responses.parse).toHaveBeenCalledOnce();
     });
 
     it("does not fast-exit informational when active clarifications exist", async () => {

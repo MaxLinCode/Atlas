@@ -29,7 +29,7 @@ export async function classifyTurn(
   const singleProposal = activeProposals.length === 1 ? activeProposals[0] : null;
 
   // Fast-exit confirmation: exact match + exactly one active/presented proposal
-  if (isConfirmationTurn(lower) && singleProposal) {
+  if (isPureConfirmationTurn(lower) && singleProposal) {
     return {
       turnType: "confirmation",
       confidence: 0.97,
@@ -40,18 +40,19 @@ export async function classifyTurn(
     };
   }
 
+  // TEMP: disabled informational fast-exit until routing stabilizes
   // Fast-exit informational: question lead + no write verbs + no active clarifications
-  const activeClarifications = discourseState
-    ? getActivePendingClarifications(discourseState)
-    : [];
+  // const activeClarifications = discourseState
+  //   ? getActivePendingClarifications(discourseState)
+  //   : [];
 
-  if (isInformationalTurn(lower) && activeClarifications.length === 0 && !containsWriteVerb(lower)) {
-    return {
-      turnType: "informational",
-      confidence: 0.93,
-      resolvedEntityIds
-    };
-  }
+  // if (isInformationalTurn(lower) && activeClarifications.length === 0 && !containsWriteVerb(lower)) {
+  //   return {
+  //     turnType: "informational",
+  //     confidence: 0.93,
+  //     resolvedEntityIds
+  //   };
+  // }
 
   // Everything else → LLM
   try {
@@ -73,10 +74,8 @@ export async function classifyTurn(
   }
 }
 
-function isConfirmationTurn(lower: string) {
-  return /^(yes|yeah|yep|ok|okay|do it|sounds good|works|that works|go ahead|please do|confirm)([.,!? ]*)?$/.test(
-    lower
-  );
+function isPureConfirmationTurn(lower: string) {
+  return /^(ok|okay|yes|yep|yeah|confirm|do it|go ahead)([.,!? ]*)?$/.test(lower);
 }
 
 function isInformationalTurn(lower: string) {

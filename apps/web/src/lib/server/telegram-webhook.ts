@@ -5,8 +5,10 @@ import {
   getTelegramAllowedUserIds,
   isConfirmedMutationRecovered,
   isTelegramUserAllowed,
+  synthesizeMutationText,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
+  type ConversationEntity,
   type ConversationTurn,
   type Task,
   getConfig,
@@ -407,28 +409,32 @@ export async function handleTelegramWebhook(
       userId: normalizedMessage.user.telegramUserId,
       action: routedWithContext.policy.action
     });
-    const recoveredMutation = await (dependencies.confirmedMutationRecoverer ??
-      recoverConfirmedMutationWithResponses)({
-      rawText: normalizedMessage.rawText,
-      normalizedText: normalizedMessage.normalizedText,
-      recentTurns,
-      memorySummary: conversationState?.conversation.summaryText ?? null,
-      entityRegistry: conversationState?.entityRegistry ?? [],
-      discourseState: conversationState?.discourseState ?? null
+    const entityRegistry = conversationState?.entityRegistry ?? [];
+    const proposalEntity = entityRegistry.find(
+      (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
+        e.kind === "proposal_option" && e.id === routedWithContext.policy.targetProposalId
+    );
+
+    const synthesis = synthesizeMutationText({
+      resolvedSlots: routedWithContext.policy.committedSlots,
+      proposalEntity,
+      entityRegistry
     });
     console.info("turn_recovery_result", {
       userId: normalizedMessage.user.telegramUserId,
       action: routedWithContext.policy.action,
-      outcome: recoveredMutation.outcome
+      outcome: synthesis.outcome
     });
 
-    if (recoveredMutation.outcome === "needs_clarification") {
+    if (synthesis.outcome === "insufficient_data") {
+      const clarificationMessage = "I need a bit more detail to proceed. What would you like me to schedule?";
+
       if (conversationState) {
         await appendConversationTurn(
           {
             userId: normalizedMessage.user.telegramUserId,
             role: "assistant",
-            text: recoveredMutation.userReplyMessage
+            text: clarificationMessage
           },
           dependencies.conversationStateStore
         );
@@ -443,7 +449,7 @@ export async function handleTelegramWebhook(
                 resolvedContract: routedWithContext.policy.resolvedContract
               },
               interpretation: routedWithContext.interpretation,
-              reply: recoveredMutation.userReplyMessage,
+              reply: clarificationMessage,
               userTurnText: normalizedMessage.rawText,
               summaryText: conversationState.conversation.summaryText
             })
@@ -457,7 +463,7 @@ export async function handleTelegramWebhook(
           userId: normalizedMessage.user.telegramUserId,
           chatId: normalizedMessage.chatId,
           inboxItemId: ingress.inboxItem.id,
-          text: recoveredMutation.userReplyMessage
+          text: clarificationMessage
         },
         {
           editor: dependencies.editor ?? editTelegramMessage,
@@ -473,7 +479,7 @@ export async function handleTelegramWebhook(
             routing: routedWithContext,
             processing: {
               outcome: "conversation_replied",
-              reply: recoveredMutation.userReplyMessage
+              reply: clarificationMessage
             }
           }
         }
@@ -482,15 +488,11 @@ export async function handleTelegramWebhook(
 
     await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
-    if (!isConfirmedMutationRecovered(recoveredMutation)) {
-      throw new Error("Expected recovered mutation to include recoveredText");
-    }
-
     const processing = await processInboxItem(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
-          text: recoveredMutation.recoveredText
+          text: synthesis.text
         }
       },
       {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InboxPlanningOutput, RoutedTurn, TurnPolicyAction, TurnInterpretationType } from "@atlas/core";
+import type { InboxPlanningOutput, RoutedTurn, TurnPolicyAction, TurnInterpretationType, ConversationEntity } from "@atlas/core";
 import {
   getDefaultGoogleCalendarConnectionStore,
   getDefaultFollowUpRuntimeStore,
@@ -17,6 +17,7 @@ import {
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests,
+  saveConversationState,
   updateOutgoingTelegramMessage
 } from "@atlas/db";
 import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
@@ -133,6 +134,7 @@ function buildRoutedTurn(input: {
   confidence?: number;
   ambiguity?: "none" | "low" | "high";
   resolvedProposalId?: string;
+  committedSlots?: Record<string, string | number>;
 }) : RoutedTurn {
   return {
     interpretation: {
@@ -154,9 +156,45 @@ function buildRoutedTurn(input: {
         : input.action === "execute_mutation"
           ? { mutationInputSource: "direct_user_turn" as const }
           : {}),
-      committedSlots: {}
+      committedSlots: input.committedSlots ?? {}
     }
   };
+}
+
+async function seedProposalEntity(input: {
+  proposalId: string;
+  originatingTurnText: string;
+  missingSlots?: string[];
+  replyText?: string;
+}) {
+  const entity: ConversationEntity = {
+    id: input.proposalId,
+    conversationId: "conv-123",
+    kind: "proposal_option",
+    label: input.replyText ?? "Shall I schedule that?",
+    status: "presented",
+    createdAt: "2026-03-24T10:00:00Z",
+    updatedAt: "2026-03-24T10:00:00Z",
+    data: {
+      route: "conversation_then_mutation",
+      replyText: input.replyText ?? "Shall I schedule that?",
+      originatingTurnText: input.originatingTurnText,
+      missingSlots: input.missingSlots ?? []
+    }
+  };
+
+  await saveConversationState({
+    userId: "123",
+    entityRegistry: [entity],
+    discourseState: {
+      focus_entity_id: input.proposalId,
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [],
+      mode: "confirming"
+    }
+  });
 }
 
 async function seedOutstandingFollowUpBundle(titles: string[]) {
@@ -924,27 +962,13 @@ describe("telegram webhook route", () => {
     });
   });
 
-  it("treats confirmed mutation turns as write-capable when recovery finds one concrete proposal", async () => {
+  it("treats confirmed mutation turns as write-capable when proposal entity has originating text", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
-    await recordOutgoingTelegramMessageIfNew({
-      userId: "123",
-      eventType: "telegram_followup_message",
-      idempotencyKey: "telegram:followup:proposal-confirmed",
-      payload: {
-        chatId: "999",
-        text: "Would you like me to schedule it at 3pm?",
-        attempts: 0
-      },
-      retryState: "sending"
-    });
-    await updateOutgoingTelegramMessage({
-      idempotencyKey: "telegram:followup:proposal-confirmed",
-      payload: {
-        chatId: "999",
-        text: "Would you like me to schedule it at 3pm?",
-        attempts: 1
-      },
-      retryState: "sent"
+    await seedProposalEntity({
+      proposalId: "proposal-1",
+      originatingTurnText: "Schedule the dentist reminder",
+      missingSlots: ["time"],
+      replyText: "Would you like me to schedule it at 3pm?"
     });
     const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
       confidence: 0.9,
@@ -976,12 +1000,6 @@ describe("telegram webhook route", () => {
         }
       ]
     }));
-    const confirmedMutationRecoverer = vi.fn(async () => ({
-      outcome: "recovered" as const,
-      recoveredText: "Schedule the dentist reminder at 3pm.",
-      reason: "The user confirmed the concrete 3pm proposal.",
-      userReplyMessage: "Got it - I've added 'Dentist reminder' to your schedule for today at 3pm."
-    }));
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -1010,11 +1028,11 @@ describe("telegram webhook route", () => {
         conversationMemorySummarizer: async () => ({
           summary: "The assistant proposed a concrete 3pm schedule and the user is now confirming it."
         }),
-        confirmedMutationRecoverer,
         turnRouter: async () => buildRoutedTurn({
           turnType: "confirmation",
           action: "recover_and_execute",
-          resolvedProposalId: "proposal-1"
+          resolvedProposalId: "proposal-1",
+          committedSlots: { time: "15:00" }
         })
       }
     );
@@ -1027,32 +1045,11 @@ describe("telegram webhook route", () => {
         outcome: "planned"
       }
     });
-    expect(confirmedMutationRecoverer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rawText: "Yes",
-        memorySummary: null,
-        entityRegistry: [],
-        discourseState: expect.objectContaining({
-          focus_entity_id: null,
-          last_user_mentioned_entity_ids: []
-        }),
-        recentTurns: expect.arrayContaining([
-          expect.objectContaining({
-            role: "assistant",
-            text: "Would you like me to schedule it at 3pm?"
-          }),
-          expect.objectContaining({
-            role: "user",
-            text: "Yes"
-          })
-        ])
-      })
-    );
     expect(planner).toHaveBeenCalledWith(
       expect.objectContaining({
         inboxItem: expect.objectContaining({
-          rawText: "Schedule the dentist reminder at 3pm.",
-          normalizedText: "Schedule the dentist reminder at 3pm."
+          rawText: "Schedule the dentist reminder at 3pm",
+          normalizedText: "Schedule the dentist reminder at 3pm"
         })
       })
     );
@@ -1074,6 +1071,10 @@ describe("telegram webhook route", () => {
 
   it("supports broader follow-up refinements in confirmed mutation turns", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    await seedProposalEntity({
+      proposalId: "proposal-1",
+      originatingTurnText: "Move the scheduled review block 1 hour later"
+    });
     const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
       confidence: 0.88,
       summary: "Moved the scheduled review block one hour later.",
@@ -1161,12 +1162,6 @@ describe("telegram webhook route", () => {
         conversationMemorySummarizer: async () => ({
           summary: "The recent exchange includes one concrete proposal to move the existing review block one hour later."
         }),
-        confirmedMutationRecoverer: async () => ({
-          outcome: "recovered",
-          recoveredText: "Move the scheduled review block 1 hour later.",
-          reason: "The user refined the recent concrete proposal.",
-          userReplyMessage: "Done - I've moved it to 4pm."
-        }),
         turnRouter: async () => buildRoutedTurn({
           turnType: "confirmation",
           action: "recover_and_execute",
@@ -1186,7 +1181,7 @@ describe("telegram webhook route", () => {
     expect(planner).toHaveBeenCalledWith(
       expect.objectContaining({
         inboxItem: expect.objectContaining({
-          rawText: "Move the scheduled review block 1 hour later."
+          rawText: "Move the scheduled review block 1 hour later"
         })
       })
     );
@@ -1260,6 +1255,11 @@ describe("telegram webhook route", () => {
     sendTelegramMessageMock.mockClear();
     editTelegramMessageMock.mockClear();
 
+    await seedProposalEntity({
+      proposalId: "proposal-1",
+      originatingTurnText: "Mark the journaling session as done"
+    });
+
     const response = await handleTelegramWebhook(
       buildRequest({
         update_id: 57,
@@ -1296,12 +1296,6 @@ describe("telegram webhook route", () => {
               reason: "The user said the journaling session is done."
             }
           ]
-        }),
-        confirmedMutationRecoverer: async () => ({
-          outcome: "recovered",
-          recoveredText: "Mark the journaling session as done.",
-          reason: "The latest turn clearly reports completion of the recent journaling task.",
-          userReplyMessage: "Got it."
         }),
         turnRouter: async () => buildRoutedTurn({
           turnType: "confirmation",
@@ -1365,16 +1359,10 @@ describe("telegram webhook route", () => {
         conversationMemorySummarizer: async () => ({
           summary: "There were multiple possible recent proposals."
         }),
-        confirmedMutationRecoverer: async () => ({
-          outcome: "needs_clarification",
-          recoveredText: null,
-          reason: "I have two recent proposals in view. Which one do you want me to apply?",
-          userReplyMessage: "I have two recent proposals in view. Which one do you want me to apply?"
-        }),
         turnRouter: async () => buildRoutedTurn({
           turnType: "confirmation",
           action: "recover_and_execute",
-          resolvedProposalId: "proposal-1"
+          resolvedProposalId: "proposal-nonexistent"
         })
       }
     );
@@ -1385,7 +1373,7 @@ describe("telegram webhook route", () => {
       turnRoute: "confirmed_mutation",
       processing: {
         outcome: "conversation_replied",
-        reply: "I have two recent proposals in view. Which one do you want me to apply?"
+        reply: "I need a bit more detail to proceed. What would you like me to schedule?"
       }
     });
     expect(planner).not.toHaveBeenCalled();
@@ -1400,7 +1388,7 @@ describe("telegram webhook route", () => {
       expect.objectContaining({
         chatId: "999",
         messageId: 88,
-        text: "I have two recent proposals in view. Which one do you want me to apply?"
+        text: "I need a bit more detail to proceed. What would you like me to schedule?"
       })
     );
   });
