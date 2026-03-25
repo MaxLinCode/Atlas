@@ -1,8 +1,11 @@
+import type { TimeSpec, TurnClassifierOutput } from "@atlas/core";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TurnClassifierOutput } from "@atlas/core";
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
-import { routeMessageTurn, containsModificationPayload } from "./turn-router";
+import { containsModificationPayload, routeMessageTurn } from "./turn-router";
 
 vi.mock("./llm-classifier", () => ({
   classifyTurn: vi.fn(),
@@ -39,7 +42,7 @@ describe("turn router", () => {
       confidence: 0.95,
     });
     mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { day: "tomorrow", time: "18:00" },
+      extractedValues: { day: "tomorrow", time: t(18, 0) },
       confidence: { day: 0.95, time: 0.95 },
       unresolvable: [],
     });
@@ -186,7 +189,7 @@ describe("turn router", () => {
       confidence: 0.95,
     });
     mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { day: "tomorrow", time: "18:00" },
+      extractedValues: { day: "tomorrow", time: t(18, 0) },
       confidence: { day: 0.95, time: 0.95 },
       unresolvable: [],
     });
@@ -214,7 +217,7 @@ describe("turn router", () => {
       confidence: 0.9,
     });
     mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: "17:00" },
+      extractedValues: { time: t(17, 0) },
       confidence: { time: 0.92 },
       unresolvable: [],
     });
@@ -243,7 +246,7 @@ describe("turn router", () => {
       confidence: 0.9,
     });
     mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: "17:00" },
+      extractedValues: { time: t(17, 0) },
       confidence: { time: 0.92 },
       unresolvable: [],
     });
@@ -267,7 +270,7 @@ describe("turn router", () => {
       resolvedProposalId: "proposal-1",
     });
     mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: "17:00" },
+      extractedValues: { time: t(17, 0) },
       confidence: { time: 0.92 },
       unresolvable: [],
     });

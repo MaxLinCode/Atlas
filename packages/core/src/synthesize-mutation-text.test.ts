@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-
+import type { ConversationEntity, TimeSpec } from "./index";
+import type { SynthesizeMutationTextInput } from "./synthesize-mutation-text";
 import {
   formatDurationForPlanner,
-  formatTimeForPlanner,
   synthesizeMutationText,
 } from "./synthesize-mutation-text";
-import type { SynthesizeMutationTextInput } from "./synthesize-mutation-text";
-import type { ConversationEntity } from "./index";
+import { formatTimeSpec } from "./time-spec";
+
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
 function buildProposalEntity(
   overrides: Partial<{
@@ -87,7 +90,7 @@ describe("synthesizeMutationText", () => {
   it("augments originatingTurnText with resolved time slot", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { time: "15:00" },
+        resolvedSlots: { time: t(15, 0) },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist tomorrow",
           missingSlots: ["time"],
@@ -104,7 +107,7 @@ describe("synthesizeMutationText", () => {
   it("augments with multiple missing slots", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "friday", time: "09:30", duration: 60 },
+        resolvedSlots: { day: "friday", time: t(9, 30), duration: 60 },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist",
           missingSlots: ["day", "time", "duration"],
@@ -121,7 +124,7 @@ describe("synthesizeMutationText", () => {
   it("does not augment slots that were not in missingSlots", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "friday", time: "15:00" },
+        resolvedSlots: { day: "friday", time: t(15, 0) },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist on friday",
           missingSlots: ["time"],
@@ -173,7 +176,7 @@ describe("synthesizeMutationText", () => {
   it("falls back to slot-only synthesis when no originatingTurnText", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "tomorrow", time: "15:00" },
+        resolvedSlots: { day: "tomorrow", time: t(15, 0) },
         proposalEntity: buildProposalEntity({
           originatingTurnText: null,
         }),
@@ -190,7 +193,7 @@ describe("synthesizeMutationText", () => {
     const taskEntity = buildTaskEntity("entity-1", "Dentist");
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { target: "entity-1", day: "friday", time: "14:00" },
+        resolvedSlots: { target: "entity-1", day: "friday", time: t(14, 0) },
         entityRegistry: [taskEntity],
       }),
     );
@@ -245,29 +248,47 @@ describe("synthesizeMutationText", () => {
   });
 });
 
-describe("formatTimeForPlanner", () => {
-  it("formats 15:00 as 3pm", () => {
-    expect(formatTimeForPlanner("15:00")).toBe("3pm");
+describe("formatTimeSpec", () => {
+  it("formats absolute 15:00 as 3pm", () => {
+    expect(formatTimeSpec(t(15, 0))).toBe("3pm");
   });
 
-  it("formats 09:30 as 9:30am", () => {
-    expect(formatTimeForPlanner("09:30")).toBe("9:30am");
+  it("formats absolute 09:30 as 9:30am", () => {
+    expect(formatTimeSpec(t(9, 30))).toBe("9:30am");
   });
 
-  it("formats 00:00 as 12am", () => {
-    expect(formatTimeForPlanner("00:00")).toBe("12am");
+  it("formats absolute 00:00 as 12am", () => {
+    expect(formatTimeSpec(t(0, 0))).toBe("12am");
   });
 
-  it("formats 12:00 as 12pm", () => {
-    expect(formatTimeForPlanner("12:00")).toBe("12pm");
+  it("formats absolute 12:00 as 12pm", () => {
+    expect(formatTimeSpec(t(12, 0))).toBe("12pm");
   });
 
-  it("formats 12:30 as 12:30pm", () => {
-    expect(formatTimeForPlanner("12:30")).toBe("12:30pm");
+  it("formats absolute 12:30 as 12:30pm", () => {
+    expect(formatTimeSpec(t(12, 30))).toBe("12:30pm");
   });
 
-  it("formats 17:45 as 5:45pm", () => {
-    expect(formatTimeForPlanner("17:45")).toBe("5:45pm");
+  it("formats absolute 17:45 as 5:45pm", () => {
+    expect(formatTimeSpec(t(17, 45))).toBe("5:45pm");
+  });
+
+  it("formats relative minutes", () => {
+    expect(formatTimeSpec({ kind: "relative", minutes: 30 })).toBe(
+      "in 30 minutes",
+    );
+  });
+
+  it("formats relative hours", () => {
+    expect(formatTimeSpec({ kind: "relative", minutes: 120 })).toBe(
+      "in 2 hours",
+    );
+  });
+
+  it("formats window", () => {
+    expect(formatTimeSpec({ kind: "window", window: "morning" })).toBe(
+      "in the morning",
+    );
   });
 });
 

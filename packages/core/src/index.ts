@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 import {
@@ -15,6 +14,7 @@ export * from "./proposal-rules";
 export * from "./slot-normalizer";
 export * from "./synthesize-mutation-text";
 export * from "./telegram";
+export * from "./time-spec";
 export * from "./write-contract";
 
 const postgresConnectionStringSchema = z.string().refine((value) => {
@@ -967,12 +967,29 @@ const slotConfidenceSchema = z.object({
   target: z.number().nullable().optional(),
 });
 
+const rawTimeAbsoluteSchema = z.object({
+  kind: z.literal("absolute"),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
+const rawTimeRelativeSchema = z.object({
+  kind: z.literal("relative"),
+  minutes: z
+    .number()
+    .int()
+    .positive()
+    .max(7 * 24 * 60),
+});
+
+const rawTimeWindowSchema = z.object({
+  kind: z.literal("window"),
+  window: z.enum(["morning", "afternoon", "evening"]),
+});
+
 export const rawSlotExtractionSchema = z.object({
   time: z
-    .object({
-      hour: z.number().int().min(0).max(23),
-      minute: z.number().int().min(0).max(59),
-    })
+    .union([rawTimeAbsoluteSchema, rawTimeRelativeSchema, rawTimeWindowSchema])
     .nullable(),
   day: z
     .object({

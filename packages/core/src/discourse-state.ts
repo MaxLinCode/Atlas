@@ -43,9 +43,37 @@ export const pendingClarificationSchema = z.object({
   priority: z.number().int().optional(),
 });
 
+export const absoluteTimeSpecSchema = z.object({
+  kind: z.literal("absolute"),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
+export const relativeTimeSpecSchema = z.object({
+  kind: z.literal("relative"),
+  minutes: z
+    .number()
+    .int()
+    .positive()
+    .max(7 * 24 * 60),
+});
+
+export const windowTimeSpecSchema = z.object({
+  kind: z.literal("window"),
+  window: z.enum(["morning", "afternoon", "evening"]),
+});
+
+export const timeSpecSchema = z.discriminatedUnion("kind", [
+  absoluteTimeSpecSchema,
+  relativeTimeSpecSchema,
+  windowTimeSpecSchema,
+]);
+
+export type TimeSpec = z.infer<typeof timeSpecSchema>;
+
 export const resolvedSlotsSchema = z.object({
   day: z.string().optional(),
-  time: z.string().optional(),
+  time: timeSpecSchema.optional(),
   duration: z.number().optional(),
   target: z.string().optional(),
 });

@@ -1,6 +1,13 @@
+import type {
+  RawSlotExtraction,
+  SlotExtractorInput,
+  TimeSpec,
+} from "@atlas/core";
 import { describe, expect, it, vi } from "vitest";
 
-import type { RawSlotExtraction, SlotExtractorInput } from "@atlas/core";
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
 import { extractSlots } from "./slot-extractor";
 
@@ -38,14 +45,14 @@ const baseInput: SlotExtractorInput = {
 describe("extractSlots", () => {
   it("normalizes a successful time extraction", async () => {
     const client = mockClient({
-      time: { hour: 17, minute: 0 },
+      time: { kind: "absolute", hour: 17, minute: 0 },
       confidence: { time: 0.9 },
       unresolvable: [],
     });
 
     const result = await extractSlots(baseInput, client);
 
-    expect(result.extractedValues).toEqual({ time: "17:00" });
+    expect(result.extractedValues).toEqual({ time: t(17, 0) });
     expect(result.confidence).toEqual({ time: 0.9 });
     expect(result.unresolvable).toEqual([]);
   });
@@ -64,7 +71,7 @@ describe("extractSlots", () => {
 
   it("handles multiple slots", async () => {
     const client = mockClient({
-      time: { hour: 14, minute: 30 },
+      time: { kind: "absolute", hour: 14, minute: 30 },
       day: { kind: "relative", value: "Tomorrow" },
       confidence: { time: 0.95, day: 0.92 },
       unresolvable: [],
@@ -78,7 +85,10 @@ describe("extractSlots", () => {
 
     const result = await extractSlots(input, client);
 
-    expect(result.extractedValues).toEqual({ time: "14:30", day: "tomorrow" });
+    expect(result.extractedValues).toEqual({
+      time: t(14, 30),
+      day: "tomorrow",
+    });
   });
 
   it("degrades gracefully on LLM failure", async () => {
@@ -111,7 +121,7 @@ describe("extractSlots", () => {
 
   it("passes conversation context to the client", async () => {
     const client = mockClient({
-      time: { hour: 9, minute: 30 },
+      time: { kind: "absolute", hour: 9, minute: 30 },
       confidence: { time: 0.88 },
       unresolvable: [],
     });
@@ -125,7 +135,7 @@ describe("extractSlots", () => {
 
     const result = await extractSlots(input, client);
 
-    expect(result.extractedValues).toEqual({ time: "09:30" });
+    expect(result.extractedValues).toEqual({ time: t(9, 30) });
     expect(client.responses.parse).toHaveBeenCalledOnce();
   });
 });

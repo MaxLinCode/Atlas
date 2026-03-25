@@ -4,6 +4,7 @@ import type {
   TurnClassifierOutput,
   TurnInterpretationType,
 } from "./index";
+import { timeSpecsEqual } from "./time-spec";
 
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 
@@ -127,9 +128,9 @@ function deriveSlotsCompatibility(
   committedSlots: ResolvedSlots,
   snapshotSlots: ResolvedSlots,
 ) {
-  const slotKeys = ["day", "time", "duration", "target"] as const;
+  const scalarKeys = ["day", "duration", "target"] as const;
 
-  for (const key of slotKeys) {
+  for (const key of scalarKeys) {
     const committed = committedSlots[key];
     const snapshot = snapshotSlots[key];
 
@@ -143,6 +144,17 @@ function deriveSlotsCompatibility(
         reason: `Committed slot "${key}" differs from proposal snapshot, so it needs fresh consent.`,
       };
     }
+  }
+
+  if (
+    committedSlots.time !== undefined &&
+    snapshotSlots.time !== undefined &&
+    !timeSpecsEqual(committedSlots.time, snapshotSlots.time)
+  ) {
+    return {
+      compatible: false,
+      reason: `Committed slot "time" differs from proposal snapshot, so it needs fresh consent.`,
+    };
   }
 
   return {

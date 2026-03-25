@@ -4,6 +4,7 @@ import type {
   conversationEntitySchema,
   conversationProposalOptionEntitySchema,
 } from "./index";
+import { formatTimeSpec } from "./time-spec";
 
 type ResolvedSlots = z.infer<typeof resolvedSlotsSchema>;
 type ConversationEntity = z.infer<typeof conversationEntitySchema>;
@@ -65,7 +66,7 @@ function buildSlotAugmentations(
     parts.push(`on ${slots.day}`);
   }
   if (slots.time && missingSlots.has("time")) {
-    parts.push(`at ${formatTimeForPlanner(slots.time)}`);
+    parts.push(`at ${formatTimeSpec(slots.time)}`);
   }
   if (slots.duration != null && missingSlots.has("duration")) {
     parts.push(formatDurationForPlanner(slots.duration));
@@ -102,7 +103,7 @@ function buildFromSlotsOnly(
     parts.push(`on ${slots.day}`);
   }
   if (slots.time) {
-    parts.push(`at ${formatTimeForPlanner(slots.time)}`);
+    parts.push(`at ${formatTimeSpec(slots.time)}`);
   }
   if (slots.duration != null) {
     parts.push(formatDurationForPlanner(slots.duration));
@@ -119,20 +120,6 @@ function resolveEntityName(
   if (!entity) return null;
   if (entity.kind === "task") return entity.data.title;
   return entity.label;
-}
-
-export function formatTimeForPlanner(time24h: string): string {
-  const [hourStr, minuteStr] = time24h.split(":");
-  const hour = parseInt(hourStr!, 10);
-  const minute = parseInt(minuteStr ?? "0", 10);
-
-  const period = hour >= 12 ? "pm" : "am";
-  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-
-  if (minute === 0) {
-    return `${displayHour}${period}`;
-  }
-  return `${displayHour}:${String(minute).padStart(2, "0")}${period}`;
 }
 
 export function formatDurationForPlanner(minutes: number): string {
