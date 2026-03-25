@@ -156,6 +156,7 @@ function buildRoutedTurn(input: {
   ambiguity?: "none" | "low" | "high";
   resolvedProposalId?: string;
   committedSlots?: Record<string, string | number | TimeSpec>;
+  clarificationSlots?: string[];
 }): RoutedTurn {
   return {
     interpretation: {
@@ -186,6 +187,9 @@ function buildRoutedTurn(input: {
           ? { mutationInputSource: "direct_user_turn" as const }
           : {}),
       committedSlots: input.committedSlots ?? {},
+      ...(input.clarificationSlots
+        ? { clarificationSlots: input.clarificationSlots }
+        : {}),
     },
   };
 }
@@ -921,6 +925,84 @@ describe("telegram webhook route", () => {
     expect(listInboxItemsForTests()).toHaveLength(1);
     expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
+  });
+
+  it("passes clarificationSlots to the conversation responder when the turn router returns ask_clarification", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const conversationResponder = vi.fn(async () => ({
+      reply: "When would you like me to schedule that?",
+    }));
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 300,
+        message: {
+          message_id: 200,
+          date: 1_700_000_000,
+          text: "Schedule an oil change",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" },
+        },
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder,
+        turnRouter: async () =>
+          buildRoutedTurn({
+            turnType: "planning_request",
+            action: "ask_clarification",
+            clarificationSlots: ["time"],
+          }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(conversationResponder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clarificationSlots: ["time"],
+      }),
+    );
+  });
+
+  it("passes multiple clarificationSlots to the conversation responder", async () => {
+    process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
+    const conversationResponder = vi.fn(async () => ({
+      reply: "What would you like to schedule, and what time?",
+    }));
+
+    const response = await handleTelegramWebhook(
+      buildRequest({
+        update_id: 301,
+        message: {
+          message_id: 201,
+          date: 1_700_000_000,
+          text: "Schedule something",
+          chat: { id: 999, type: "private" },
+          from: { id: 123, is_bot: false, first_name: "Max" },
+        },
+      }),
+      {
+        store: getDefaultInboxProcessingStore(),
+        calendar: getDefaultCalendarAdapter(),
+        primeProcessingStore: seedInboxItemForProcessingTests,
+        conversationResponder,
+        turnRouter: async () =>
+          buildRoutedTurn({
+            turnType: "planning_request",
+            action: "ask_clarification",
+            clarificationSlots: ["task", "time"],
+          }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(conversationResponder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clarificationSlots: ["task", "time"],
+      }),
+    );
   });
 
   it("preserves mutation behavior when the turn router explicitly returns mutation", async () => {

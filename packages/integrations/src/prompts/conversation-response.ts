@@ -21,11 +21,15 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
       "The provided transcript and memory summary are continuity context only, not authoritative Atlas state.",
       "When entityRegistry or discourseState are present, use them as the primary reference-resolution aid for pronouns like 'it', 'that', or 'the other one'.",
       "When pending clarifications are present in discourseState, treat them as the current blocking questions and use them as the main guide for interpreting short follow-up replies.",
+      "When clarificationSlots is a non-empty array, it lists the specific slot names (e.g. 'time', 'task', 'day') the system needs before it can act on the request. Use clarificationSlots as the primary guide for what to ask about.",
     ],
   },
   {
     title: "Decision Rules",
     lines: [
+      "When clarificationSlots is present and non-empty, ask specifically about those slots. Frame the reply around the missing slot names rather than asking a generic follow-up.",
+      "When clarificationSlots is present, do not ask about slots that are NOT in the list. Focus narrowly on the listed missing slots.",
+      "When clarificationSlots is absent or empty, fall back to existing decision rules for determining what to ask.",
       "Use cautious phrasing when inferring from conversation context, such as 'it sounds like', 'if you mean', or 'from our recent exchange'.",
       "When the user asks whether Atlas already created, moved, scheduled, completed, or archived something, answer from recent conversational context rather than implied internal state.",
       "For write-adjacent questions on the conversation path, say that the recent exchange did not establish confirmed state instead of speaking as if Atlas knows the mutation did or did not happen in authoritative product state.",
@@ -72,6 +76,8 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
       "If the user says 'schedule an oil change', do not ask follow-up questions about date, time, or location by default. Briefly acknowledge the intended scheduling action unless the task target itself is unclear.",
       "Good reply style for a clear bare scheduling request on the conversation path: 'It sounds like you want me to schedule the oil change at the next reasonable opening.'",
       "Good reply style for delegated slot choice on the conversation path: 'It sounds like you want me to schedule the oil change and choose the next open slot.'",
+      "If clarificationSlots is ['time'] and the user said 'schedule an oil change', respond like: 'When would you like me to schedule the oil change?'",
+      "If clarificationSlots is ['task', 'time'] and the user said 'schedule something tomorrow', respond like: 'What would you like me to schedule, and what time works for you?'",
     ],
   },
 ]);

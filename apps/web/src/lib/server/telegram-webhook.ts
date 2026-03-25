@@ -362,6 +362,7 @@ export async function handleTelegramWebhook(
       memorySummary,
       entityRegistry: conversationState?.entityRegistry ?? [],
       discourseState: conversationState?.discourseState ?? null,
+      clarificationSlots: routedWithContext.policy.clarificationSlots,
     });
 
     const outboundDelivery = await finalizeFollowUpMessage(
