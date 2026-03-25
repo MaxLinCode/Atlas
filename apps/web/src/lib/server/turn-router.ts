@@ -1,12 +1,16 @@
 import {
   applyCommitPolicy,
-  createEmptyDiscourseState,
-  routedTurnSchema,
+  type CommitPolicyOutput,
   type ConversationEntity,
   type ConversationTurn,
-  type RoutedTurn,
-  type SlotKey,
+  createEmptyDiscourseState,
+  DEFAULT_WRITE_CONTRACT,
   deriveAmbiguity,
+  type RoutedTurn,
+  resolveWriteContract,
+  routedTurnSchema,
+  SLOT_COMMITTING_TURN_TYPES,
+  type SlotKey,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
@@ -14,10 +18,6 @@ import {
   type TurnRoute,
   type TurnRoutingInput,
   type WriteContract,
-  type CommitPolicyOutput,
-  SLOT_COMMITTING_TURN_TYPES,
-  DEFAULT_WRITE_CONTRACT,
-  resolveWriteContract
 } from "@atlas/core";
 
 import { decideTurnPolicy } from "./decide-turn-policy";
@@ -27,8 +27,9 @@ import { extractSlots } from "./slot-extractor";
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
 
-
-export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRouterResult> {
+export async function routeMessageTurn(
+  input: TurnRouterInput,
+): Promise<TurnRouterResult> {
   const discourseState = input.discourseState ?? createEmptyDiscourseState();
   const entityRegistry = input.entityRegistry ?? [];
 
@@ -36,7 +37,7 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
   let classification = await classifyTurn({
     normalizedText: input.normalizedText,
     discourseState,
-    entityRegistry
+    entityRegistry,
   });
 
   // Guard: reclassify compound confirmations (confirmation + modification payload)
@@ -46,32 +47,39 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
     const hasActiveProposal = entityRegistry.some(
       (e: ConversationEntity) =>
         e.kind === "proposal_option" &&
-        (e.status === "active" || e.status === "presented")
+        (e.status === "active" || e.status === "presented"),
     );
 
-    if (hasActiveProposal && containsModificationPayload(input.normalizedText)) {
+    if (
+      hasActiveProposal &&
+      containsModificationPayload(input.normalizedText)
+    ) {
       classification = {
         ...classification,
         turnType: "clarification_answer",
-        resolvedProposalId: undefined
+        resolvedProposalId: undefined,
       };
     }
   }
 
   // Pipeline B: extract slots (conditional)
   const priorContract = discourseState.pending_write_contract;
-  const activeContract = resolveWriteContract({
-    turnType: classification.turnType,
-    priorContract
-  }) ?? DEFAULT_WRITE_CONTRACT;
+  const activeContract =
+    resolveWriteContract({
+      turnType: classification.turnType,
+      priorContract,
+    }) ?? DEFAULT_WRITE_CONTRACT;
   let slotExtraction = null;
 
   if (SLOT_COMMITTING_TURN_TYPES.has(classification.turnType)) {
     slotExtraction = await extractSlots({
       currentTurnText: input.normalizedText,
-      pendingSlots: derivePendingSlots(activeContract, discourseState.resolved_slots ?? {}),
+      pendingSlots: derivePendingSlots(
+        activeContract,
+        discourseState.resolved_slots ?? {},
+      ),
       priorResolvedSlots: discourseState.resolved_slots ?? {},
-      conversationContext: deriveConversationContext(input.recentTurns)
+      conversationContext: deriveConversationContext(input.recentTurns),
     });
   }
 
@@ -83,13 +91,13 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
     unresolvable: slotExtraction?.unresolvable ?? [],
     priorResolvedSlots: discourseState.resolved_slots ?? {},
     activeContract,
-    priorContract
+    priorContract,
   });
 
   const policy = decideTurnPolicy({
     classification,
     commitResult,
-    routingContext: input
+    routingContext: input,
   });
 
   // Build interpretation for backward compatibility
@@ -97,12 +105,17 @@ export async function routeMessageTurn(input: TurnRouterInput): Promise<TurnRout
 
   return routedTurnSchema.parse({
     interpretation,
-    policy: { ...policy, resolvedContract: activeContract }
+    policy: { ...policy, resolvedContract: activeContract },
   });
 }
 
-function derivePendingSlots(contract: WriteContract, resolvedSlots: Record<string, unknown>): SlotKey[] {
-  return contract.requiredSlots.filter((slot) => resolvedSlots[slot] === undefined);
+function derivePendingSlots(
+  contract: WriteContract,
+  resolvedSlots: Record<string, unknown>,
+): SlotKey[] {
+  return contract.requiredSlots.filter(
+    (slot) => resolvedSlots[slot] === undefined,
+  );
 }
 
 function deriveConversationContext(recentTurns: ConversationTurn[]): string {
@@ -114,34 +127,41 @@ function deriveConversationContext(recentTurns: ConversationTurn[]): string {
 
 function buildInterpretation(
   classification: TurnClassifierOutput,
-  commitResult: CommitPolicyOutput
+  commitResult: CommitPolicyOutput,
 ): TurnInterpretation {
   const allMissingSlots = unique([
     ...commitResult.missingSlots,
-    ...commitResult.needsClarification
+    ...commitResult.needsClarification,
   ]);
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingSlots: commitResult.missingSlots,
-    needsClarification: commitResult.needsClarification
+    needsClarification: commitResult.needsClarification,
   });
 
   return {
     turnType: classification.turnType,
     confidence: classification.confidence,
     resolvedEntityIds: classification.resolvedEntityIds,
-    ...(classification.resolvedProposalId ? { resolvedProposalId: classification.resolvedProposalId } : {}),
+    ...(classification.resolvedProposalId
+      ? { resolvedProposalId: classification.resolvedProposalId }
+      : {}),
     ambiguity,
     ...(ambiguity !== "none"
-      ? { ambiguityReason: deriveAmbiguityReason(classification.turnType, ambiguity) }
+      ? {
+          ambiguityReason: deriveAmbiguityReason(
+            classification.turnType,
+            ambiguity,
+          ),
+        }
       : {}),
-    ...(allMissingSlots.length > 0 ? { missingSlots: allMissingSlots } : {})
+    ...(allMissingSlots.length > 0 ? { missingSlots: allMissingSlots } : {}),
   };
 }
 
 function deriveAmbiguityReason(
   turnType: TurnInterpretation["turnType"],
-  ambiguity: TurnAmbiguity
+  ambiguity: TurnAmbiguity,
 ): string {
   if (ambiguity === "high") {
     switch (turnType) {
@@ -162,7 +182,7 @@ function unique(values: string[]) {
 }
 
 function compactConfidence(
-  confidence: Record<string, number | null | undefined>
+  confidence: Record<string, number | null | undefined>,
 ): Partial<Record<SlotKey, number>> {
   const result: Partial<Record<SlotKey, number>> = {};
   for (const [key, value] of Object.entries(confidence)) {
@@ -177,11 +197,12 @@ export function doesPolicyAllowWrites(action: TurnPolicyAction) {
   return action === "execute_mutation" || action === "recover_and_execute";
 }
 
-export function getConversationRouteForPolicy(action: TurnPolicyAction): Extract<
-  TurnRoute,
-  "conversation" | "conversation_then_mutation"
-> {
-  return action === "reply_only" ? "conversation" : "conversation_then_mutation";
+export function getConversationRouteForPolicy(
+  action: TurnPolicyAction,
+): Extract<TurnRoute, "conversation" | "conversation_then_mutation"> {
+  return action === "reply_only"
+    ? "conversation"
+    : "conversation_then_mutation";
 }
 
 export function containsModificationPayload(text: string): boolean {
@@ -191,10 +212,20 @@ export function containsModificationPayload(text: string): boolean {
   if (/\d{1,2}:\d{2}/.test(lower)) return true;
   if (/\bat\s+\d{1,2}\b/.test(lower)) return true;
   // Day patterns: "tomorrow", "friday", "next week"
-  if (/\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+\w+)\b/.test(lower)) return true;
+  if (
+    /\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+\w+)\b/.test(
+      lower,
+    )
+  )
+    return true;
   // Duration: "for 1 hour", "30 minutes"
   if (/\b\d+\s*(hour|minute|min|hr)s?\b/.test(lower)) return true;
   // Modification signals: "but", "change", "make it", "instead", "actually"
-  if (/\b(but|change|make it|instead|switch|rather|actually|different)\b/.test(lower)) return true;
+  if (
+    /\b(but|change|make it|instead|switch|rather|actually|different)\b/.test(
+      lower,
+    )
+  )
+    return true;
   return false;
 }

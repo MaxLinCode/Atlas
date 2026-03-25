@@ -4,7 +4,7 @@ import { runConversationContextEvalSuite } from "./conversation-context.eval-sui
 import {
   ensureManualEvalEnv,
   writePromptImprovementBrief,
-  writeSuiteEvalReport
+  writeSuiteEvalReport,
 } from "./shared";
 
 beforeAll(() => {
@@ -25,8 +25,8 @@ describe.sequential("manual conversation context eval", () => {
         route: testCase.details.route,
         memorySummary: testCase.details.memorySummary,
         reply: testCase.details.reply,
-        error: testCase.error ?? ""
-      }))
+        error: testCase.error ?? "",
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPath) {

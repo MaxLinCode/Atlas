@@ -6,13 +6,13 @@ const calendarEventSnapshotSchema = z.object({
   externalCalendarEventId: z.string().min(1),
   externalCalendarId: z.string().min(1),
   scheduledStartAt: z.string().datetime(),
-  scheduledEndAt: z.string().datetime()
+  scheduledEndAt: z.string().datetime(),
 });
 
 const calendarBusyPeriodSchema = z.object({
   startAt: z.string().datetime(),
   endAt: z.string().datetime(),
-  externalCalendarId: z.string().min(1)
+  externalCalendarId: z.string().min(1),
 });
 
 const googleTokenResponseSchema = z.object({
@@ -21,7 +21,7 @@ const googleTokenResponseSchema = z.object({
   refresh_token: z.string().min(1).optional(),
   scope: z.string().optional(),
   token_type: z.string().optional(),
-  id_token: z.string().optional()
+  id_token: z.string().optional(),
 });
 
 const googleCalendarListResponseSchema = z.object({
@@ -30,33 +30,33 @@ const googleCalendarListResponseSchema = z.object({
       id: z.string().min(1),
       summary: z.string().min(1).default("Google Calendar"),
       primary: z.boolean().optional(),
-      accessRole: z.string().optional()
-    })
-  )
+      accessRole: z.string().optional(),
+    }),
+  ),
 });
 
 const googleCalendarRecordSchema = z.object({
   id: z.string().min(1),
-  summary: z.string().min(1)
+  summary: z.string().min(1),
 });
 
 const googleUserInfoSchema = z.object({
   id: z.string().min(1),
-  email: z.string().email()
+  email: z.string().email(),
 });
 
 const googleEventResponseSchema = z.object({
   id: z.string().min(1),
   start: z.object({
     dateTime: z.string().datetime({
-      offset: true
-    })
+      offset: true,
+    }),
   }),
   end: z.object({
     dateTime: z.string().datetime({
-      offset: true
-    })
-  })
+      offset: true,
+    }),
+  }),
 });
 
 export type CalendarEventSnapshot = z.infer<typeof calendarEventSnapshotSchema>;
@@ -75,7 +75,7 @@ export type ExternalCalendarAdapter = {
   updateEvent(
     input: CalendarEventWriteInput & {
       externalCalendarEventId: string;
-    }
+    },
   ): Promise<CalendarEventSnapshot>;
   getEvent(input: {
     externalCalendarEventId: string;
@@ -113,12 +113,14 @@ class InMemoryCalendarAdapter implements ExternalCalendarAdapter {
   readonly provider = "google-calendar" as const;
   private readonly eventsById = new Map<string, CalendarEventSnapshot>();
 
-  async createEvent(input: CalendarEventWriteInput): Promise<CalendarEventSnapshot> {
+  async createEvent(
+    input: CalendarEventWriteInput,
+  ): Promise<CalendarEventSnapshot> {
     const snapshot = calendarEventSnapshotSchema.parse({
       externalCalendarEventId: randomUUID(),
       externalCalendarId: input.externalCalendarId ?? "primary",
       scheduledStartAt: input.startAt,
-      scheduledEndAt: input.endAt
+      scheduledEndAt: input.endAt,
     });
     this.eventsById.set(snapshot.externalCalendarEventId, snapshot);
     return snapshot;
@@ -127,13 +129,13 @@ class InMemoryCalendarAdapter implements ExternalCalendarAdapter {
   async updateEvent(
     input: CalendarEventWriteInput & {
       externalCalendarEventId: string;
-    }
+    },
   ): Promise<CalendarEventSnapshot> {
     const snapshot = calendarEventSnapshotSchema.parse({
       externalCalendarEventId: input.externalCalendarEventId,
       externalCalendarId: input.externalCalendarId ?? "primary",
       scheduledStartAt: input.startAt,
-      scheduledEndAt: input.endAt
+      scheduledEndAt: input.endAt,
     });
     this.eventsById.set(snapshot.externalCalendarEventId, snapshot);
     return snapshot;
@@ -165,14 +167,14 @@ class InMemoryCalendarAdapter implements ExternalCalendarAdapter {
         (event) =>
           event.externalCalendarId === input.externalCalendarId &&
           Date.parse(event.scheduledStartAt) < end &&
-          Date.parse(event.scheduledEndAt) > start
+          Date.parse(event.scheduledEndAt) > start,
       )
       .map((event) =>
         calendarBusyPeriodSchema.parse({
           startAt: event.scheduledStartAt,
           endAt: event.scheduledEndAt,
-          externalCalendarId: event.externalCalendarId
-        })
+          externalCalendarId: event.externalCalendarId,
+        }),
       );
   }
 
@@ -186,17 +188,19 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
 
   constructor(
     private readonly auth: GoogleCalendarAuth,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async createEvent(input: CalendarEventWriteInput): Promise<CalendarEventSnapshot> {
+  async createEvent(
+    input: CalendarEventWriteInput,
+  ): Promise<CalendarEventSnapshot> {
     const calendarId = input.externalCalendarId ?? this.auth.selectedCalendarId;
     const response = await this.fetchJson(
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
       {
         method: "POST",
-        body: JSON.stringify(buildGoogleEventBody(input))
-      }
+        body: JSON.stringify(buildGoogleEventBody(input)),
+      },
     );
 
     return parseGoogleEvent(response, calendarId);
@@ -205,15 +209,15 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
   async updateEvent(
     input: CalendarEventWriteInput & {
       externalCalendarEventId: string;
-    }
+    },
   ): Promise<CalendarEventSnapshot> {
     const calendarId = input.externalCalendarId ?? this.auth.selectedCalendarId;
     const response = await this.fetchJson(
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.externalCalendarEventId)}`,
       {
         method: "PUT",
-        body: JSON.stringify(buildGoogleEventBody(input))
-      }
+        body: JSON.stringify(buildGoogleEventBody(input)),
+      },
     );
 
     return parseGoogleEvent(response, calendarId);
@@ -226,8 +230,8 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
     const response = await this.fetchImpl(
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(input.externalCalendarId)}/events/${encodeURIComponent(input.externalCalendarEventId)}`,
       {
-        headers: buildGoogleHeaders(this.auth.accessToken)
-      }
+        headers: buildGoogleHeaders(this.auth.accessToken),
+      },
     );
 
     if (response.status === 404) {
@@ -235,7 +239,9 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
     }
 
     if (!response.ok) {
-      throw new Error(`Google Calendar getEvent failed with status ${response.status}.`);
+      throw new Error(
+        `Google Calendar getEvent failed with status ${response.status}.`,
+      );
     }
 
     return parseGoogleEvent(await response.json(), input.externalCalendarId);
@@ -246,16 +252,21 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
     endAt: string;
     externalCalendarId: string;
   }): Promise<CalendarBusyPeriod[]> {
-    const response = await this.fetchJson("https://www.googleapis.com/calendar/v3/freeBusy", {
-      method: "POST",
-      body: JSON.stringify({
-        timeMin: input.startAt,
-        timeMax: input.endAt,
-        items: [{ id: input.externalCalendarId }]
-      })
-    });
+    const response = await this.fetchJson(
+      "https://www.googleapis.com/calendar/v3/freeBusy",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          timeMin: input.startAt,
+          timeMax: input.endAt,
+          items: [{ id: input.externalCalendarId }],
+        }),
+      },
+    );
 
-    const periods = Array.isArray(response?.calendars?.[input.externalCalendarId]?.busy)
+    const periods = Array.isArray(
+      response?.calendars?.[input.externalCalendarId]?.busy,
+    )
       ? response.calendars[input.externalCalendarId].busy
       : [];
 
@@ -263,8 +274,8 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
       calendarBusyPeriodSchema.parse({
         startAt: normalizeGoogleDateTime(period.start),
         endAt: normalizeGoogleDateTime(period.end),
-        externalCalendarId: input.externalCalendarId
-      })
+        externalCalendarId: input.externalCalendarId,
+      }),
     );
   }
 
@@ -273,12 +284,14 @@ class GoogleCalendarAdapter implements ExternalCalendarAdapter {
       ...init,
       headers: {
         ...buildGoogleHeaders(this.auth.accessToken),
-        ...(init.headers ?? {})
-      }
+        ...(init.headers ?? {}),
+      },
     });
 
     if (!response.ok) {
-      throw new Error(`Google Calendar request failed with status ${response.status}.`);
+      throw new Error(
+        `Google Calendar request failed with status ${response.status}.`,
+      );
     }
 
     return response.json();
@@ -295,7 +308,7 @@ export function createGoogleCalendarAdapter(
   auth: GoogleCalendarAuth,
   dependencies: {
     fetch?: typeof fetch;
-  } = {}
+  } = {},
 ): ExternalCalendarAdapter {
   return new GoogleCalendarAdapter(auth, dependencies.fetch);
 }
@@ -311,10 +324,13 @@ export function buildGoogleCalendarOAuthUrl(input: {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
-  url.searchParams.set("scope", [
-    "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/userinfo.email"
-  ].join(" "));
+  url.searchParams.set(
+    "scope",
+    [
+      "https://www.googleapis.com/auth/calendar",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ].join(" "),
+  );
   url.searchParams.set("state", input.state);
   return url.toString();
 }
@@ -326,22 +342,27 @@ export async function exchangeGoogleOAuthCode(input: {
   code: string;
   fetch?: typeof fetch;
 }): Promise<GoogleOAuthTokenExchangeResult> {
-  const response = await (input.fetch ?? fetch)("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded"
+  const response = await (input.fetch ?? fetch)(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        redirect_uri: input.redirectUri,
+        code: input.code,
+        grant_type: "authorization_code",
+      }),
     },
-    body: new URLSearchParams({
-      client_id: input.clientId,
-      client_secret: input.clientSecret,
-      redirect_uri: input.redirectUri,
-      code: input.code,
-      grant_type: "authorization_code"
-    })
-  });
+  );
 
   if (!response.ok) {
-    throw new Error(`Google OAuth token exchange failed with status ${response.status}.`);
+    throw new Error(
+      `Google OAuth token exchange failed with status ${response.status}.`,
+    );
   }
 
   const parsed = googleTokenResponseSchema.parse(await response.json());
@@ -353,7 +374,7 @@ export async function exchangeGoogleOAuthCode(input: {
       typeof parsed.expires_in === "number"
         ? new Date(Date.now() + parsed.expires_in * 1000).toISOString()
         : null,
-    scopes: parsed.scope?.split(" ").filter(Boolean) ?? []
+    scopes: parsed.scope?.split(" ").filter(Boolean) ?? [],
   };
 }
 
@@ -363,21 +384,26 @@ export async function refreshGoogleOAuthToken(input: {
   refreshToken: string;
   fetch?: typeof fetch;
 }): Promise<GoogleOAuthRefreshResult> {
-  const response = await (input.fetch ?? fetch)("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded"
+  const response = await (input.fetch ?? fetch)(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        refresh_token: input.refreshToken,
+        grant_type: "refresh_token",
+      }),
     },
-    body: new URLSearchParams({
-      client_id: input.clientId,
-      client_secret: input.clientSecret,
-      refresh_token: input.refreshToken,
-      grant_type: "refresh_token"
-    })
-  });
+  );
 
   if (!response.ok) {
-    throw new Error(`Google OAuth token refresh failed with status ${response.status}.`);
+    throw new Error(
+      `Google OAuth token refresh failed with status ${response.status}.`,
+    );
   }
 
   const parsed = googleTokenResponseSchema.parse(await response.json());
@@ -389,7 +415,7 @@ export async function refreshGoogleOAuthToken(input: {
       typeof parsed.expires_in === "number"
         ? new Date(Date.now() + parsed.expires_in * 1000).toISOString()
         : null,
-    scopes: parsed.scope?.split(" ").filter(Boolean) ?? []
+    scopes: parsed.scope?.split(" ").filter(Boolean) ?? [],
   };
 }
 
@@ -400,39 +426,47 @@ export async function fetchGoogleCalendarIdentity(input: {
   const fetchImpl = input.fetch ?? fetch;
   const [userInfoResponse, calendarsResponse] = await Promise.all([
     fetchImpl("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: buildGoogleHeaders(input.accessToken)
+      headers: buildGoogleHeaders(input.accessToken),
     }),
     fetchImpl("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
-      headers: buildGoogleHeaders(input.accessToken)
-    })
+      headers: buildGoogleHeaders(input.accessToken),
+    }),
   ]);
 
   if (!userInfoResponse.ok) {
-    throw new Error(`Google user info request failed with status ${userInfoResponse.status}.`);
+    throw new Error(
+      `Google user info request failed with status ${userInfoResponse.status}.`,
+    );
   }
 
   if (!calendarsResponse.ok) {
-    throw new Error(`Google calendar list request failed with status ${calendarsResponse.status}.`);
+    throw new Error(
+      `Google calendar list request failed with status ${calendarsResponse.status}.`,
+    );
   }
 
   const userInfo = googleUserInfoSchema.parse(await userInfoResponse.json());
-  const calendarList = googleCalendarListResponseSchema.parse(await calendarsResponse.json());
+  const calendarList = googleCalendarListResponseSchema.parse(
+    await calendarsResponse.json(),
+  );
   const selectedCalendar =
     findExistingAtlasCalendar(calendarList.items) ??
     (await createAtlasCalendar({
       accessToken: input.accessToken,
-      fetch: fetchImpl
+      fetch: fetchImpl,
     }));
 
   if (!selectedCalendar) {
-    throw new Error("Atlas could not select or create its dedicated Google Calendar.");
+    throw new Error(
+      "Atlas could not select or create its dedicated Google Calendar.",
+    );
   }
 
   return {
     providerAccountId: userInfo.id,
     email: userInfo.email,
     selectedCalendarId: selectedCalendar.id,
-    selectedCalendarName: selectedCalendar.summary
+    selectedCalendarName: selectedCalendar.summary,
   };
 }
 
@@ -443,7 +477,7 @@ export function resetCalendarAdapterForTests() {
 function buildGoogleHeaders(accessToken: string) {
   return {
     authorization: `Bearer ${accessToken}`,
-    "content-type": "application/json"
+    "content-type": "application/json",
   };
 }
 
@@ -451,22 +485,25 @@ function buildGoogleEventBody(input: CalendarEventWriteInput) {
   return {
     summary: input.title,
     start: {
-      dateTime: input.startAt
+      dateTime: input.startAt,
     },
     end: {
-      dateTime: input.endAt
-    }
+      dateTime: input.endAt,
+    },
   };
 }
 
-function parseGoogleEvent(payload: unknown, externalCalendarId: string): CalendarEventSnapshot {
+function parseGoogleEvent(
+  payload: unknown,
+  externalCalendarId: string,
+): CalendarEventSnapshot {
   const parsed = googleEventResponseSchema.parse(payload);
 
   return calendarEventSnapshotSchema.parse({
     externalCalendarEventId: parsed.id,
     externalCalendarId,
     scheduledStartAt: normalizeGoogleDateTime(parsed.start.dateTime),
-    scheduledEndAt: normalizeGoogleDateTime(parsed.end.dateTime)
+    scheduledEndAt: normalizeGoogleDateTime(parsed.end.dateTime),
   });
 }
 
@@ -480,11 +517,13 @@ function findExistingAtlasCalendar(
     summary: string;
     primary?: boolean | undefined;
     accessRole?: string | undefined;
-  }>
+  }>,
 ) {
   return (
     calendars.find(
-      (calendar) => isWritableCalendar(calendar.accessRole) && calendar.summary.trim().toLowerCase() === "atlas"
+      (calendar) =>
+        isWritableCalendar(calendar.accessRole) &&
+        calendar.summary.trim().toLowerCase() === "atlas",
     ) ?? null
   );
 }
@@ -493,16 +532,21 @@ async function createAtlasCalendar(input: {
   accessToken: string;
   fetch: typeof fetch;
 }) {
-  const response = await input.fetch("https://www.googleapis.com/calendar/v3/calendars", {
-    method: "POST",
-    headers: buildGoogleHeaders(input.accessToken),
-    body: JSON.stringify({
-      summary: "Atlas"
-    })
-  });
+  const response = await input.fetch(
+    "https://www.googleapis.com/calendar/v3/calendars",
+    {
+      method: "POST",
+      headers: buildGoogleHeaders(input.accessToken),
+      body: JSON.stringify({
+        summary: "Atlas",
+      }),
+    },
+  );
 
   if (!response.ok) {
-    throw new Error(`Google calendar creation failed with status ${response.status}.`);
+    throw new Error(
+      `Google calendar creation failed with status ${response.status}.`,
+    );
   }
 
   return googleCalendarRecordSchema.parse(await response.json());
@@ -512,7 +556,7 @@ function normalizeGoogleDateTime(value: string | undefined) {
   const parsed = z
     .string()
     .datetime({
-      offset: true
+      offset: true,
     })
     .parse(value);
 

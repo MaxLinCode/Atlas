@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-
-import { jsonOk } from "@/lib/server/http";
 import { reconcileGoogleCalendarConnections } from "@/lib/server/google-calendar";
+import { jsonOk } from "@/lib/server/http";
 
 function isAuthorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -12,8 +11,8 @@ function isAuthorized(request: Request) {
       status: 503,
       body: {
         accepted: false,
-        error: "cron_secret_not_configured"
-      }
+        error: "cron_secret_not_configured",
+      },
     };
   }
 
@@ -23,13 +22,13 @@ function isAuthorized(request: Request) {
       status: 401,
       body: {
         accepted: false,
-        error: "invalid_cron_secret"
-      }
+        error: "invalid_cron_secret",
+      },
     };
   }
 
   return {
-    ok: true as const
+    ok: true as const,
   };
 }
 
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
 
   if (!auth.ok) {
     return NextResponse.json(auth.body, {
-      status: auth.status
+      status: auth.status,
     });
   }
 

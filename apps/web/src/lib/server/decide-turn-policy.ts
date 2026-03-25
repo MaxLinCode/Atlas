@@ -1,12 +1,12 @@
 import {
+  type CommitPolicyOutput,
   containsWriteVerb,
   deriveAmbiguity,
   deriveConsentRequirement,
-  type CommitPolicyOutput,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnPolicyDecision,
-  type TurnRoutingInput
+  type TurnRoutingInput,
 } from "@atlas/core";
 
 export type DecideTurnPolicyInput = {
@@ -31,13 +31,15 @@ type StructuredWriteReadiness =
       reason: string;
     };
 
-export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecision {
+export function decideTurnPolicy(
+  input: DecideTurnPolicyInput,
+): TurnPolicyDecision {
   const { classification, commitResult } = input;
   const targetEntityId = classification.resolvedEntityIds[0];
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingSlots: commitResult.missingSlots,
-    needsClarification: commitResult.needsClarification
+    needsClarification: commitResult.needsClarification,
   });
 
   switch (classification.turnType) {
@@ -49,17 +51,18 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
         requiresConfirmation: false,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
-        committedSlots: commitResult.committedSlots
+        committedSlots: commitResult.committedSlots,
       };
     case "follow_up_reply":
       return {
         action: "reply_only",
-        reason: "Follow-up style reply reached the normal router without a recoverable write plan.",
+        reason:
+          "Follow-up style reply reached the normal router without a recoverable write plan.",
         requiresWrite: false,
         requiresConfirmation: false,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
-        committedSlots: commitResult.committedSlots
+        committedSlots: commitResult.committedSlots,
       };
     case "confirmation":
       if (classification.resolvedProposalId) {
@@ -72,42 +75,47 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
           ...(targetEntityId ? { targetEntityId } : {}),
           targetProposalId: classification.resolvedProposalId,
           mutationInputSource: "recovered_proposal",
-          committedSlots: commitResult.committedSlots
+          committedSlots: commitResult.committedSlots,
         };
       }
 
       return {
         action: "present_proposal",
-        reason: "Confirmation language arrived for a ready consent-gated write, but no recoverable proposal exists yet; present proposal now.",
+        reason:
+          "Confirmation language arrived for a ready consent-gated write, but no recoverable proposal exists yet; present proposal now.",
         requiresWrite: true,
         requiresConfirmation: true,
         useMutationPipeline: false,
         clarificationSlots: [],
-        committedSlots: commitResult.committedSlots
+        committedSlots: commitResult.committedSlots,
       };
-      // return {
-      //   action: "ask_clarification",
-      //   reason: "Confirmation language without one recoverable proposal should ask which proposal to apply.",
-      //   requiresWrite: false,
-      //   requiresConfirmation: false,
-      //   useMutationPipeline: false,
-      //   clarificationSlots: ["proposal"],
-      //   committedSlots: commitResult.committedSlots
-      // };
+    // return {
+    //   action: "ask_clarification",
+    //   reason: "Confirmation language without one recoverable proposal should ask which proposal to apply.",
+    //   requiresWrite: false,
+    //   requiresConfirmation: false,
+    //   useMutationPipeline: false,
+    //   clarificationSlots: ["proposal"],
+    //   committedSlots: commitResult.committedSlots
+    // };
     case "clarification_answer":
     case "planning_request":
     case "edit_request":
       return buildPolicyFromStructuredReadiness(
         deriveStructuredWriteReadiness(input, ambiguity),
         targetEntityId,
-        commitResult.committedSlots
+        commitResult.committedSlots,
       );
     case "unknown": {
-      const isNonWrite = ambiguity === "none" && !containsWriteVerb(input.routingContext.normalizedText);
-      const clarificationSlots = Array.from(new Set([
-        ...commitResult.missingSlots,
-        ...commitResult.needsClarification
-      ]));
+      const isNonWrite =
+        ambiguity === "none" &&
+        !containsWriteVerb(input.routingContext.normalizedText);
+      const clarificationSlots = Array.from(
+        new Set([
+          ...commitResult.missingSlots,
+          ...commitResult.needsClarification,
+        ]),
+      );
       return {
         action: isNonWrite ? "reply_only" : "ask_clarification",
         reason: isNonWrite
@@ -116,8 +124,12 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
         requiresWrite: false,
         requiresConfirmation: false,
         useMutationPipeline: false,
-        clarificationSlots: isNonWrite ? undefined : (clarificationSlots.length > 0 ? clarificationSlots : undefined),
-        committedSlots: commitResult.committedSlots
+        clarificationSlots: isNonWrite
+          ? undefined
+          : clarificationSlots.length > 0
+            ? clarificationSlots
+            : undefined,
+        committedSlots: commitResult.committedSlots,
       };
     }
   }
@@ -125,13 +137,12 @@ export function decideTurnPolicy(input: DecideTurnPolicyInput): TurnPolicyDecisi
 
 function deriveStructuredWriteReadiness(
   input: DecideTurnPolicyInput,
-  ambiguity: TurnAmbiguity
+  ambiguity: TurnAmbiguity,
 ): StructuredWriteReadiness {
   const { classification, commitResult } = input;
-  const allClarificationSlots = Array.from(new Set([
-    ...commitResult.missingSlots,
-    ...commitResult.needsClarification
-  ]));
+  const allClarificationSlots = Array.from(
+    new Set([...commitResult.missingSlots, ...commitResult.needsClarification]),
+  );
 
   if (ambiguity === "high") {
     return {
@@ -140,7 +151,7 @@ function deriveStructuredWriteReadiness(
         classification.turnType === "clarification_answer"
           ? "Clarification answer is still too ambiguous to safely continue."
           : "Write-like turn is too ambiguous to apply directly.",
-      clarificationSlots: allClarificationSlots
+      clarificationSlots: allClarificationSlots,
     };
   }
 
@@ -151,7 +162,7 @@ function deriveStructuredWriteReadiness(
         classification.turnType === "clarification_answer"
           ? "Clarification answer is still missing required write details."
           : "Required scheduling or target details are still missing.",
-      clarificationSlots: allClarificationSlots
+      clarificationSlots: allClarificationSlots,
     };
   }
 
@@ -161,13 +172,14 @@ function deriveStructuredWriteReadiness(
       (e) =>
         e.kind === "proposal_option" &&
         e.id === classification.resolvedProposalId &&
-        e.status === "confirmed"
+        e.status === "confirmed",
     );
 
     if (alreadyConfirmed) {
       return {
         state: "ready_for_execution",
-        reason: "Clarification answer resolved the final detail and proposal was already confirmed."
+        reason:
+          "Clarification answer resolved the final detail and proposal was already confirmed.",
       };
     }
   }
@@ -175,16 +187,17 @@ function deriveStructuredWriteReadiness(
   const consentRequirement = deriveConsentRequirement({
     classification,
     entityRegistry: input.routingContext.entityRegistry ?? [],
-    committedSlots: commitResult.committedSlots
+    committedSlots: commitResult.committedSlots,
   });
 
   if (consentRequirement.required) {
     return {
       state: "ready_needs_consent",
       reason: consentRequirement.reason,
-      ...(consentRequirement.required && "targetProposalId" in consentRequirement
+      ...(consentRequirement.required &&
+      "targetProposalId" in consentRequirement
         ? { targetProposalId: consentRequirement.targetProposalId }
-        : {})
+        : {}),
     };
   }
 
@@ -193,14 +206,14 @@ function deriveStructuredWriteReadiness(
     reason:
       classification.turnType === "clarification_answer"
         ? "Clarification answer resolved the missing detail needed for the write path."
-        : "Write-ready request can go straight to the mutation pipeline."
+        : "Write-ready request can go straight to the mutation pipeline.",
   };
 }
 
 function buildPolicyFromStructuredReadiness(
   readiness: StructuredWriteReadiness,
   targetEntityId: string | undefined,
-  committedSlots: TurnPolicyDecision["committedSlots"]
+  committedSlots: TurnPolicyDecision["committedSlots"],
 ): TurnPolicyDecision {
   switch (readiness.state) {
     case "not_ready":
@@ -212,7 +225,7 @@ function buildPolicyFromStructuredReadiness(
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
         clarificationSlots: readiness.clarificationSlots,
-        committedSlots
+        committedSlots,
       };
     case "ready_needs_consent":
       return {
@@ -222,8 +235,10 @@ function buildPolicyFromStructuredReadiness(
         requiresConfirmation: true,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
-        ...(readiness.targetProposalId ? { targetProposalId: readiness.targetProposalId } : {}),
-        committedSlots
+        ...(readiness.targetProposalId
+          ? { targetProposalId: readiness.targetProposalId }
+          : {}),
+        committedSlots,
       };
     case "ready_for_execution":
       return {
@@ -234,7 +249,7 @@ function buildPolicyFromStructuredReadiness(
         useMutationPipeline: true,
         ...(targetEntityId ? { targetEntityId } : {}),
         mutationInputSource: "direct_user_turn",
-        committedSlots
+        committedSlots,
       };
   }
 }

@@ -1,35 +1,38 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appendConversationTurn,
   decryptCalendarCredential,
   encryptCalendarCredential,
-  appendConversationTurn,
   getDefaultFollowUpRuntimeStore,
-  getLatestFollowUpBundleContext,
   getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
+  getLatestFollowUpBundleContext,
   getRepositoryHealth,
-  loadConversationState,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   listOutgoingBotEventsForTests,
-  listRecentConversationTurns,
   listPlannerRunsForTests,
+  listRecentConversationTurns,
   listScheduleBlocksForTests,
   listTasksForTests,
+  loadConversationState,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
   resetConversationStateStoreForTests,
-  resetInboxProcessingStoreForTests,
   resetGoogleCalendarConnectionStoreForTests,
+  resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   saveConversationState,
   seedInboxItemForProcessingTests,
-  updateOutgoingTelegramMessage
+  updateOutgoingTelegramMessage,
 } from "./index";
 
 describe("db package", () => {
-  process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(
+    32,
+    7,
+  ).toString("base64");
 
   it("reports repositories as unconfigured without a Postgres DATABASE_URL", () => {
     const originalDatabaseUrl = process.env.DATABASE_URL;
@@ -37,7 +40,8 @@ describe("db package", () => {
 
     expect(getRepositoryHealth()).toEqual({
       status: "unconfigured",
-      message: "Database repositories require a Postgres DATABASE_URL outside tests."
+      message:
+        "Database repositories require a Postgres DATABASE_URL outside tests.",
     });
 
     if (originalDatabaseUrl === undefined) {
@@ -57,18 +61,22 @@ describe("db package", () => {
       eventType: "telegram_message",
       idempotencyKey: "telegram:webhook:update:42",
       payload: {
-        update_id: 42
+        update_id: 42,
       },
       rawText: " Review   launch checklist ",
       normalizedText: "Review launch checklist",
-      createdAt: "2026-03-19T16:00:00.000Z"
+      createdAt: "2026-03-19T16:00:00.000Z",
     });
 
     expect(result.status).toBe("recorded");
     expect(listIncomingBotEventsForTests()).toHaveLength(1);
     expect(listInboxItemsForTests()).toHaveLength(1);
-    expect(listIncomingBotEventsForTests()[0]?.createdAt).toBe("2026-03-19T16:00:00.000Z");
-    expect(listInboxItemsForTests()[0]?.createdAt).toBe("2026-03-19T16:00:00.000Z");
+    expect(listIncomingBotEventsForTests()[0]?.createdAt).toBe(
+      "2026-03-19T16:00:00.000Z",
+    );
+    expect(listInboxItemsForTests()[0]?.createdAt).toBe(
+      "2026-03-19T16:00:00.000Z",
+    );
   });
 
   it("deduplicates repeated outgoing Telegram message events", async () => {
@@ -80,9 +88,9 @@ describe("db package", () => {
       idempotencyKey: "telegram:followup:inbox-item:inbox-1",
       payload: {
         chatId: "999",
-        text: "Captured and scheduled Review launch checklist."
+        text: "Captured and scheduled Review launch checklist.",
       },
-      retryState: "sending"
+      retryState: "sending",
     });
 
     const duplicate = await recordOutgoingTelegramMessageIfNew({
@@ -91,13 +99,13 @@ describe("db package", () => {
       idempotencyKey: "telegram:followup:inbox-item:inbox-1",
       payload: {
         chatId: "999",
-        text: "Captured and scheduled Review launch checklist."
+        text: "Captured and scheduled Review launch checklist.",
       },
-      retryState: "sent"
+      retryState: "sent",
     });
 
     expect(duplicate).toEqual({
-      status: "duplicate"
+      status: "duplicate",
     });
     expect(listOutgoingBotEventsForTests()).toHaveLength(1);
   });
@@ -112,9 +120,9 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "Captured and scheduled Review launch checklist.",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
 
     await updateOutgoingTelegramMessage({
@@ -122,16 +130,16 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "Captured and scheduled Review launch checklist.",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
 
     expect(listOutgoingBotEventsForTests()[0]).toMatchObject({
       retryState: "sent",
       payload: {
-        attempts: 1
-      }
+        attempts: 1,
+      },
     });
   });
 
@@ -147,11 +155,11 @@ describe("db package", () => {
         taskIds: ["task-1", "task-2"],
         items: [
           { number: 1, taskId: "task-1", title: "Review launch checklist" },
-          { number: 2, taskId: "task-2", title: "Send update" }
+          { number: 2, taskId: "task-2", title: "Send update" },
         ],
-        text: "Checking in"
+        text: "Checking in",
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await updateOutgoingTelegramMessage({
       idempotencyKey: "telegram:followup:bundle-1",
@@ -160,18 +168,21 @@ describe("db package", () => {
         taskIds: ["task-1", "task-2"],
         items: [
           { number: 1, taskId: "task-1", title: "Review launch checklist" },
-          { number: 2, taskId: "task-2", title: "Send update" }
+          { number: 2, taskId: "task-2", title: "Send update" },
         ],
         text: "Checking in",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
 
     await expect(getLatestFollowUpBundleContext("123")).resolves.toMatchObject({
       kind: "initial",
       taskIds: ["task-1", "task-2"],
-      items: [{ number: 1, taskId: "task-1" }, { number: 2, taskId: "task-2" }]
+      items: [
+        { number: 1, taskId: "task-1" },
+        { number: 2, taskId: "task-2" },
+      ],
     });
   });
 
@@ -182,7 +193,7 @@ describe("db package", () => {
       userId: "123",
       role: "user",
       text: "Could we move that after lunch?",
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
     await saveConversationState({
       userId: "123",
@@ -199,10 +210,11 @@ describe("db package", () => {
           updatedAt: "2026-03-20T16:01:00.000Z",
           data: {
             route: "conversation_then_mutation",
-            replyText: "It sounds like you want to move the dentist reminder after lunch.",
-            slotSnapshot: {}
-          }
-        }
+            replyText:
+              "It sounds like you want to move the dentist reminder after lunch.",
+            slotSnapshot: {},
+          },
+        },
       ],
       discourseState: {
         focus_entity_id: "entity-1",
@@ -210,9 +222,9 @@ describe("db package", () => {
         last_user_mentioned_entity_ids: [],
         last_presented_items: [],
         pending_clarifications: [],
-        mode: "planning"
+        mode: "planning",
       },
-      updatedAt: "2026-03-20T16:01:00.000Z"
+      updatedAt: "2026-03-20T16:01:00.000Z",
     });
 
     const state = await loadConversationState("123", 6);
@@ -221,26 +233,28 @@ describe("db package", () => {
       conversation: {
         userId: "123",
         summaryText: "The user is discussing a move after lunch.",
-        mode: "conversation_then_mutation"
+        mode: "conversation_then_mutation",
       },
       transcript: [
         {
           role: "user",
-          text: "Could we move that after lunch?"
-        }
+          text: "Could we move that after lunch?",
+        },
       ],
       entityRegistry: [
         {
           kind: "proposal_option",
-          label: "Move the dentist reminder after lunch."
-        }
+          label: "Move the dentist reminder after lunch.",
+        },
       ],
       discourseState: {
         focus_entity_id: "entity-1",
-        last_user_mentioned_entity_ids: []
-      }
+        last_user_mentioned_entity_ids: [],
+      },
     });
-    expect(state?.entityRegistry[0]?.conversationId).toBe(state?.conversation.id);
+    expect(state?.entityRegistry[0]?.conversationId).toBe(
+      state?.conversation.id,
+    );
   });
 
   it("lists recent conversation turns in ascending order and excludes unsent assistant messages", async () => {
@@ -251,10 +265,10 @@ describe("db package", () => {
       eventType: "telegram_message",
       idempotencyKey: "telegram:webhook:update:100",
       payload: {
-        update_id: 100
+        update_id: 100,
       },
       rawText: "First user turn",
-      normalizedText: "First user turn"
+      normalizedText: "First user turn",
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
@@ -263,9 +277,9 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "Reserved assistant turn",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
@@ -274,28 +288,28 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "Sent assistant turn",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await updateOutgoingTelegramMessage({
       idempotencyKey: "telegram:followup:2",
       payload: {
         chatId: "999",
         text: "Sent assistant turn",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
     await recordIncomingTelegramMessageIfNew({
       userId: "123",
       eventType: "telegram_message",
       idempotencyKey: "telegram:webhook:update:101",
       payload: {
-        update_id: 101
+        update_id: 101,
       },
       rawText: "Second user turn",
-      normalizedText: "Second user turn"
+      normalizedText: "Second user turn",
     });
 
     const turns = await listRecentConversationTurns("123", 6);
@@ -303,7 +317,7 @@ describe("db package", () => {
     expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
       "user:First user turn",
       "user:Second user turn",
-      "assistant:Sent assistant turn"
+      "assistant:Sent assistant turn",
     ]);
   });
 
@@ -320,7 +334,7 @@ describe("db package", () => {
       normalizedText: "schedule it",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
 
     await store.saveTaskCaptureResult({
@@ -332,7 +346,7 @@ describe("db package", () => {
         version: "test",
         modelInput: {},
         modelOutput: {},
-        confidence: 1
+        confidence: 1,
       },
       tasks: [
         {
@@ -355,9 +369,9 @@ describe("db package", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -369,26 +383,38 @@ describe("db package", () => {
           confidence: 1,
           reason: "test",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Scheduled it."
+      followUpMessage: "Scheduled it.",
     });
 
-    const due = await followUpStore.listDueFollowUpTasks("2026-03-20T17:00:00.000Z");
+    const due = await followUpStore.listDueFollowUpTasks(
+      "2026-03-20T17:00:00.000Z",
+    );
     expect(due).toHaveLength(1);
     expect(due[0]?.dueType).toBe("initial");
 
-    await followUpStore.markFollowUpSent([due[0]!.id], "2026-03-20T17:00:00.000Z");
-    await expect(followUpStore.listOutstandingFollowUpTasks("123")).resolves.toMatchObject([
+    await followUpStore.markFollowUpSent(
+      [due[0]!.id],
+      "2026-03-20T17:00:00.000Z",
+    );
+    await expect(
+      followUpStore.listOutstandingFollowUpTasks("123"),
+    ).resolves.toMatchObject([
       {
         lifecycleState: "awaiting_followup",
-        lastFollowupAt: "2026-03-20T17:00:00.000Z"
-      }
+        lastFollowupAt: "2026-03-20T17:00:00.000Z",
+      },
     ]);
 
-    await followUpStore.markFollowUpReminderSent([due[0]!.id], "2026-03-20T19:00:00.000Z");
-    await expect(followUpStore.listDueFollowUpTasks("2026-03-20T19:00:00.000Z")).resolves.toHaveLength(0);
+    await followUpStore.markFollowUpReminderSent(
+      [due[0]!.id],
+      "2026-03-20T19:00:00.000Z",
+    );
+    await expect(
+      followUpStore.listDueFollowUpTasks("2026-03-20T19:00:00.000Z"),
+    ).resolves.toHaveLength(0);
   });
 
   it("limits recent conversation turns to the last six items", async () => {
@@ -400,10 +426,10 @@ describe("db package", () => {
         eventType: "telegram_message",
         idempotencyKey: `telegram:webhook:update:${200 + index}`,
         payload: {
-          update_id: 200 + index
+          update_id: 200 + index,
         },
         rawText: `Turn ${index + 1}`,
-        normalizedText: `Turn ${index + 1}`
+        normalizedText: `Turn ${index + 1}`,
       });
     }
 
@@ -416,7 +442,7 @@ describe("db package", () => {
       "Turn 5",
       "Turn 6",
       "Turn 7",
-      "Turn 8"
+      "Turn 8",
     ]);
   });
 
@@ -428,10 +454,10 @@ describe("db package", () => {
       eventType: "telegram_message",
       idempotencyKey: "telegram:webhook:update:300",
       payload: {
-        update_id: 300
+        update_id: 300,
       },
       rawText: "Schedule review launch checklist tomorrow",
-      normalizedText: "Schedule review launch checklist tomorrow"
+      normalizedText: "Schedule review launch checklist tomorrow",
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
@@ -440,18 +466,18 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "[redacted Google Calendar connect link]",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await updateOutgoingTelegramMessage({
       idempotencyKey: "telegram:lazy-link:300",
       payload: {
         chatId: "999",
         text: "[redacted Google Calendar connect link]",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
@@ -460,25 +486,25 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "Scheduled for tomorrow at 9am.",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await updateOutgoingTelegramMessage({
       idempotencyKey: "telegram:followup:301",
       payload: {
         chatId: "999",
         text: "Scheduled for tomorrow at 9am.",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
 
     const turns = await listRecentConversationTurns("123", 6);
 
     expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
       "user:Schedule review launch checklist tomorrow",
-      "assistant:Scheduled for tomorrow at 9am."
+      "assistant:Scheduled for tomorrow at 9am.",
     ]);
   });
 
@@ -490,10 +516,10 @@ describe("db package", () => {
       eventType: "telegram_message",
       idempotencyKey: "telegram:webhook:update:400",
       payload: {
-        update_id: 400
+        update_id: 400,
       },
       rawText: "Schedule taxes tomorrow",
-      normalizedText: "Schedule taxes tomorrow"
+      normalizedText: "Schedule taxes tomorrow",
     });
     await recordOutgoingTelegramMessageIfNew({
       userId: "123",
@@ -502,24 +528,24 @@ describe("db package", () => {
       payload: {
         chatId: "999",
         text: "I can do that, but I need access to your Google Calendar first. Connect here: [redacted Google Calendar connect link]. Once connected, send that again.",
-        attempts: 0
+        attempts: 0,
       },
-      retryState: "sending"
+      retryState: "sending",
     });
     await updateOutgoingTelegramMessage({
       idempotencyKey: "telegram:followup:400",
       payload: {
         chatId: "999",
         text: "I can do that, but I need access to your Google Calendar first. Connect here: [redacted Google Calendar connect link]. Once connected, send that again.",
-        attempts: 1
+        attempts: 1,
       },
-      retryState: "sent"
+      retryState: "sent",
     });
 
     const turns = await listRecentConversationTurns("123", 6);
 
     expect(turns.map((turn) => `${turn.role}:${turn.text}`)).toEqual([
-      "user:Schedule taxes tomorrow"
+      "user:Schedule taxes tomorrow",
     ]);
   });
 
@@ -532,7 +558,7 @@ describe("db package", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const store = getDefaultInboxProcessingStore();
@@ -546,7 +572,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.88
+        confidence: 0.88,
       },
       tasks: [
         {
@@ -569,9 +595,9 @@ describe("db package", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -583,10 +609,10 @@ describe("db package", () => {
           confidence: 0.8,
           reason: "Scheduled from task capture.",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Captured and scheduled Review launch checklist."
+      followUpMessage: "Captured and scheduled Review launch checklist.",
     });
 
     expect(result.outcome).toBe("planned");
@@ -598,18 +624,20 @@ describe("db package", () => {
       scheduledStartAt: "2026-03-13T17:00:00.000Z",
       scheduledEndAt: "2026-03-13T18:00:00.000Z",
       calendarSyncStatus: "in_sync",
-      rescheduleCount: 0
+      rescheduleCount: 0,
     });
-    expect("scheduleBlocks" in result ? result.scheduleBlocks[0] : null).toMatchObject({
+    expect(
+      "scheduleBlocks" in result ? result.scheduleBlocks[0] : null,
+    ).toMatchObject({
       id: "event-1",
       taskId: listTasksForTests()[0]?.id,
       confidence: 0.8,
       reason: "Scheduled from task capture.",
-      externalCalendarId: "primary"
+      externalCalendarId: "primary",
     });
     expect(listScheduleBlocksForTests()[0]).toMatchObject({
       id: "event-1",
-      taskId: listTasksForTests()[0]?.id
+      taskId: listTasksForTests()[0]?.id,
     });
   });
 
@@ -622,7 +650,7 @@ describe("db package", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const store = getDefaultInboxProcessingStore();
@@ -635,7 +663,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.88
+        confidence: 0.88,
       },
       tasks: [
         {
@@ -658,12 +686,12 @@ describe("db package", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [],
-      followUpMessage: "Captured Review launch checklist."
+      followUpMessage: "Captured Review launch checklist.",
     });
 
     const createdTask = listTasksForTests()[0];
@@ -674,7 +702,7 @@ describe("db package", () => {
       rawText: "schedule it",
       normalizedText: "schedule it",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await store.saveScheduleRequestResult({
@@ -686,7 +714,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       taskIds: [createdTask!.id],
       scheduleBlocks: [
@@ -699,16 +727,16 @@ describe("db package", () => {
           confidence: 0.8,
           reason: "First schedule for existing task.",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Scheduled it."
+      followUpMessage: "Scheduled it.",
     });
 
     expect(listTasksForTests()[0]).toMatchObject({
       lifecycleState: "scheduled",
       externalCalendarEventId: "event-2",
-      rescheduleCount: 0
+      rescheduleCount: 0,
     });
   });
 
@@ -721,7 +749,7 @@ describe("db package", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const store = getDefaultInboxProcessingStore();
@@ -734,7 +762,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.88
+        confidence: 0.88,
       },
       tasks: [
         {
@@ -757,9 +785,9 @@ describe("db package", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -771,10 +799,10 @@ describe("db package", () => {
           confidence: 0.8,
           reason: "Initial schedule.",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Captured and scheduled Review launch checklist."
+      followUpMessage: "Captured and scheduled Review launch checklist.",
     });
 
     const scheduledTask = listTasksForTests()[0];
@@ -785,7 +813,7 @@ describe("db package", () => {
       rawText: "schedule it for tomorrow",
       normalizedText: "schedule it for tomorrow",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await store.saveScheduleRequestResult({
@@ -797,7 +825,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       taskIds: [scheduledTask!.id],
       scheduleBlocks: [
@@ -810,10 +838,10 @@ describe("db package", () => {
           confidence: 0.8,
           reason: "Replacement schedule for existing task.",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Rescheduled it."
+      followUpMessage: "Rescheduled it.",
     });
 
     expect(listTasksForTests()[0]).toMatchObject({
@@ -821,7 +849,7 @@ describe("db package", () => {
       lifecycleState: "scheduled",
       externalCalendarEventId: "event-3",
       scheduledStartAt: "2026-03-14T17:00:00.000Z",
-      rescheduleCount: 1
+      rescheduleCount: 1,
     });
   });
 
@@ -834,7 +862,7 @@ describe("db package", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const store = getDefaultInboxProcessingStore();
@@ -848,7 +876,7 @@ describe("db package", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.91
+        confidence: 0.91,
       },
       tasks: [
         {
@@ -871,9 +899,9 @@ describe("db package", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -885,16 +913,18 @@ describe("db package", () => {
           confidence: 0.91,
           reason: "Planner-specific reason.",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Captured and scheduled Review launch checklist."
+      followUpMessage: "Captured and scheduled Review launch checklist.",
     });
 
-    expect("scheduleBlocks" in result ? result.scheduleBlocks[0] : null).toMatchObject({
+    expect(
+      "scheduleBlocks" in result ? result.scheduleBlocks[0] : null,
+    ).toMatchObject({
       id: "event-parity",
       confidence: 0.91,
-      reason: "Planner-specific reason."
+      reason: "Planner-specific reason.",
     });
   });
 
@@ -914,25 +944,33 @@ describe("db package", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
 
     await expect(store.getConnection("123")).resolves.toMatchObject({
       userId: "123",
       email: "max@example.com",
-      selectedCalendarId: "primary"
+      selectedCalendarId: "primary",
     });
     await expect(store.getConnectionCredentials("123")).resolves.toMatchObject({
       accessToken: "access-token",
-      refreshToken: "refresh-token"
+      refreshToken: "refresh-token",
     });
   });
 
   it("encrypts and decrypts stored Google Calendar credentials with versioned ciphertext", () => {
-    const ciphertext = encryptCalendarCredential("access-token", Buffer.alloc(32, 9).toString("base64"));
+    const ciphertext = encryptCalendarCredential(
+      "access-token",
+      Buffer.alloc(32, 9).toString("base64"),
+    );
 
     expect(ciphertext.startsWith("v1:")).toBe(true);
     expect(ciphertext).not.toContain("access-token");
-    expect(decryptCalendarCredential(ciphertext, Buffer.alloc(32, 9).toString("base64"))).toBe("access-token");
+    expect(
+      decryptCalendarCredential(
+        ciphertext,
+        Buffer.alloc(32, 9).toString("base64"),
+      ),
+    ).toBe("access-token");
   });
 });

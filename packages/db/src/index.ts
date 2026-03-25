@@ -13,13 +13,14 @@ export function getRepositoryHealth(): RepositoryHealth {
   if (hasConfiguredDatabaseUrl()) {
     return {
       status: "configured",
-      message: "Database repositories are configured for Postgres."
+      message: "Database repositories are configured for Postgres.",
     };
   }
 
   return {
     status: "unconfigured",
-    message: "Database repositories require a Postgres DATABASE_URL outside tests."
+    message:
+      "Database repositories require a Postgres DATABASE_URL outside tests.",
   };
 }
 

@@ -12,11 +12,15 @@
     "eval:router-confirmation": "pnpm --filter @atlas/integrations eval:router-confirmation",
     "eval:turn-router": "pnpm --filter @atlas/integrations eval:turn-router",
     "lint": "pnpm -r lint",
+    "format": "pnpm biome format . --write",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "telegram:webhook:set": "bash scripts/set-telegram-webhook.sh",
     "db:test:start": "bash scripts/db-test-start.sh",
     "db:test:stop": "bash scripts/db-test-stop.sh",
     "db:test:reset": "bash scripts/db-test-reset.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8"
   }
 }

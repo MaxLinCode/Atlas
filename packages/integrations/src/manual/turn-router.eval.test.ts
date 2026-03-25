@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   ensureManualEvalEnv,
   writePromptImprovementBrief,
-  writeSuiteEvalReport
+  writeSuiteEvalReport,
 } from "./shared";
 import { runTurnRouterEvalSuite } from "./turn-router.eval-suite";
 
@@ -26,8 +26,8 @@ describe.sequential("manual turn router eval", () => {
         actual: testCase.details.actual,
         reason: testCase.details.reason,
         note: testCase.details.note,
-        error: testCase.error ?? ""
-      }))
+        error: testCase.error ?? "",
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPath) {

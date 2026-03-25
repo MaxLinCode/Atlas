@@ -7,7 +7,9 @@ import type { EvalCaseResult, EvalSuiteResult } from "./shared";
 type RecoveryEvalCase = {
   name: string;
   input: ConfirmedMutationRecoveryInput;
-  assert: (result: Awaited<ReturnType<typeof recoverConfirmedMutationWithResponses>>) => void;
+  assert: (
+    result: Awaited<ReturnType<typeof recoverConfirmedMutationWithResponses>>,
+  ) => void;
 };
 
 export const RECOVERY_EVAL_CASES: RecoveryEvalCase[] = [
@@ -20,20 +22,20 @@ export const RECOVERY_EVAL_CASES: RecoveryEvalCase[] = [
         {
           role: "assistant",
           text: "Would you like me to schedule it at 3pm?",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "Yes",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
       ],
-      memorySummary: "The assistant proposed scheduling it at 3pm."
+      memorySummary: "The assistant proposed scheduling it at 3pm.",
     },
     assert: (result) => {
       expect(result.outcome).toBe("recovered");
       expect(result.recoveredText).toMatch(/3pm/i);
-    }
+    },
   },
   {
     name: "vague yes after multiple options requires clarification",
@@ -44,21 +46,21 @@ export const RECOVERY_EVAL_CASES: RecoveryEvalCase[] = [
         {
           role: "assistant",
           text: "I could do 3pm or 4pm.",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "Yes",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
       ],
-      memorySummary: "Two candidate times were proposed."
+      memorySummary: "Two candidate times were proposed.",
     },
     assert: (result) => {
       expect(result.outcome).toBe("needs_clarification");
       expect(result.recoveredText).toBeNull();
       expect(result.userReplyMessage).toMatch(/\?/);
-    }
+    },
   },
   {
     name: "clear completion language recovers a completion request",
@@ -69,21 +71,21 @@ export const RECOVERY_EVAL_CASES: RecoveryEvalCase[] = [
         {
           role: "assistant",
           text: "Did you finish the journaling session?",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "done",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
       ],
-      memorySummary: "The recent exchange is about the journaling session."
+      memorySummary: "The recent exchange is about the journaling session.",
     },
     assert: (result) => {
       expect(result.outcome).toBe("recovered");
       expect(result.recoveredText).toMatch(/journal|done/i);
-    }
-  }
+    },
+  },
 ];
 
 export async function runConfirmedMutationRecoveryEvalSuite(): Promise<EvalSuiteResult> {
@@ -103,8 +105,8 @@ export async function runConfirmedMutationRecoveryEvalSuite(): Promise<EvalSuite
           outcome: result.outcome,
           recoveredText: result.recoveredText,
           reason: result.reason,
-          userReplyMessage: result.userReplyMessage
-        }
+          userReplyMessage: result.userReplyMessage,
+        },
       });
     } catch (error) {
       cases.push({
@@ -115,9 +117,9 @@ export async function runConfirmedMutationRecoveryEvalSuite(): Promise<EvalSuite
           outcome: result.outcome,
           recoveredText: result.recoveredText,
           reason: result.reason,
-          userReplyMessage: result.userReplyMessage
+          userReplyMessage: result.userReplyMessage,
         },
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -130,7 +132,6 @@ export async function runConfirmedMutationRecoveryEvalSuite(): Promise<EvalSuite
     passed,
     failed: cases.length - passed,
     durationMs: Date.now() - startedAt,
-    cases
+    cases,
   };
 }
-

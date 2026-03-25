@@ -19,16 +19,16 @@ export const ROUTER_CONFIRMATION_EVAL_CASES: RouterConfirmationEvalCase[] = [
         {
           role: "assistant",
           text: "Would you like me to schedule it at 3pm?",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "Yes",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
-      ]
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
+      ],
     },
-    expectedRoute: "confirmed_mutation"
+    expectedRoute: "confirmed_mutation",
   },
   {
     name: "broader refinement confirms one concrete write",
@@ -39,16 +39,16 @@ export const ROUTER_CONFIRMATION_EVAL_CASES: RouterConfirmationEvalCase[] = [
         {
           role: "assistant",
           text: "I can move it to 3pm.",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "push it 1 hour later",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
-      ]
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
+      ],
     },
-    expectedRoute: "confirmed_mutation"
+    expectedRoute: "confirmed_mutation",
   },
   {
     name: "ambiguous yes stays discuss-first",
@@ -59,17 +59,17 @@ export const ROUTER_CONFIRMATION_EVAL_CASES: RouterConfirmationEvalCase[] = [
         {
           role: "assistant",
           text: "I could do 3pm or 4pm.",
-          createdAt: "2026-03-17T16:00:00.000Z"
+          createdAt: "2026-03-17T16:00:00.000Z",
         },
         {
           role: "user",
           text: "Yes",
-          createdAt: "2026-03-17T16:01:00.000Z"
-        }
-      ]
+          createdAt: "2026-03-17T16:01:00.000Z",
+        },
+      ],
     },
-    expectedRoute: "conversation_then_mutation"
-  }
+    expectedRoute: "conversation_then_mutation",
+  },
 ];
 
 export async function runRouterConfirmationEvalSuite(): Promise<EvalSuiteResult> {
@@ -87,9 +87,13 @@ export async function runRouterConfirmationEvalSuite(): Promise<EvalSuiteResult>
         input: testCase.input.rawText,
         expected: testCase.expectedRoute,
         actual: result.route,
-        reason: result.reason
+        reason: result.reason,
       },
-      ...(pass ? {} : { error: `Expected ${testCase.expectedRoute}, received ${result.route}` })
+      ...(pass
+        ? {}
+        : {
+            error: `Expected ${testCase.expectedRoute}, received ${result.route}`,
+          }),
     });
   }
 
@@ -101,6 +105,6 @@ export async function runRouterConfirmationEvalSuite(): Promise<EvalSuiteResult>
     passed,
     failed: cases.length - passed,
     durationMs: Date.now() - startedAt,
-    cases
+    cases,
   };
 }

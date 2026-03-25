@@ -1,73 +1,75 @@
 import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
-  getAppBaseUrl,
-  getTelegramAllowedUserIds,
-  isConfirmedMutationRecovered,
-  isTelegramUserAllowed,
-  synthesizeMutationText,
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
   type ConversationEntity,
   type ConversationTurn,
-  type Task,
+  getAppBaseUrl,
   getConfig,
+  getTelegramAllowedUserIds,
+  isConfirmedMutationRecovered,
+  isTelegramUserAllowed,
   normalizeTelegramUpdate,
-  telegramUpdateSchema
+  synthesizeMutationText,
+  type Task,
+  telegramUpdateSchema,
 } from "@atlas/core";
 import {
   appendConversationTurn,
-  loadConversationState,
-  saveConversationState,
-  getDefaultInboxProcessingStore,
-  listRecentConversationTurns,
-  getDefaultFollowUpRuntimeStore,
-  getLatestFollowUpBundleContext,
-  recordIncomingTelegramMessageIfNew,
-  updateOutgoingTelegramMessage,
-  type ConversationStateStore,
   type ConversationHistoryStore,
+  type ConversationStateStore,
   type FollowUpRuntimeStore,
+  getDefaultFollowUpRuntimeStore,
+  getDefaultInboxProcessingStore,
+  getLatestFollowUpBundleContext,
   type IncomingTelegramIngressStore,
+  listRecentConversationTurns,
+  loadConversationState,
   type OutgoingTelegramDeliveryStore,
-  type PersistedInboxItem
+  type PersistedInboxItem,
+  recordIncomingTelegramMessageIfNew,
+  saveConversationState,
+  updateOutgoingTelegramMessage,
 } from "@atlas/db";
 import {
+  type ConversationMemorySummaryInput,
+  type ConversationMemorySummaryOutput,
   editTelegramMessage,
   recoverConfirmedMutationWithResponses,
   sendTelegramChatAction,
-  summarizeConversationMemoryWithResponses,
   sendTelegramMessage,
-  type ConversationMemorySummaryInput,
-  type ConversationMemorySummaryOutput,
+  summarizeConversationMemoryWithResponses,
   type TelegramChatAction,
-  type TelegramSendMessageResponse
+  type TelegramSendMessageResponse,
 } from "@atlas/integrations";
-
-import { processInboxItem, type ProcessInboxItemDependencies } from "./process-inbox-item";
 import {
-  deriveConversationReplyState,
-  deriveMutationState
-} from "./conversation-state";
-import { renderMutationReply } from "./mutation-reply";
-import {
-  buildConversationResponse,
   type BuildConversationResponseInput,
-  type BuildConversationResponseResult
+  type BuildConversationResponseResult,
+  buildConversationResponse,
 } from "./conversation-response";
 import {
-  routeMessageTurn,
-  doesPolicyAllowWrites,
-  getConversationRouteForPolicy,
-  type TurnRouterInput,
-  type TurnRouterResult
-} from "./turn-router";
+  deriveConversationReplyState,
+  deriveMutationState,
+} from "./conversation-state";
+import { buildFollowUpBundle } from "./follow-up";
 import {
   createGoogleCalendarConnectLink,
-  hasActiveGoogleCalendarConnection
+  hasActiveGoogleCalendarConnection,
 } from "./google-calendar";
-import { buildFollowUpBundle } from "./follow-up";
+import { renderMutationReply } from "./mutation-reply";
+import {
+  type ProcessInboxItemDependencies,
+  processInboxItem,
+} from "./process-inbox-item";
 import { sendTelegramMessageWithPersistence } from "./telegram-webhook-transport";
+import {
+  doesPolicyAllowWrites,
+  getConversationRouteForPolicy,
+  routeMessageTurn,
+  type TurnRouterInput,
+  type TurnRouterResult,
+} from "./turn-router";
 
 type WebhookResult = {
   status: number;
@@ -77,19 +79,23 @@ type WebhookResult = {
 type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   ingressStore?: IncomingTelegramIngressStore;
   deliveryStore?: OutgoingTelegramDeliveryStore;
-  primeProcessingStore?: (inboxItem: PersistedInboxItem) => void | Promise<void>;
+  primeProcessingStore?: (
+    inboxItem: PersistedInboxItem,
+  ) => void | Promise<void>;
   sender?: typeof sendTelegramMessage;
   editor?: typeof editTelegramMessage;
   chatActionSender?: typeof sendTelegramChatAction;
   turnRouter?: (input: TurnRouterInput) => Promise<TurnRouterResult>;
-  conversationResponder?: (input: BuildConversationResponseInput) => Promise<BuildConversationResponseResult>;
+  conversationResponder?: (
+    input: BuildConversationResponseInput,
+  ) => Promise<BuildConversationResponseResult>;
   conversationHistoryStore?: ConversationHistoryStore;
   conversationStateStore?: ConversationStateStore;
   conversationMemorySummarizer?: (
-    input: ConversationMemorySummaryInput
+    input: ConversationMemorySummaryInput,
   ) => Promise<ConversationMemorySummaryOutput>;
   confirmedMutationRecoverer?: (
-    input: ConfirmedMutationRecoveryInput
+    input: ConfirmedMutationRecoveryInput,
   ) => Promise<ConfirmedMutationRecoveryOutput>;
   googleCalendarConnectionChecker?: (userId: string) => Promise<boolean>;
   googleCalendarConnectLinkBuilder?: (input: {
@@ -105,7 +111,7 @@ const RECENT_CONVERSATION_TURN_LIMIT = 6;
 
 export async function handleTelegramWebhook(
   request: Request,
-  dependencies: TelegramWebhookDependencies = {}
+  dependencies: TelegramWebhookDependencies = {},
 ): Promise<WebhookResult> {
   const config = getConfig();
   const providedSecret = request.headers.get(TELEGRAM_SECRET_HEADER);
@@ -115,8 +121,8 @@ export async function handleTelegramWebhook(
       status: 401,
       body: {
         accepted: false,
-        error: "invalid_webhook_secret"
-      }
+        error: "invalid_webhook_secret",
+      },
     };
   }
 
@@ -127,8 +133,8 @@ export async function handleTelegramWebhook(
       status: 400,
       body: {
         accepted: false,
-        error: "invalid_json"
-      }
+        error: "invalid_json",
+      },
     };
   }
 
@@ -139,12 +145,13 @@ export async function handleTelegramWebhook(
       status: 400,
       body: {
         accepted: false,
-        error: "invalid_telegram_update"
-      }
+        error: "invalid_telegram_update",
+      },
     };
   }
 
-  const incomingMessage = parsedUpdate.data.message ?? parsedUpdate.data.edited_message;
+  const incomingMessage =
+    parsedUpdate.data.message ?? parsedUpdate.data.edited_message;
   const rawText = incomingMessage?.text ?? incomingMessage?.caption;
 
   if (!incomingMessage || !rawText?.trim()) {
@@ -153,12 +160,14 @@ export async function handleTelegramWebhook(
       body: {
         accepted: true,
         ignored: true,
-        reason: "unsupported_telegram_update"
-      }
+        reason: "unsupported_telegram_update",
+      },
     };
   }
 
-  const idempotencyKey = buildTelegramWebhookIdempotencyKey(parsedUpdate.data.update_id);
+  const idempotencyKey = buildTelegramWebhookIdempotencyKey(
+    parsedUpdate.data.update_id,
+  );
   const normalizedMessage = normalizeTelegramUpdate(parsedUpdate.data);
 
   if (!normalizedMessage) {
@@ -167,33 +176,41 @@ export async function handleTelegramWebhook(
       body: {
         accepted: true,
         ignored: true,
-        reason: "unsupported_telegram_update"
-      }
+        reason: "unsupported_telegram_update",
+      },
     };
   }
 
   const allowedTelegramUserIds = getTelegramAllowedUserIds(config);
 
-  if (!isTelegramUserAllowed(normalizedMessage.user.telegramUserId, allowedTelegramUserIds)) {
+  if (
+    !isTelegramUserAllowed(
+      normalizedMessage.user.telegramUserId,
+      allowedTelegramUserIds,
+    )
+  ) {
     return {
       status: 403,
       body: {
         accepted: false,
-        error: "telegram_user_not_allowed"
-      }
+        error: "telegram_user_not_allowed",
+      },
     };
   }
 
   const hasActiveGoogleCalendar =
-    (await (dependencies.googleCalendarConnectionChecker ?? hasActiveGoogleCalendarConnection)(
-      normalizedMessage.user.telegramUserId
-    )) ?? false;
+    (await (
+      dependencies.googleCalendarConnectionChecker ??
+      hasActiveGoogleCalendarConnection
+    )(normalizedMessage.user.telegramUserId)) ?? false;
 
   if (!hasActiveGoogleCalendar) {
-    const connectLink = await (dependencies.googleCalendarConnectLinkBuilder ??
-      createGoogleCalendarConnectLink)({
+    const connectLink = await (
+      dependencies.googleCalendarConnectLinkBuilder ??
+      createGoogleCalendarConnectLink
+    )({
       baseUrl: getAppBaseUrl(config),
-      userId: normalizedMessage.user.telegramUserId
+      userId: normalizedMessage.user.telegramUserId,
     });
     const connectReply = buildGoogleCalendarConnectReply(connectLink);
 
@@ -201,20 +218,24 @@ export async function handleTelegramWebhook(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
-        idempotencyKey: buildLazyLinkReplyIdempotencyKey(parsedUpdate.data.update_id),
+        idempotencyKey: buildLazyLinkReplyIdempotencyKey(
+          parsedUpdate.data.update_id,
+        ),
         eventType: "telegram_google_calendar_link",
         text: connectReply,
-        persistedText: redactTokenizedUrls(connectReply)
+        persistedText: redactTokenizedUrls(connectReply),
       },
       {
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
         body: {
           accepted: true,
           lazyLinkRequired: true,
-          idempotencyKey
-        }
-      }
+          idempotencyKey,
+        },
+      },
     );
   }
 
@@ -225,9 +246,9 @@ export async function handleTelegramWebhook(
       idempotencyKey,
       payload: parsedUpdate.data,
       rawText: normalizedMessage.rawText,
-      normalizedText: normalizedMessage.normalizedText
+      normalizedText: normalizedMessage.normalizedText,
     },
-    dependencies.ingressStore
+    dependencies.ingressStore,
   );
 
   if (ingress.status === "duplicate") {
@@ -236,8 +257,8 @@ export async function handleTelegramWebhook(
       body: {
         accepted: true,
         duplicate: true,
-        idempotencyKey
-      }
+        idempotencyKey,
+      },
     };
   }
 
@@ -245,22 +266,21 @@ export async function handleTelegramWebhook(
     {
       userId: normalizedMessage.user.telegramUserId,
       role: "user",
-      text: normalizedMessage.rawText
+      text: normalizedMessage.rawText,
     },
-    dependencies.conversationStateStore
+    dependencies.conversationStateStore,
   );
 
   const conversationState =
     (await loadConversationState(
       normalizedMessage.user.telegramUserId,
       RECENT_CONVERSATION_TURN_LIMIT,
-      dependencies.conversationStateStore
-    )) ??
-    null;
+      dependencies.conversationStateStore,
+    )) ?? null;
   const legacyRecentTurns = await listRecentConversationTurns(
     normalizedMessage.user.telegramUserId,
     RECENT_CONVERSATION_TURN_LIMIT,
-    dependencies.conversationHistoryStore
+    dependencies.conversationHistoryStore,
   );
   const recentTurns =
     conversationState && conversationState.transcript.length > 1
@@ -269,66 +289,79 @@ export async function handleTelegramWebhook(
   const followUpIntercept = await tryHandleFollowUpReply(
     {
       normalizedMessage,
-      inboxItem: ingress.inboxItem
+      inboxItem: ingress.inboxItem,
     },
-    dependencies
+    dependencies,
   );
 
   if (followUpIntercept) {
     return followUpIntercept;
   }
 
-  const routedWithContext = await (dependencies.turnRouter ?? routeMessageTurn)({
-    rawText: normalizedMessage.rawText,
-    normalizedText: normalizedMessage.normalizedText,
-    recentTurns,
-    summaryText: conversationState?.conversation.summaryText ?? null,
-    entityRegistry: conversationState?.entityRegistry ?? [],
-    discourseState: conversationState?.discourseState ?? null
-  });
+  const routedWithContext = await (dependencies.turnRouter ?? routeMessageTurn)(
+    {
+      rawText: normalizedMessage.rawText,
+      normalizedText: normalizedMessage.normalizedText,
+      recentTurns,
+      summaryText: conversationState?.conversation.summaryText ?? null,
+      entityRegistry: conversationState?.entityRegistry ?? [],
+      discourseState: conversationState?.discourseState ?? null,
+    },
+  );
   console.info("turn_interpreted", {
     userId: normalizedMessage.user.telegramUserId,
     normalizedText: normalizedMessage.normalizedText,
-    interpretation: routedWithContext.interpretation
+    interpretation: routedWithContext.interpretation,
   });
   console.info("turn_policy_decided", {
     userId: normalizedMessage.user.telegramUserId,
     normalizedText: normalizedMessage.normalizedText,
-    policy: routedWithContext.policy
+    policy: routedWithContext.policy,
   });
 
-  const compatibilityTurnRoute = getCompatibilityTurnRouteFromPolicy(routedWithContext.policy.action);
-  const immediateFeedback = buildImmediateRouteFeedback(routedWithContext.policy.action);
+  const compatibilityTurnRoute = getCompatibilityTurnRouteFromPolicy(
+    routedWithContext.policy.action,
+  );
+  const immediateFeedback = buildImmediateRouteFeedback(
+    routedWithContext.policy.action,
+  );
 
   const placeholderDelivery = await sendImmediateRouteFeedback(
     {
       userId: normalizedMessage.user.telegramUserId,
       chatId: normalizedMessage.chatId,
       inboxItemId: ingress.inboxItem.id,
-      feedback: immediateFeedback
+      feedback: immediateFeedback,
     },
     {
       sender: dependencies.sender ?? sendTelegramMessage,
       chatActionSender: dependencies.chatActionSender ?? sendTelegramChatAction,
-      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-    }
+      ...(dependencies.deliveryStore
+        ? { deliveryStore: dependencies.deliveryStore }
+        : {}),
+    },
   );
 
   if (!doesPolicyAllowWrites(routedWithContext.policy.action)) {
     console.info("turn_execution_branch", {
       userId: normalizedMessage.user.telegramUserId,
-      action: routedWithContext.policy.action
+      action: routedWithContext.policy.action,
     });
 
-    const memorySummary = await buildConversationMemorySummary(recentTurns, dependencies);
-    const conversationResponse = await (dependencies.conversationResponder ?? buildConversationResponse)({
+    const memorySummary = await buildConversationMemorySummary(
+      recentTurns,
+      dependencies,
+    );
+    const conversationResponse = await (
+      dependencies.conversationResponder ?? buildConversationResponse
+    )({
       route: getConversationRouteForPolicy(routedWithContext.policy.action),
       rawText: normalizedMessage.rawText,
       normalizedText: normalizedMessage.normalizedText,
       recentTurns,
       memorySummary,
       entityRegistry: conversationState?.entityRegistry ?? [],
-      discourseState: conversationState?.discourseState ?? null
+      discourseState: conversationState?.discourseState ?? null,
     });
 
     const outboundDelivery = await finalizeFollowUpMessage(
@@ -336,22 +369,24 @@ export async function handleTelegramWebhook(
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
         inboxItemId: ingress.inboxItem.id,
-        text: conversationResponse.reply
+        text: conversationResponse.reply,
       },
       {
         editor: dependencies.editor ?? editTelegramMessage,
         placeholderDelivery,
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-      }
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
+      },
     );
     const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
-        inboxItemId: ingress.inboxItem.id
+        inboxItemId: ingress.inboxItem.id,
       },
-      dependencies
+      dependencies,
     );
 
     if (conversationState) {
@@ -359,9 +394,9 @@ export async function handleTelegramWebhook(
         {
           userId: normalizedMessage.user.telegramUserId,
           role: "assistant",
-          text: conversationResponse.reply
+          text: conversationResponse.reply,
         },
-        dependencies.conversationStateStore
+        dependencies.conversationStateStore,
       );
       await saveConversationState(
         {
@@ -373,15 +408,16 @@ export async function handleTelegramWebhook(
               clarificationSlots: routedWithContext.policy.clarificationSlots,
               targetProposalId: routedWithContext.policy.targetProposalId,
               committedSlots: routedWithContext.policy.committedSlots,
-              resolvedContract: routedWithContext.policy.resolvedContract
+              resolvedContract: routedWithContext.policy.resolvedContract,
             },
             interpretation: routedWithContext.interpretation,
             reply: conversationResponse.reply,
             userTurnText: normalizedMessage.rawText,
-            summaryText: memorySummary ?? conversationState.conversation.summaryText
-          })
+            summaryText:
+              memorySummary ?? conversationState.conversation.summaryText,
+          }),
         },
-        dependencies.conversationStateStore
+        dependencies.conversationStateStore,
       );
     }
 
@@ -396,47 +432,49 @@ export async function handleTelegramWebhook(
         routing: routedWithContext,
         processing: {
           outcome: "conversation_replied",
-          reply: conversationResponse.reply
+          reply: conversationResponse.reply,
         },
         outboundDelivery,
-        followUpContinuation
-      }
+        followUpContinuation,
+      },
     };
   }
 
   if (routedWithContext.policy.action === "recover_and_execute") {
     console.info("turn_execution_branch", {
       userId: normalizedMessage.user.telegramUserId,
-      action: routedWithContext.policy.action
+      action: routedWithContext.policy.action,
     });
     const entityRegistry = conversationState?.entityRegistry ?? [];
     const proposalEntity = entityRegistry.find(
       (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
-        e.kind === "proposal_option" && e.id === routedWithContext.policy.targetProposalId
+        e.kind === "proposal_option" &&
+        e.id === routedWithContext.policy.targetProposalId,
     );
 
     const synthesis = synthesizeMutationText({
       resolvedSlots: routedWithContext.policy.committedSlots,
       proposalEntity,
-      entityRegistry
+      entityRegistry,
     });
     console.info("turn_recovery_result", {
       userId: normalizedMessage.user.telegramUserId,
       action: routedWithContext.policy.action,
-      outcome: synthesis.outcome
+      outcome: synthesis.outcome,
     });
 
     if (synthesis.outcome === "insufficient_data") {
-      const clarificationMessage = "I need a bit more detail to proceed. What would you like me to schedule?";
+      const clarificationMessage =
+        "I need a bit more detail to proceed. What would you like me to schedule?";
 
       if (conversationState) {
         await appendConversationTurn(
           {
             userId: normalizedMessage.user.telegramUserId,
             role: "assistant",
-            text: clarificationMessage
+            text: clarificationMessage,
           },
-          dependencies.conversationStateStore
+          dependencies.conversationStateStore,
         );
         await saveConversationState(
           {
@@ -446,15 +484,15 @@ export async function handleTelegramWebhook(
               policy: {
                 action: "ask_clarification",
                 committedSlots: routedWithContext.policy.committedSlots,
-                resolvedContract: routedWithContext.policy.resolvedContract
+                resolvedContract: routedWithContext.policy.resolvedContract,
               },
               interpretation: routedWithContext.interpretation,
               reply: clarificationMessage,
               userTurnText: normalizedMessage.rawText,
-              summaryText: conversationState.conversation.summaryText
-            })
+              summaryText: conversationState.conversation.summaryText,
+            }),
           },
-          dependencies.conversationStateStore
+          dependencies.conversationStateStore,
         );
       }
 
@@ -463,13 +501,15 @@ export async function handleTelegramWebhook(
           userId: normalizedMessage.user.telegramUserId,
           chatId: normalizedMessage.chatId,
           inboxItemId: ingress.inboxItem.id,
-          text: clarificationMessage
+          text: clarificationMessage,
         },
         {
           editor: dependencies.editor ?? editTelegramMessage,
           placeholderDelivery,
           sender: dependencies.sender ?? sendTelegramMessage,
-          ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+          ...(dependencies.deliveryStore
+            ? { deliveryStore: dependencies.deliveryStore }
+            : {}),
           body: {
             accepted: true,
             idempotencyKey,
@@ -479,10 +519,10 @@ export async function handleTelegramWebhook(
             routing: routedWithContext,
             processing: {
               outcome: "conversation_replied",
-              reply: clarificationMessage
-            }
-          }
-        }
+              reply: clarificationMessage,
+            },
+          },
+        },
       );
     }
 
@@ -492,36 +532,40 @@ export async function handleTelegramWebhook(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
-          text: synthesis.text
-        }
+          text: synthesis.text,
+        },
       },
       {
         ...(dependencies.store ? { store: dependencies.store } : {}),
         ...(dependencies.planner ? { planner: dependencies.planner } : {}),
-        ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
-      }
+        ...(dependencies.calendar !== undefined
+          ? { calendar: dependencies.calendar }
+          : {}),
+      },
     );
     const outboundDelivery = await finalizeFollowUpMessage(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
         inboxItemId: ingress.inboxItem.id,
-        text: processing.followUpMessage
+        text: processing.followUpMessage,
       },
       {
         editor: dependencies.editor ?? editTelegramMessage,
         placeholderDelivery,
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-      }
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
+      },
     );
     const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
       {
         userId: normalizedMessage.user.telegramUserId,
         chatId: normalizedMessage.chatId,
-        inboxItemId: ingress.inboxItem.id
+        inboxItemId: ingress.inboxItem.id,
       },
-      dependencies
+      dependencies,
     );
 
     if (conversationState) {
@@ -529,19 +573,19 @@ export async function handleTelegramWebhook(
         {
           userId: normalizedMessage.user.telegramUserId,
           role: "assistant",
-          text: processing.followUpMessage
+          text: processing.followUpMessage,
         },
-        dependencies.conversationStateStore
+        dependencies.conversationStateStore,
       );
       await saveConversationState(
         {
           userId: normalizedMessage.user.telegramUserId,
           ...deriveMutationState({
             snapshot: conversationState,
-            processing
-          })
+            processing,
+          }),
         },
-        dependencies.conversationStateStore
+        dependencies.conversationStateStore,
       );
     }
 
@@ -556,48 +600,52 @@ export async function handleTelegramWebhook(
         routing: routedWithContext,
         processing,
         outboundDelivery,
-        followUpContinuation
-      }
+        followUpContinuation,
+      },
     };
   }
 
   console.info("turn_execution_branch", {
     userId: normalizedMessage.user.telegramUserId,
-    action: routedWithContext.policy.action
+    action: routedWithContext.policy.action,
   });
   await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
   const processing = await processInboxItem(
     {
-      inboxItemId: ingress.inboxItem.id
+      inboxItemId: ingress.inboxItem.id,
     },
     {
       ...(dependencies.store ? { store: dependencies.store } : {}),
       ...(dependencies.planner ? { planner: dependencies.planner } : {}),
-      ...(dependencies.calendar !== undefined ? { calendar: dependencies.calendar } : {})
-    }
+      ...(dependencies.calendar !== undefined
+        ? { calendar: dependencies.calendar }
+        : {}),
+    },
   );
   const outboundDelivery = await finalizeFollowUpMessage(
     {
       userId: normalizedMessage.user.telegramUserId,
       chatId: normalizedMessage.chatId,
       inboxItemId: ingress.inboxItem.id,
-      text: processing.followUpMessage
+      text: processing.followUpMessage,
     },
     {
       editor: dependencies.editor ?? editTelegramMessage,
       placeholderDelivery,
       sender: dependencies.sender ?? sendTelegramMessage,
-      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-    }
+      ...(dependencies.deliveryStore
+        ? { deliveryStore: dependencies.deliveryStore }
+        : {}),
+    },
   );
   const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
     {
       userId: normalizedMessage.user.telegramUserId,
       chatId: normalizedMessage.chatId,
-      inboxItemId: ingress.inboxItem.id
+      inboxItemId: ingress.inboxItem.id,
     },
-    dependencies
+    dependencies,
   );
 
   if (conversationState) {
@@ -605,19 +653,19 @@ export async function handleTelegramWebhook(
       {
         userId: normalizedMessage.user.telegramUserId,
         role: "assistant",
-        text: processing.followUpMessage
+        text: processing.followUpMessage,
       },
-      dependencies.conversationStateStore
+      dependencies.conversationStateStore,
     );
     await saveConversationState(
       {
         userId: normalizedMessage.user.telegramUserId,
         ...deriveMutationState({
           snapshot: conversationState,
-          processing
-        })
+          processing,
+        }),
       },
-      dependencies.conversationStateStore
+      dependencies.conversationStateStore,
     );
   }
 
@@ -632,8 +680,8 @@ export async function handleTelegramWebhook(
       routing: routedWithContext,
       processing,
       outboundDelivery,
-      followUpContinuation
-    }
+      followUpContinuation,
+    },
   };
 }
 
@@ -664,9 +712,10 @@ type SendFollowUpMessageDependencies = {
   deliveryStore?: OutgoingTelegramDeliveryStore;
 };
 
-type SendImmediateRouteFeedbackDependencies = SendFollowUpMessageDependencies & {
-  chatActionSender: typeof sendTelegramChatAction;
-};
+type SendImmediateRouteFeedbackDependencies =
+  SendFollowUpMessageDependencies & {
+    chatActionSender: typeof sendTelegramChatAction;
+  };
 
 type FinalizeFollowUpMessageDependencies = SendFollowUpMessageDependencies & {
   editor: typeof editTelegramMessage;
@@ -680,7 +729,9 @@ type ReplyWithTextDependencies = SendFollowUpMessageDependencies & {
 
 async function replyWithText(
   input: ReplyWithTextInput,
-  dependencies: ReplyWithTextDependencies | (ReplyWithTextDependencies & FinalizeFollowUpMessageDependencies)
+  dependencies:
+    | ReplyWithTextDependencies
+    | (ReplyWithTextDependencies & FinalizeFollowUpMessageDependencies),
 ) {
   const outboundDelivery =
     "placeholderDelivery" in dependencies
@@ -691,26 +742,26 @@ async function replyWithText(
     status: 200,
     body: {
       ...dependencies.body,
-      outboundDelivery
-    }
+      outboundDelivery,
+    },
   };
 }
 
 async function sendFollowUpMessage(
   input: SendFollowUpMessageInput,
-  dependencies: SendFollowUpMessageDependencies
+  dependencies: SendFollowUpMessageDependencies,
 ) {
   return sendTelegramMessageWithPersistence(input, dependencies);
 }
 
 async function sendImmediateRouteFeedback(
   input: SendImmediateRouteFeedbackInput,
-  dependencies: SendImmediateRouteFeedbackDependencies
+  dependencies: SendImmediateRouteFeedbackDependencies,
 ) {
   await dependencies
     .chatActionSender({
       chatId: input.chatId,
-      action: input.feedback.chatAction
+      action: input.feedback.chatAction,
     })
     .catch(() => null);
 
@@ -719,21 +770,24 @@ async function sendImmediateRouteFeedback(
       userId: input.userId,
       chatId: input.chatId,
       inboxItemId: input.inboxItemId,
-      text: input.feedback.text
+      text: input.feedback.text,
     },
-    dependencies
+    dependencies,
   );
 }
 
 async function finalizeFollowUpMessage(
   input: SendFollowUpMessageInput,
-  dependencies: FinalizeFollowUpMessageDependencies
+  dependencies: FinalizeFollowUpMessageDependencies,
 ) {
-  if (dependencies.placeholderDelivery.status === "sent" && dependencies.placeholderDelivery.message) {
+  if (
+    dependencies.placeholderDelivery.status === "sent" &&
+    dependencies.placeholderDelivery.message
+  ) {
     return editExistingFollowUpMessage(
       input,
       dependencies.placeholderDelivery.message.message_id,
-      dependencies
+      dependencies,
     );
   }
 
@@ -747,40 +801,49 @@ async function finalizeFollowUpMessage(
 async function editExistingFollowUpMessage(
   input: SendFollowUpMessageInput,
   messageId: number,
-  dependencies: FinalizeFollowUpMessageDependencies
+  dependencies: FinalizeFollowUpMessageDependencies,
 ) {
   const idempotencyKey =
     input.idempotencyKey ??
-    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+    (input.inboxItemId
+      ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId)
+      : null);
 
   if (!idempotencyKey) {
-    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+    throw new Error(
+      "Follow-up delivery requires an inboxItemId or explicit idempotencyKey.",
+    );
   }
 
   try {
     const editedMessage = await dependencies.editor({
       chatId: input.chatId,
       messageId,
-      text: input.text
+      text: input.text,
     });
 
     await updateOutgoingTelegramMessage(
       {
         idempotencyKey,
-        payload: buildOutgoingEventPayload(input, editedMessage, dependencies.placeholderDelivery.attempts, {
-          editTargetMessageId: messageId,
-          edited: true
-        }),
-        retryState: "sent"
+        payload: buildOutgoingEventPayload(
+          input,
+          editedMessage,
+          dependencies.placeholderDelivery.attempts,
+          {
+            editTargetMessageId: messageId,
+            edited: true,
+          },
+        ),
+        retryState: "sent",
       },
-      dependencies.deliveryStore
+      dependencies.deliveryStore,
     );
 
     return {
       status: "edited",
       attempts: dependencies.placeholderDelivery.attempts,
       idempotencyKey,
-      message: editedMessage.result
+      message: editedMessage.result,
     };
   } catch (error) {
     return sendFailedPlaceholderRecoveryMessage(input, dependencies, error);
@@ -790,14 +853,18 @@ async function editExistingFollowUpMessage(
 async function sendFailedPlaceholderRecoveryMessage(
   input: SendFollowUpMessageInput,
   dependencies: FinalizeFollowUpMessageDependencies,
-  cause?: unknown
+  cause?: unknown,
 ) {
   const idempotencyKey =
     input.idempotencyKey ??
-    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+    (input.inboxItemId
+      ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId)
+      : null);
 
   if (!idempotencyKey) {
-    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+    throw new Error(
+      "Follow-up delivery requires an inboxItemId or explicit idempotencyKey.",
+    );
   }
 
   let attempts = 0;
@@ -809,29 +876,37 @@ async function sendFailedPlaceholderRecoveryMessage(
     try {
       const sentMessage = await dependencies.sender({
         chatId: input.chatId,
-        text: input.text
+        text: input.text,
       });
 
       await updateOutgoingTelegramMessage(
         {
           idempotencyKey,
-          payload: buildOutgoingEventPayload(input, sentMessage, dependencies.placeholderDelivery.attempts + attempts, {
-            edited: false,
-            replacedPlaceholder: true
-          }),
-          retryState: "sent"
+          payload: buildOutgoingEventPayload(
+            input,
+            sentMessage,
+            dependencies.placeholderDelivery.attempts + attempts,
+            {
+              edited: false,
+              replacedPlaceholder: true,
+            },
+          ),
+          retryState: "sent",
         },
-        dependencies.deliveryStore
+        dependencies.deliveryStore,
       );
 
       return {
         status: "sent",
         attempts,
         idempotencyKey,
-        message: sentMessage.result
+        message: sentMessage.result,
       };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Failed to send Telegram follow-up message.");
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error("Failed to send Telegram follow-up message.");
     }
   }
 
@@ -842,18 +917,18 @@ async function sendFailedPlaceholderRecoveryMessage(
         chatId: input.chatId,
         text: input.text,
         attempts: dependencies.placeholderDelivery.attempts + attempts,
-        error: lastError?.message ?? "Unknown Telegram delivery error."
+        error: lastError?.message ?? "Unknown Telegram delivery error.",
       },
-      retryState: "failed"
+      retryState: "failed",
     },
-    dependencies.deliveryStore
+    dependencies.deliveryStore,
   );
 
   return {
     status: "failed",
     attempts,
     idempotencyKey,
-    error: lastError?.message ?? "Unknown Telegram delivery error."
+    error: lastError?.message ?? "Unknown Telegram delivery error.",
   };
 }
 
@@ -861,14 +936,14 @@ function buildOutgoingEventPayload(
   input: SendFollowUpMessageInput,
   sentMessage: TelegramSendMessageResponse,
   attempts: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
   return {
     chatId: input.chatId,
     text: input.persistedText ?? input.text,
     attempts,
     telegram: sentMessage,
-    ...(metadata ?? {})
+    ...(metadata ?? {}),
   };
 }
 
@@ -877,10 +952,15 @@ async function tryHandleFollowUpReply(
     normalizedMessage: NonNullable<ReturnType<typeof normalizeTelegramUpdate>>;
     inboxItem: PersistedInboxItem;
   },
-  dependencies: TelegramWebhookDependencies
+  dependencies: TelegramWebhookDependencies,
 ): Promise<WebhookResult | null> {
-  const followUpStore = dependencies.followUpStore ?? (dependencies.store as FollowUpRuntimeStore | undefined) ?? getDefaultFollowUpRuntimeStore();
-  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(input.normalizedMessage.user.telegramUserId);
+  const followUpStore =
+    dependencies.followUpStore ??
+    (dependencies.store as FollowUpRuntimeStore | undefined) ??
+    getDefaultFollowUpRuntimeStore();
+  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(
+    input.normalizedMessage.user.telegramUserId,
+  );
 
   if (outstandingTasks.length === 0) {
     return null;
@@ -888,18 +968,20 @@ async function tryHandleFollowUpReply(
 
   const latestContext = await getLatestFollowUpBundleContext(
     input.normalizedMessage.user.telegramUserId,
-    dependencies.conversationHistoryStore
+    dependencies.conversationHistoryStore,
   );
 
   if (!latestContext) {
     return null;
   }
 
-  const unresolvedById = new Map(outstandingTasks.map((task) => [task.id, task]));
+  const unresolvedById = new Map(
+    outstandingTasks.map((task) => [task.id, task]),
+  );
   const contextTasks = latestContext.items
     .map((item) => ({
       ...item,
-      task: unresolvedById.get(item.taskId) ?? null
+      task: unresolvedById.get(item.taskId) ?? null,
     }))
     .filter((item): item is typeof item & { task: Task } => item.task !== null);
 
@@ -907,11 +989,19 @@ async function tryHandleFollowUpReply(
     return null;
   }
 
-  if (!looksLikeFollowUpReply(input.normalizedMessage.normalizedText, contextTasks.length)) {
+  if (
+    !looksLikeFollowUpReply(
+      input.normalizedMessage.normalizedText,
+      contextTasks.length,
+    )
+  ) {
     return null;
   }
 
-  const parsed = parseFollowUpReply(input.normalizedMessage.normalizedText, contextTasks);
+  const parsed = parseFollowUpReply(
+    input.normalizedMessage.normalizedText,
+    contextTasks,
+  );
 
   if (parsed.kind === "new_request") {
     return null;
@@ -923,24 +1013,28 @@ async function tryHandleFollowUpReply(
         userId: input.normalizedMessage.user.telegramUserId,
         chatId: input.normalizedMessage.chatId,
         inboxItemId: input.inboxItem.id,
-        text: "Which one do you mean? Reply with the number or numbers."
+        text: "Which one do you mean? Reply with the number or numbers.",
       },
       {
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
         body: {
           accepted: true,
           inboxItem: input.inboxItem,
           processing: {
             outcome: "conversation_replied",
-            reply: "Which one do you mean? Reply with the number or numbers."
-          }
-        }
-      }
+            reply: "Which one do you mean? Reply with the number or numbers.",
+          },
+        },
+      },
     );
   }
 
-  const selectedTasks = parsed.taskIds.map((taskId) => unresolvedById.get(taskId)).filter((task): task is Task => task !== undefined);
+  const selectedTasks = parsed.taskIds
+    .map((taskId) => unresolvedById.get(taskId))
+    .filter((task): task is Task => task !== undefined);
 
   if (selectedTasks.length === 0) {
     return null;
@@ -952,9 +1046,12 @@ async function tryHandleFollowUpReply(
     userId: input.inboxItem.userId,
     inboxItemId: input.inboxItem.id,
     version: "followup-direct-v1",
-    modelInput: { source: "followup_reply", text: input.normalizedMessage.normalizedText },
+    modelInput: {
+      source: "followup_reply",
+      text: input.normalizedMessage.normalizedText,
+    },
     modelOutput: parsed,
-    confidence: 1
+    confidence: 1,
   };
 
   if (parsed.kind === "done") {
@@ -963,7 +1060,7 @@ async function tryHandleFollowUpReply(
       confidence: 1,
       plannerRun,
       taskIds: selectedTasks.map((task) => task.id),
-      followUpMessage: ""
+      followUpMessage: "",
     });
 
     return replyWithText(
@@ -971,17 +1068,19 @@ async function tryHandleFollowUpReply(
         userId: input.normalizedMessage.user.telegramUserId,
         chatId: input.normalizedMessage.chatId,
         inboxItemId: input.inboxItem.id,
-        text: renderMutationReply(processing)
+        text: renderMutationReply(processing),
       },
       {
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
         body: {
           accepted: true,
           inboxItem: input.inboxItem,
-          processing
-        }
-      }
+          processing,
+        },
+      },
     );
   }
 
@@ -991,7 +1090,7 @@ async function tryHandleFollowUpReply(
       confidence: 1,
       plannerRun,
       taskIds: selectedTasks.map((task) => task.id),
-      followUpMessage: ""
+      followUpMessage: "",
     });
 
     return replyWithText(
@@ -999,17 +1098,19 @@ async function tryHandleFollowUpReply(
         userId: input.normalizedMessage.user.telegramUserId,
         chatId: input.normalizedMessage.chatId,
         inboxItemId: input.inboxItem.id,
-        text: renderMutationReply(processing)
+        text: renderMutationReply(processing),
       },
       {
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
         body: {
           accepted: true,
           inboxItem: input.inboxItem,
-          processing
-        }
-      }
+          processing,
+        },
+      },
     );
   }
 
@@ -1019,7 +1120,8 @@ async function tryHandleFollowUpReply(
       confidence: 1,
       plannerRun,
       reason: "Follow-up reply needs explicit reschedule or archive decision.",
-      followUpMessage: "Noted. Tell me when you want to reschedule it, or say archive."
+      followUpMessage:
+        "Noted. Tell me when you want to reschedule it, or say archive.",
     });
 
     return replyWithText(
@@ -1027,17 +1129,19 @@ async function tryHandleFollowUpReply(
         userId: input.normalizedMessage.user.telegramUserId,
         chatId: input.normalizedMessage.chatId,
         inboxItemId: input.inboxItem.id,
-        text: processing.followUpMessage
+        text: processing.followUpMessage,
       },
       {
         sender: dependencies.sender ?? sendTelegramMessage,
-        ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {}),
+        ...(dependencies.deliveryStore
+          ? { deliveryStore: dependencies.deliveryStore }
+          : {}),
         body: {
           accepted: true,
           inboxItem: input.inboxItem,
-          processing
-        }
-      }
+          processing,
+        },
+      },
     );
   }
 
@@ -1046,7 +1150,12 @@ async function tryHandleFollowUpReply(
 
 function parseFollowUpReply(
   normalizedText: string,
-  contextTasks: Array<{ number: number; taskId: string; title: string; task: Task }>
+  contextTasks: Array<{
+    number: number;
+    taskId: string;
+    title: string;
+    task: Task;
+  }>,
 ):
   | { kind: "done"; taskIds: string[] }
   | { kind: "archive"; taskIds: string[] }
@@ -1054,7 +1163,9 @@ function parseFollowUpReply(
   | { kind: "ambiguous" }
   | { kind: "new_request" } {
   const lower = normalizedText.toLowerCase();
-  const numberToTask = new Map(contextTasks.map((item) => [item.number, item.taskId]));
+  const numberToTask = new Map(
+    contextTasks.map((item) => [item.number, item.taskId]),
+  );
   const selectedTaskIds = extractFollowUpSelectionNumbers(lower)
     .map((number) => numberToTask.get(number))
     .filter((taskId): taskId is string => Boolean(taskId));
@@ -1063,7 +1174,7 @@ function parseFollowUpReply(
   if (selectedTaskIds.length > 0 && action) {
     return {
       kind: action,
-      taskIds: selectedTaskIds
+      taskIds: selectedTaskIds,
     } as { kind: "done" | "archive" | "not_yet"; taskIds: string[] };
   }
 
@@ -1076,7 +1187,7 @@ function parseFollowUpReply(
 
     return {
       kind: action,
-      taskIds: [onlyTask.taskId]
+      taskIds: [onlyTask.taskId],
     } as { kind: "done" | "archive" | "not_yet"; taskIds: string[] };
   }
 
@@ -1087,7 +1198,10 @@ function parseFollowUpReply(
   return { kind: "new_request" };
 }
 
-function looksLikeFollowUpReply(normalizedText: string, outstandingTaskCount: number) {
+function looksLikeFollowUpReply(
+  normalizedText: string,
+  outstandingTaskCount: number,
+) {
   const lower = normalizedText.toLowerCase();
   const action = detectFollowUpAction(lower);
 
@@ -1101,7 +1215,8 @@ function looksLikeFollowUpReply(normalizedText: string, outstandingTaskCount: nu
     return false;
   }
 
-  const hasExplicitSelection = extractFollowUpSelectionNumbers(lower).length > 0;
+  const hasExplicitSelection =
+    extractFollowUpSelectionNumbers(lower).length > 0;
 
   if (hasExplicitSelection) {
     return true;
@@ -1111,7 +1226,7 @@ function looksLikeFollowUpReply(normalizedText: string, outstandingTaskCount: nu
 }
 
 function detectFollowUpAction(
-  lower: string
+  lower: string,
 ): "done" | "archive" | "not_yet" | null {
   if (/\b(done|completed|finished)\b/.test(lower)) {
     return "done";
@@ -1131,10 +1246,19 @@ function detectFollowUpAction(
 function stripFollowUpReplySyntax(lower: string) {
   return lower
     .replace(/\bnot yet\b/g, " ")
-    .replace(/\b(done|completed|finished|archive|drop|cancel|later|reschedule|move)\b/g, " ")
+    .replace(
+      /\b(done|completed|finished|archive|drop|cancel|later|reschedule|move)\b/g,
+      " ",
+    )
     .replace(/\b\d+\b/g, " ")
-    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/g, " ")
-    .replace(/\b(i|i'm|ive|i've|it|them|that|those|the|a|an|my|on|for|please|just|still|one|ones|item|items|task|tasks|number|numbers|no|and)\b/g, " ")
+    .replace(
+      /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/g,
+      " ",
+    )
+    .replace(
+      /\b(i|i'm|ive|i've|it|them|that|those|the|a|an|my|on|for|please|just|still|one|ones|item|items|task|tasks|number|numbers|no|and)\b/g,
+      " ",
+    )
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -1166,7 +1290,7 @@ const FOLLOW_UP_ORDINAL_WORDS: Record<string, number> = {
   seventh: 7,
   eighth: 8,
   ninth: 9,
-  tenth: 10
+  tenth: 10,
 };
 
 async function maybeSendOutstandingFollowUpContinuation(
@@ -1175,20 +1299,33 @@ async function maybeSendOutstandingFollowUpContinuation(
     chatId: string;
     inboxItemId: string;
   },
-  dependencies: TelegramWebhookDependencies
+  dependencies: TelegramWebhookDependencies,
 ) {
   const followUpStore =
-    dependencies.followUpStore ?? (dependencies.store as FollowUpRuntimeStore | undefined) ?? getDefaultFollowUpRuntimeStore();
-  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(input.userId);
+    dependencies.followUpStore ??
+    (dependencies.store as FollowUpRuntimeStore | undefined) ??
+    getDefaultFollowUpRuntimeStore();
+  const outstandingTasks = await followUpStore.listOutstandingFollowUpTasks(
+    input.userId,
+  );
 
-  if (outstandingTasks.length === 0 || (await followUpStore.hasInFlightInboxItem(input.userId))) {
+  if (
+    outstandingTasks.length === 0 ||
+    (await followUpStore.hasInFlightInboxItem(input.userId))
+  ) {
     return null;
   }
 
-  const latestContext = await getLatestFollowUpBundleContext(input.userId, dependencies.conversationHistoryStore);
+  const latestContext = await getLatestFollowUpBundleContext(
+    input.userId,
+    dependencies.conversationHistoryStore,
+  );
   const outstandingIds = outstandingTasks.map((task) => task.id);
 
-  if (latestContext && latestContext.taskIds.join(",") === outstandingIds.join(",")) {
+  if (
+    latestContext &&
+    latestContext.taskIds.join(",") === outstandingIds.join(",")
+  ) {
     return null;
   }
 
@@ -1200,12 +1337,14 @@ async function maybeSendOutstandingFollowUpContinuation(
       chatId: input.chatId,
       inboxItemId: `${input.inboxItemId}:followup-continuation`,
       text: bundle.text,
-      bundle
+      bundle,
     },
     {
       sender: dependencies.sender ?? sendTelegramMessage,
-      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-    }
+      ...(dependencies.deliveryStore
+        ? { deliveryStore: dependencies.deliveryStore }
+        : {}),
+    },
   );
 }
 
@@ -1213,7 +1352,9 @@ function buildLazyLinkReplyIdempotencyKey(updateId: number) {
   return `telegram:lazy-link:${updateId}`;
 }
 
-function getCompatibilityTurnRouteFromPolicy(action: TurnRouterResult["policy"]["action"]) {
+function getCompatibilityTurnRouteFromPolicy(
+  action: TurnRouterResult["policy"]["action"],
+) {
   switch (action) {
     case "reply_only":
       return "conversation" as const;
@@ -1227,24 +1368,26 @@ function getCompatibilityTurnRouteFromPolicy(action: TurnRouterResult["policy"][
   }
 }
 
-function buildImmediateRouteFeedback(action: TurnRouterResult["policy"]["action"]): ImmediateRouteFeedback {
+function buildImmediateRouteFeedback(
+  action: TurnRouterResult["policy"]["action"],
+): ImmediateRouteFeedback {
   switch (action) {
     case "execute_mutation":
       return {
         text: "Checking your schedule",
-        chatAction: "typing"
+        chatAction: "typing",
       };
     case "recover_and_execute":
       return {
         text: "Applying that",
-        chatAction: "typing"
+        chatAction: "typing",
       };
     case "reply_only":
     case "ask_clarification":
     case "present_proposal":
       return {
         text: "Thinking",
-        chatAction: "typing"
+        chatAction: "typing",
       };
   }
 }
@@ -1256,15 +1399,17 @@ function buildGoogleCalendarConnectReply(connectLink: string) {
 function redactTokenizedUrls(text: string) {
   return text.replace(
     /https?:\/\/\S*\/google-calendar\/connect\?token=[^\s.]+/g,
-    "[redacted Google Calendar connect link]"
+    "[redacted Google Calendar connect link]",
   );
 }
 
 async function buildConversationMemorySummary(
   recentTurns: ConversationTurn[],
-  dependencies: TelegramWebhookDependencies
+  dependencies: TelegramWebhookDependencies,
 ) {
-  const summarizer = dependencies.conversationMemorySummarizer ?? summarizeConversationMemoryWithResponses;
+  const summarizer =
+    dependencies.conversationMemorySummarizer ??
+    summarizeConversationMemoryWithResponses;
 
   return summarizer({ recentTurns })
     .then((summary) => summary.summary)

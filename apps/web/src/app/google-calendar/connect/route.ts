@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   handleGoogleCalendarConnectConfirm,
-  handleGoogleCalendarConnectPreview
+  handleGoogleCalendarConnectPreview,
 } from "@/lib/server/google-calendar";
 
 export const runtime = "nodejs";
@@ -11,29 +11,36 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const result = await handleGoogleCalendarConnectPreview(request);
 
-  if (result.status === 200 && "confirmation" in result && result.confirmation) {
+  if (
+    result.status === 200 &&
+    "confirmation" in result &&
+    result.confirmation
+  ) {
     return new NextResponse(
       buildGoogleCalendarConnectHtml({
         token: typeof result.body.token === "string" ? result.body.token : "",
         title: result.confirmation.title,
         message: result.confirmation.message,
-        actionLabel: result.confirmation.actionLabel
+        actionLabel: result.confirmation.actionLabel,
       }),
       {
         status: 200,
         headers: {
-          "content-type": "text/html; charset=utf-8"
-        }
-      }
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
     );
   }
 
   const redirectHeaders = getRedirectHeaders(result);
 
   if (redirectHeaders) {
-    const response = NextResponse.redirect(new URL(redirectHeaders.location, request.url), {
-      status: result.status
-    });
+    const response = NextResponse.redirect(
+      new URL(redirectHeaders.location, request.url),
+      {
+        status: result.status,
+      },
+    );
 
     if (redirectHeaders["set-cookie"]) {
       response.headers.set("set-cookie", redirectHeaders["set-cookie"]);
@@ -42,12 +49,17 @@ export async function GET(request: Request) {
     return response;
   }
 
-  const response = NextResponse.json(("body" in result ? result.body : {
-    accepted: false,
-    error: "unexpected_connect_result"
-  }), {
-    status: result.status
-  });
+  const response = NextResponse.json(
+    "body" in result
+      ? result.body
+      : {
+          accepted: false,
+          error: "unexpected_connect_result",
+        },
+    {
+      status: result.status,
+    },
+  );
 
   const cookieHeaders = getRedirectHeaders(result);
   if (cookieHeaders?.["set-cookie"]) {
@@ -63,9 +75,12 @@ export async function POST(request: Request) {
   const redirectHeaders = getRedirectHeaders(result);
 
   if (redirectHeaders) {
-    const response = NextResponse.redirect(new URL(redirectHeaders.location, request.url), {
-      status: result.status
-    });
+    const response = NextResponse.redirect(
+      new URL(redirectHeaders.location, request.url),
+      {
+        status: result.status,
+      },
+    );
 
     if (redirectHeaders["set-cookie"]) {
       response.headers.set("set-cookie", redirectHeaders["set-cookie"]);
@@ -76,18 +91,18 @@ export async function POST(request: Request) {
 
   if ("body" in result) {
     return NextResponse.json(result.body, {
-      status: result.status
+      status: result.status,
     });
   }
 
   return NextResponse.json(
     {
       accepted: false,
-      error: "unexpected_connect_result"
+      error: "unexpected_connect_result",
     },
     {
-      status: 500
-    }
+      status: 500,
+    },
   );
 }
 
@@ -162,7 +177,7 @@ function escapeHtml(value: string) {
 }
 
 function getRedirectHeaders(
-  result: unknown
+  result: unknown,
 ): { location: string; "set-cookie"?: string } | null {
   if (
     typeof result === "object" &&

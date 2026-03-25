@@ -4,7 +4,7 @@ const DEFAULT_TIME_ZONE = "America/Los_Angeles";
 
 export function renderMutationReply(
   result: ProcessedInboxResult,
-  options: { timeZone?: string } = {}
+  options: { timeZone?: string } = {},
 ): string {
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
 
@@ -14,7 +14,7 @@ export function renderMutationReply(
         fallback: "I saved it.",
         tasks: result.createdTasks,
         scheduleBlocks: result.scheduleBlocks,
-        timeZone
+        timeZone,
       });
     }
 
@@ -23,7 +23,7 @@ export function renderMutationReply(
         fallback: "I scheduled it.",
         tasks: result.scheduledTasks,
         scheduleBlocks: result.scheduleBlocks,
-        timeZone
+        timeZone,
       });
     }
 
@@ -48,7 +48,7 @@ function formatScheduledTime(iso: string, timeZone: string) {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(new Date(iso));
 }
 
@@ -62,7 +62,9 @@ function renderScheduledItemsReply(input: {
   scheduleBlocks: { taskId: string; startAt: string }[];
   timeZone: string;
 }) {
-  const taskTitlesById = new Map(input.tasks.map((task) => [task.id, task.title]));
+  const taskTitlesById = new Map(
+    input.tasks.map((task) => [task.id, task.title]),
+  );
   const items = input.scheduleBlocks
     .map((block) => {
       const title = taskTitlesById.get(block.taskId);

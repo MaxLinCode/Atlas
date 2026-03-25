@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxPlanningOutput } from "@atlas/core";
 import {
   getDefaultGoogleCalendarConnectionStore,
@@ -8,9 +7,13 @@ import {
   listTasksForTests,
   resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
-  seedInboxItemForProcessingTests
+  seedInboxItemForProcessingTests,
 } from "@atlas/db";
-import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
+import {
+  getDefaultCalendarAdapter,
+  resetCalendarAdapterForTests,
+} from "@atlas/integrations";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { processInboxItem } from "./process-inbox-item";
 
@@ -34,12 +37,12 @@ describe("process inbox item service", () => {
       normalizedText: "Review launch checklist",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-18T16:00:00.000Z"
+      createdAt: "2026-03-18T16:00:00.000Z",
     });
 
     const result = await processInboxItem(
       {
-        inboxItemId: "inbox-1"
+        inboxItemId: "inbox-1",
       },
       {
         calendar: getDefaultCalendarAdapter(),
@@ -52,13 +55,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -67,19 +70,19 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("planned");
     expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listPlannerRunsForTests()[0]?.modelInput).toMatchObject({
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     });
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(listTasksForTests()[0]).toMatchObject({
@@ -88,9 +91,11 @@ describe("process inbox item service", () => {
       lifecycleState: "scheduled",
       externalCalendarEventId: expect.any(String),
       externalCalendarId: "primary",
-      rescheduleCount: 0
+      rescheduleCount: 0,
     });
-    expect(result.followUpMessage).toContain("Scheduled 'Review launch checklist'");
+    expect(result.followUpMessage).toContain(
+      "Scheduled 'Review launch checklist'",
+    );
   });
 
   it("asks for Google Calendar linking instead of scheduling against the in-memory fallback", async () => {
@@ -102,12 +107,12 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
       {
-        inboxItemId: "inbox-unlinked"
+        inboxItemId: "inbox-unlinked",
       },
       {
         calendar: null,
@@ -120,13 +125,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -135,13 +140,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
@@ -159,12 +164,12 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await processInboxItem(
       {
-        inboxItemId: "inbox-log-create"
+        inboxItemId: "inbox-log-create",
       },
       {
         calendar: getDefaultCalendarAdapter(),
@@ -177,13 +182,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -192,29 +197,29 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(infoSpy).toHaveBeenCalledWith(
       "calendar_write_attempt",
       expect.objectContaining({
         operation: "create",
-        userId: "123"
-      })
+        userId: "123",
+      }),
     );
     expect(infoSpy).toHaveBeenCalledWith(
       "calendar_write_succeeded",
       expect.objectContaining({
         operation: "create",
         userId: "123",
-        externalCalendarId: "primary"
-      })
+        externalCalendarId: "primary",
+      }),
     );
   });
 
@@ -226,12 +231,12 @@ describe("process inbox item service", () => {
       rawText: "Submit taxes tomorrow at 3pm",
       normalizedText: "Submit taxes tomorrow at 3pm",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
       {
-        inboxItemId: "inbox-2"
+        inboxItemId: "inbox-2",
       },
       {
         calendar: getDefaultCalendarAdapter(),
@@ -244,13 +249,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Submit taxes",
               priority: "medium",
-              urgency: "high"
+              urgency: "high",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: "tomorrow",
@@ -259,17 +264,19 @@ describe("process inbox item service", () => {
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "tomorrow at 3pm"
+                sourceText: "tomorrow at 3pm",
               },
-              reason: "The user requested tomorrow at 3pm."
-            }
-          ]
-        })
-      }
+              reason: "The user requested tomorrow at 3pm.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("planned");
-    expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toContain("T22:00:00.000Z");
+    expect(
+      "scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "",
+    ).toContain("T22:00:00.000Z");
   });
 
   it("schedules relative-minute requests from the inbox timestamp", async () => {
@@ -278,15 +285,16 @@ describe("process inbox item service", () => {
       userId: "123",
       sourceEventId: "event-relative-1",
       rawText: "add schedule my car maintenance to my cal in like 15 min",
-      normalizedText: "add schedule my car maintenance to my cal in like 15 min",
+      normalizedText:
+        "add schedule my car maintenance to my cal in like 15 min",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T01:02:00.000Z"
+      createdAt: "2026-03-20T01:02:00.000Z",
     });
 
     const result = await processInboxItem(
       {
-        inboxItemId: "inbox-relative-1"
+        inboxItemId: "inbox-relative-1",
       },
       {
         calendar: getDefaultCalendarAdapter(),
@@ -299,13 +307,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -315,50 +323,54 @@ describe("process inbox item service", () => {
                 explicitHour: null,
                 minute: null,
                 preferredWindow: null,
-                sourceText: "in like 15 min"
+                sourceText: "in like 15 min",
               },
-              reason: "The user asked for a relative start time."
-            }
-          ]
-        })
-      }
+              reason: "The user asked for a relative start time.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("planned");
-    expect("scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "").toBe("2026-03-20T01:17:00.000Z");
+    expect(
+      "scheduleBlocks" in result ? result.scheduleBlocks[0]?.startAt : "",
+    ).toBe("2026-03-20T01:17:00.000Z");
   });
 
   it("allows an app-owned planning text override for confirmed mutation recovery", async () => {
-    const planner = vi.fn(async (): Promise<InboxPlanningOutput> => ({
-      confidence: 0.9,
-      summary: "Scheduled the dentist reminder for 3pm.",
-      actions: [
-        {
-          type: "create_task",
-          alias: "new_task_1",
-          title: "Dentist reminder",
-          priority: "medium",
-          urgency: "medium"
-        },
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "created_task",
-            alias: "new_task_1"
+    const planner = vi.fn(
+      async (): Promise<InboxPlanningOutput> => ({
+        confidence: 0.9,
+        summary: "Scheduled the dentist reminder for 3pm.",
+        actions: [
+          {
+            type: "create_task",
+            alias: "new_task_1",
+            title: "Dentist reminder",
+            priority: "medium",
+            urgency: "medium",
           },
-          scheduleConstraint: {
-            dayReference: null,
-            weekday: null,
-            weekOffset: null,
-            explicitHour: 15,
-            minute: 0,
-            preferredWindow: null,
-            sourceText: "at 3pm"
+          {
+            type: "create_schedule_block",
+            taskRef: {
+              kind: "created_task",
+              alias: "new_task_1",
+            },
+            scheduleConstraint: {
+              dayReference: null,
+              weekday: null,
+              weekOffset: null,
+              explicitHour: 15,
+              minute: 0,
+              preferredWindow: null,
+              sourceText: "at 3pm",
+            },
+            reason: "The user confirmed the 3pm proposal.",
           },
-          reason: "The user confirmed the 3pm proposal."
-        }
-      ]
-    }));
+        ],
+      }),
+    );
 
     seedInboxItemForProcessingTests({
       id: "inbox-confirm",
@@ -367,20 +379,20 @@ describe("process inbox item service", () => {
       rawText: "Yes",
       normalizedText: "Yes",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
       {
         inboxItemId: "inbox-confirm",
         planningInboxTextOverride: {
-          text: "Schedule the dentist reminder at 3pm."
-        }
+          text: "Schedule the dentist reminder at 3pm.",
+        },
       },
       {
         calendar: getDefaultCalendarAdapter(),
-        planner
-      }
+        planner,
+      },
     );
 
     expect(result.outcome).toBe("planned");
@@ -388,9 +400,9 @@ describe("process inbox item service", () => {
       expect.objectContaining({
         inboxItem: expect.objectContaining({
           rawText: "Schedule the dentist reminder at 3pm.",
-          normalizedText: "Schedule the dentist reminder at 3pm."
-        })
-      })
+          normalizedText: "Schedule the dentist reminder at 3pm.",
+        }),
+      }),
     );
   });
 
@@ -405,7 +417,7 @@ describe("process inbox item service", () => {
       normalizedText: "Buying plane tickets tomorrow morning",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
 
     await processInboxItem(
@@ -422,13 +434,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Buying plane tickets",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: "tomorrow",
@@ -437,13 +449,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: "morning",
-                sourceText: "tomorrow morning"
+                sourceText: "tomorrow morning",
               },
-              reason: "The user asked for tomorrow morning."
-            }
-          ]
-        })
-      }
+              reason: "The user asked for tomorrow morning.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -454,15 +466,15 @@ describe("process inbox item service", () => {
       normalizedText: "I mean 10am",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:05:00.000Z"
+      createdAt: "2026-03-20T16:05:00.000Z",
     });
 
     const result = await processInboxItem(
       {
         inboxItemId: "inbox-plane-tickets-refine",
         planningInboxTextOverride: {
-          text: "Move the scheduled Buying plane tickets block to 10am."
-        }
+          text: "Move the scheduled Buying plane tickets block to 10am.",
+        },
       },
       {
         store,
@@ -474,7 +486,7 @@ describe("process inbox item service", () => {
             {
               type: "move_schedule_block",
               blockRef: {
-                alias: "schedule_block_1"
+                alias: "schedule_block_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -483,17 +495,19 @@ describe("process inbox item service", () => {
                 explicitHour: 10,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "10am"
+                sourceText: "10am",
               },
-              reason: "The user clarified the time."
-            }
-          ]
-        })
-      }
+              reason: "The user clarified the time.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-21T17:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe(
+      "2026-03-21T17:00:00.000Z",
+    );
   });
 
   it("uses the default open slot when the planner delegates slot choice", async () => {
@@ -507,7 +521,7 @@ describe("process inbox item service", () => {
       normalizedText: "Schedule the oil change for me and just pick an opening",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
 
     const result = await processInboxItem(
@@ -524,20 +538,20 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Oil change",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: null,
-              reason: "The user delegated slot choice to Atlas."
-            }
-          ]
-        })
-      }
+              reason: "The user delegated slot choice to Atlas.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("planned");
@@ -558,7 +572,7 @@ describe("process inbox item service", () => {
       rawText: "Journaling session",
       normalizedText: "Journaling session",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
     await processInboxItem(
       { inboxItemId: "inbox-journal-task" },
@@ -574,13 +588,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Journaling session",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -589,13 +603,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -605,15 +619,15 @@ describe("process inbox item service", () => {
       rawText: "journal is done",
       normalizedText: "journal is done",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
       {
         inboxItemId: "inbox-journal-done",
         planningInboxTextOverride: {
-          text: "Mark the journaling session as done."
-        }
+          text: "Mark the journaling session as done.",
+        },
       },
       {
         store,
@@ -626,13 +640,13 @@ describe("process inbox item service", () => {
               type: "complete_task",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_1"
+                alias: "existing_task_1",
               },
-              reason: "The user said the journaling session is done."
-            }
-          ]
-        })
-      }
+              reason: "The user said the journaling session is done.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("completed_tasks");
@@ -640,7 +654,7 @@ describe("process inbox item service", () => {
       lastInboxItemId: "inbox-journal-done",
       lifecycleState: "done",
       externalCalendarEventId: null,
-      externalCalendarId: null
+      externalCalendarId: null,
     });
     expect(listTasksForTests()[0]?.completedAt).toBeTruthy();
     expect(result.followUpMessage).toBe("Marked 'Journaling session' as done.");
@@ -657,7 +671,7 @@ describe("process inbox item service", () => {
       normalizedText: "Review launch checklist",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-19T16:00:00.000Z"
+      createdAt: "2026-03-19T16:00:00.000Z",
     });
     await processInboxItem(
       { inboxItemId: "inbox-task" },
@@ -673,13 +687,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -688,13 +702,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -705,7 +719,7 @@ describe("process inbox item service", () => {
       normalizedText: "move it to 3pm",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-19T17:00:00.000Z"
+      createdAt: "2026-03-19T17:00:00.000Z",
     });
 
     const result = await processInboxItem(
@@ -720,7 +734,7 @@ describe("process inbox item service", () => {
             {
               type: "move_schedule_block",
               blockRef: {
-                alias: "schedule_block_1"
+                alias: "schedule_block_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -729,22 +743,26 @@ describe("process inbox item service", () => {
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "at 3pm"
+                sourceText: "at 3pm",
               },
-              reason: "The user asked to move it to 3pm."
-            }
-          ]
-        })
-      }
+              reason: "The user asked to move it to 3pm.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-19T22:00:00.000Z");
-    expect("updatedBlock" in result ? result.updatedBlock.id : "").toBe(listTasksForTests()[0]?.externalCalendarEventId);
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe(
+      "2026-03-19T22:00:00.000Z",
+    );
+    expect("updatedBlock" in result ? result.updatedBlock.id : "").toBe(
+      listTasksForTests()[0]?.externalCalendarEventId,
+    );
     expect(listTasksForTests()[0]).toMatchObject({
       lastInboxItemId: "inbox-move",
       lifecycleState: "scheduled",
-      rescheduleCount: 1
+      rescheduleCount: 1,
     });
     expect(result.followUpMessage).toContain("Moved it to");
   });
@@ -763,7 +781,7 @@ describe("process inbox item service", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
 
     seedInboxItemForProcessingTests({
@@ -774,7 +792,7 @@ describe("process inbox item service", () => {
       normalizedText: "Review launch checklist",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-19T16:00:00.000Z"
+      createdAt: "2026-03-19T16:00:00.000Z",
     });
 
     await processInboxItem(
@@ -787,27 +805,27 @@ describe("process inbox item service", () => {
             externalCalendarEventId: "event-1",
             externalCalendarId: input.externalCalendarId ?? "primary",
             scheduledStartAt: input.startAt,
-            scheduledEndAt: input.endAt
+            scheduledEndAt: input.endAt,
           }),
           updateEvent: async (input) => ({
             externalCalendarEventId: input.externalCalendarEventId,
             externalCalendarId: input.externalCalendarId ?? "primary",
             scheduledStartAt: input.startAt,
-            scheduledEndAt: input.endAt
+            scheduledEndAt: input.endAt,
           }),
           getEvent: async () => ({
             externalCalendarEventId: "event-1",
             externalCalendarId: "primary",
             scheduledStartAt: "2026-03-19T17:00:00.000Z",
-            scheduledEndAt: "2026-03-19T18:00:00.000Z"
+            scheduledEndAt: "2026-03-19T18:00:00.000Z",
           }),
           listBusyPeriods: async () => [
             {
               startAt: "2026-03-18T15:00:00.000Z",
               endAt: "2026-03-18T16:00:00.000Z",
-              externalCalendarId: "primary"
-            }
-          ]
+              externalCalendarId: "primary",
+            },
+          ],
         },
         planner: async () => ({
           confidence: 0.9,
@@ -818,13 +836,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -833,13 +851,13 @@ describe("process inbox item service", () => {
                 explicitHour: 17,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "5pm"
+                sourceText: "5pm",
               },
-              reason: "Schedule the new task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -850,7 +868,7 @@ describe("process inbox item service", () => {
       normalizedText: "move it to 3pm",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-19T17:00:00.000Z"
+      createdAt: "2026-03-19T17:00:00.000Z",
     });
 
     const result = await processInboxItem(
@@ -866,27 +884,32 @@ describe("process inbox item service", () => {
             externalCalendarEventId: input.externalCalendarEventId,
             externalCalendarId: input.externalCalendarId ?? "primary",
             scheduledStartAt: input.startAt,
-            scheduledEndAt: input.endAt
+            scheduledEndAt: input.endAt,
           }),
           getEvent: async () => {
             const task = listTasksForTests()[0];
-            if (!task?.externalCalendarEventId || !task.externalCalendarId || !task.scheduledStartAt || !task.scheduledEndAt) {
+            if (
+              !task?.externalCalendarEventId ||
+              !task.externalCalendarId ||
+              !task.scheduledStartAt ||
+              !task.scheduledEndAt
+            ) {
               return null;
             }
             return {
               externalCalendarEventId: task.externalCalendarEventId,
               externalCalendarId: task.externalCalendarId,
               scheduledStartAt: task.scheduledStartAt,
-              scheduledEndAt: task.scheduledEndAt
+              scheduledEndAt: task.scheduledEndAt,
             };
           },
           listBusyPeriods: async () => [
             {
               startAt: "2026-03-18T15:00:00.000Z",
               endAt: "2026-03-18T16:00:00.000Z",
-              externalCalendarId: "primary"
-            }
-          ]
+              externalCalendarId: "primary",
+            },
+          ],
         },
         planner: async () => ({
           confidence: 0.83,
@@ -895,7 +918,7 @@ describe("process inbox item service", () => {
             {
               type: "move_schedule_block",
               blockRef: {
-                alias: "schedule_block_1"
+                alias: "schedule_block_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -904,17 +927,19 @@ describe("process inbox item service", () => {
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "at 3pm"
+                sourceText: "at 3pm",
               },
-              reason: "The user asked to move it to 3pm."
-            }
-          ]
-        })
-      }
+              reason: "The user asked to move it to 3pm.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("updated_schedule");
-    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe("2026-03-19T22:00:00.000Z");
+    expect("updatedBlock" in result ? result.updatedBlock.startAt : "").toBe(
+      "2026-03-19T22:00:00.000Z",
+    );
   });
 
   it("anchors busy-period lookup to the inbox reference time", async () => {
@@ -933,7 +958,7 @@ describe("process inbox item service", () => {
       scopes: ["scope-a"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
 
     seedInboxItemForProcessingTests({
@@ -944,7 +969,7 @@ describe("process inbox item service", () => {
       normalizedText: "Review launch checklist",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-19T16:00:00.000Z"
+      createdAt: "2026-03-19T16:00:00.000Z",
     });
 
     await processInboxItem(
@@ -957,16 +982,16 @@ describe("process inbox item service", () => {
             externalCalendarEventId: "event-1",
             externalCalendarId: input.externalCalendarId ?? "primary",
             scheduledStartAt: input.startAt,
-            scheduledEndAt: input.endAt
+            scheduledEndAt: input.endAt,
           }),
           updateEvent: async (input) => ({
             externalCalendarEventId: input.externalCalendarEventId,
             externalCalendarId: input.externalCalendarId ?? "primary",
             scheduledStartAt: input.startAt,
-            scheduledEndAt: input.endAt
+            scheduledEndAt: input.endAt,
           }),
           getEvent: async () => null,
-          listBusyPeriods
+          listBusyPeriods,
         },
         planner: async () => ({
           confidence: 0.9,
@@ -977,13 +1002,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -992,19 +1017,19 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(listBusyPeriods).toHaveBeenCalledWith({
       startAt: "2026-03-19T16:00:00.000Z",
       endAt: "2026-04-02T16:00:00.000Z",
-      externalCalendarId: "primary"
+      externalCalendarId: "primary",
     });
   });
 
@@ -1016,7 +1041,7 @@ describe("process inbox item service", () => {
       rawText: "move it to 3pm",
       normalizedText: "move it to 3pm",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
@@ -1030,7 +1055,7 @@ describe("process inbox item service", () => {
             {
               type: "move_schedule_block",
               blockRef: {
-                alias: "schedule_block_999"
+                alias: "schedule_block_999",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1039,13 +1064,13 @@ describe("process inbox item service", () => {
                 explicitHour: 15,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "at 3pm"
+                sourceText: "at 3pm",
               },
-              reason: "Move the most likely block."
-            }
-          ]
-        })
-      }
+              reason: "Move the most likely block.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
@@ -1060,7 +1085,7 @@ describe("process inbox item service", () => {
       rawText: "schedule both",
       normalizedText: "schedule both",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
@@ -1076,13 +1101,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_1"
+                alias: "existing_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1091,21 +1116,21 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "9am"
+                sourceText: "9am",
               },
-              reason: "Schedule the task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the task.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
     expect("reason" in result ? result.reason : "").toBe(
-      "Model returned invalid or mixed schedule references for newly created tasks."
+      "Model returned invalid or mixed schedule references for newly created tasks.",
     );
     expect(result.followUpMessage).toBe(
-      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
     );
   });
 
@@ -1117,7 +1142,7 @@ describe("process inbox item service", () => {
       rawText: "journal is done, make a new coding task",
       normalizedText: "journal is done, make a new coding task",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
@@ -1133,25 +1158,25 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Coding session",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "complete_task",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_1"
+                alias: "existing_task_1",
               },
-              reason: "The user said journal is done."
-            }
-          ]
-        })
-      }
+              reason: "The user said journal is done.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
     expect(listTasksForTests()).toHaveLength(0);
     expect("reason" in result ? result.reason : "").toBe(
-      "Model returned an unsupported mix of completion and creation actions."
+      "Model returned an unsupported mix of completion and creation actions.",
     );
   });
 
@@ -1163,7 +1188,7 @@ describe("process inbox item service", () => {
       rawText: "archive that",
       normalizedText: "archive that",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
@@ -1176,16 +1201,17 @@ describe("process inbox item service", () => {
           actions: [
             {
               type: "clarify",
-              reason: "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
-            }
-          ]
-        })
-      }
+              reason:
+                "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
     expect(result.followUpMessage).toBe(
-      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
     );
   });
 
@@ -1197,7 +1223,7 @@ describe("process inbox item service", () => {
       rawText: "Pick an open spot for that",
       normalizedText: "Pick an open spot for that",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     const result = await processInboxItem(
@@ -1213,16 +1239,16 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Oil change",
               priority: "medium",
-              urgency: "medium"
-            }
-          ]
-        })
-      }
+              urgency: "medium",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
     expect(result.followUpMessage).toBe(
-      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
     );
   });
 
@@ -1237,7 +1263,7 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
 
     await processInboxItem(
@@ -1254,13 +1280,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1269,13 +1295,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1286,7 +1312,7 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T17:00:00.000Z"
+      createdAt: "2026-03-20T17:00:00.000Z",
     });
 
     await processInboxItem(
@@ -1303,13 +1329,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1318,13 +1344,13 @@ describe("process inbox item service", () => {
                 explicitHour: 10,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1335,15 +1361,15 @@ describe("process inbox item service", () => {
       normalizedText: "car maintenance is done",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T18:00:00.000Z"
+      createdAt: "2026-03-20T18:00:00.000Z",
     });
 
     const result = await processInboxItem(
       {
         inboxItemId: "inbox-duplicate-complete",
         planningInboxTextOverride: {
-          text: "Mark car maintenance as done."
-        }
+          text: "Mark car maintenance as done.",
+        },
       },
       {
         store,
@@ -1356,17 +1382,19 @@ describe("process inbox item service", () => {
               type: "complete_task",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_1"
+                alias: "existing_task_1",
               },
-              reason: "The user said car maintenance is done."
-            }
-          ]
-        })
-      }
+              reason: "The user said car maintenance is done.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("needs_clarification");
-    expect(result.followUpMessage).toContain("I found multiple tasks named 'Car maintenance'");
+    expect(result.followUpMessage).toContain(
+      "I found multiple tasks named 'Car maintenance'",
+    );
     expect(result.followUpMessage).toContain("1. scheduled for");
     expect(result.followUpMessage).toContain("2. scheduled for");
   });
@@ -1382,7 +1410,7 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T16:00:00.000Z"
+      createdAt: "2026-03-20T16:00:00.000Z",
     });
 
     await processInboxItem(
@@ -1399,13 +1427,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1414,13 +1442,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1431,15 +1459,15 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance is done",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T17:00:00.000Z"
+      createdAt: "2026-03-20T17:00:00.000Z",
     });
 
     await processInboxItem(
       {
         inboxItemId: "inbox-car-closed",
         planningInboxTextOverride: {
-          text: "Mark car maintenance as done."
-        }
+          text: "Mark car maintenance as done.",
+        },
       },
       {
         store,
@@ -1452,13 +1480,13 @@ describe("process inbox item service", () => {
               type: "complete_task",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_1"
+                alias: "existing_task_1",
               },
-              reason: "The user said car maintenance is done."
-            }
-          ]
-        })
-      }
+              reason: "The user said car maintenance is done.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1469,7 +1497,7 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T18:00:00.000Z"
+      createdAt: "2026-03-20T18:00:00.000Z",
     });
 
     await processInboxItem(
@@ -1486,13 +1514,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Car maintenance",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1501,13 +1529,13 @@ describe("process inbox item service", () => {
                 explicitHour: 10,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1518,15 +1546,15 @@ describe("process inbox item service", () => {
       normalizedText: "Car maintenance is done",
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt: "2026-03-20T19:00:00.000Z"
+      createdAt: "2026-03-20T19:00:00.000Z",
     });
 
     const result = await processInboxItem(
       {
         inboxItemId: "inbox-car-complete-open",
         planningInboxTextOverride: {
-          text: "Mark car maintenance as done."
-        }
+          text: "Mark car maintenance as done.",
+        },
       },
       {
         store,
@@ -1539,13 +1567,13 @@ describe("process inbox item service", () => {
               type: "complete_task",
               taskRef: {
                 kind: "existing_task",
-                alias: "existing_task_2"
+                alias: "existing_task_2",
               },
-              reason: "The user said car maintenance is done."
-            }
-          ]
-        })
-      }
+              reason: "The user said car maintenance is done.",
+            },
+          ],
+        }),
+      },
     );
 
     expect(result.outcome).toBe("completed_tasks");
@@ -1562,13 +1590,13 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await expect(
       processInboxItem(
         {
-          inboxItemId: "inbox-calendar-fail"
+          inboxItemId: "inbox-calendar-fail",
         },
         {
           store,
@@ -1581,7 +1609,7 @@ describe("process inbox item service", () => {
               throw new Error("calendar unavailable");
             },
             getEvent: async () => null,
-            listBusyPeriods: async () => []
+            listBusyPeriods: async () => [],
           },
           planner: async () => ({
             confidence: 0.9,
@@ -1592,13 +1620,13 @@ describe("process inbox item service", () => {
                 alias: "new_task_1",
                 title: "Review launch checklist",
                 priority: "medium",
-                urgency: "medium"
+                urgency: "medium",
               },
               {
                 type: "create_schedule_block",
                 taskRef: {
                   kind: "created_task",
-                  alias: "new_task_1"
+                  alias: "new_task_1",
                 },
                 scheduleConstraint: {
                   dayReference: null,
@@ -1607,22 +1635,24 @@ describe("process inbox item service", () => {
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
-                  sourceText: "default next slot"
+                  sourceText: "default next slot",
                 },
-                reason: "Schedule the new task in the next slot."
-              }
-            ]
-          })
-        }
-      )
+                reason: "Schedule the new task in the next slot.",
+              },
+            ],
+          }),
+        },
+      ),
     ).rejects.toThrow("calendar unavailable");
 
     expect(listTasksForTests()).toHaveLength(0);
     expect(listPlannerRunsForTests()).toHaveLength(1);
-    await expect(store.loadContext("inbox-calendar-fail")).resolves.toMatchObject({
+    await expect(
+      store.loadContext("inbox-calendar-fail"),
+    ).resolves.toMatchObject({
       inboxItem: {
-        processingStatus: "received"
-      }
+        processingStatus: "received",
+      },
     });
   });
 
@@ -1636,7 +1666,7 @@ describe("process inbox item service", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
     await processInboxItem(
       { inboxItemId: "inbox-task" },
@@ -1652,13 +1682,13 @@ describe("process inbox item service", () => {
               alias: "new_task_1",
               title: "Review launch checklist",
               priority: "medium",
-              urgency: "medium"
+              urgency: "medium",
             },
             {
               type: "create_schedule_block",
               taskRef: {
                 kind: "created_task",
-                alias: "new_task_1"
+                alias: "new_task_1",
               },
               scheduleConstraint: {
                 dayReference: null,
@@ -1667,13 +1697,13 @@ describe("process inbox item service", () => {
                 explicitHour: 9,
                 minute: 0,
                 preferredWindow: null,
-                sourceText: "default next slot"
+                sourceText: "default next slot",
               },
-              reason: "Schedule the new task in the next slot."
-            }
-          ]
-        })
-      }
+              reason: "Schedule the new task in the next slot.",
+            },
+          ],
+        }),
+      },
     );
 
     seedInboxItemForProcessingTests({
@@ -1683,7 +1713,7 @@ describe("process inbox item service", () => {
       rawText: "move it to 3pm",
       normalizedText: "move it to 3pm",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await expect(
@@ -1714,10 +1744,10 @@ describe("process inbox item service", () => {
                 externalCalendarEventId: task.externalCalendarEventId,
                 externalCalendarId: task.externalCalendarId,
                 scheduledStartAt: task.scheduledStartAt,
-                scheduledEndAt: task.scheduledEndAt
+                scheduledEndAt: task.scheduledEndAt,
               };
             },
-            listBusyPeriods: async () => []
+            listBusyPeriods: async () => [],
           },
           planner: async () => ({
             confidence: 0.83,
@@ -1726,7 +1756,7 @@ describe("process inbox item service", () => {
               {
                 type: "move_schedule_block",
                 blockRef: {
-                  alias: "schedule_block_1"
+                  alias: "schedule_block_1",
                 },
                 scheduleConstraint: {
                   dayReference: null,
@@ -1735,21 +1765,21 @@ describe("process inbox item service", () => {
                   explicitHour: 15,
                   minute: 0,
                   preferredWindow: null,
-                  sourceText: "at 3pm"
+                  sourceText: "at 3pm",
                 },
-                reason: "The user asked to move it to 3pm."
-              }
-            ]
-          })
-        }
-      )
+                reason: "The user asked to move it to 3pm.",
+              },
+            ],
+          }),
+        },
+      ),
     ).rejects.toThrow("calendar unavailable");
 
     expect(listPlannerRunsForTests()).toHaveLength(2);
     await expect(store.loadContext("inbox-move-fail")).resolves.toMatchObject({
       inboxItem: {
-        processingStatus: "received"
-      }
+        processingStatus: "received",
+      },
     });
   });
 });

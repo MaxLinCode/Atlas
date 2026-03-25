@@ -2,12 +2,12 @@ import type { TurnInterpretationType, WriteContract } from "./index";
 
 export const DEFAULT_WRITE_CONTRACT: WriteContract = {
   requiredSlots: ["day", "time"],
-  intentKind: "plan"
+  intentKind: "plan",
 };
 
 const EDIT_CONTRACT: WriteContract = {
   requiredSlots: ["time"],
-  intentKind: "edit"
+  intentKind: "edit",
 };
 
 type ResolveWriteContractInput = {
@@ -19,7 +19,9 @@ type ResolveWriteContractInput = {
  * Maps a turn type to the active write contract for that turn.
  * Returns undefined only when no contract applies (non-write turn with no prior contract).
  */
-export function resolveWriteContract(input: ResolveWriteContractInput): WriteContract | undefined {
+export function resolveWriteContract(
+  input: ResolveWriteContractInput,
+): WriteContract | undefined {
   switch (input.turnType) {
     case "planning_request":
       return DEFAULT_WRITE_CONTRACT;

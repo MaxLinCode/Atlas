@@ -1,6 +1,8 @@
+import {
+  buildDefaultUserProfile,
+  buildTelegramFollowUpIdempotencyKey,
+} from "@atlas/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { buildDefaultUserProfile, buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 
 import {
   buildGoogleCalendarOAuthUrl,
@@ -8,16 +10,16 @@ import {
   editTelegramMessage,
   exchangeGoogleOAuthCode,
   fetchGoogleCalendarIdentity,
-  refreshGoogleOAuthToken,
-  recoverConfirmedMutationWithResponses,
-  respondToConversationTurnWithResponses,
   getDefaultCalendarAdapter,
   planInboxItemWithResponses,
-  routeTurnWithResponses,
-  summarizeConversationMemoryWithResponses,
+  recoverConfirmedMutationWithResponses,
+  refreshGoogleOAuthToken,
   resetCalendarAdapterForTests,
+  respondToConversationTurnWithResponses,
+  routeTurnWithResponses,
   sendTelegramChatAction,
-  sendTelegramMessage
+  sendTelegramMessage,
+  summarizeConversationMemoryWithResponses,
 } from "./index";
 
 const ORIGINAL_ENV = {
@@ -26,7 +28,7 @@ const ORIGINAL_ENV = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
-  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS
+  TELEGRAM_ALLOWED_USER_IDS: process.env.TELEGRAM_ALLOWED_USER_IDS,
 };
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV) {
@@ -66,29 +68,31 @@ describe("integrations", () => {
     const created = await adapter.createEvent({
       title: "Review launch checklist",
       startAt: "2026-03-17T17:00:00.000Z",
-      endAt: "2026-03-17T18:00:00.000Z"
+      endAt: "2026-03-17T18:00:00.000Z",
     });
     const updated = await adapter.updateEvent({
       externalCalendarEventId: created.externalCalendarEventId,
       externalCalendarId: created.externalCalendarId,
       title: "Review launch checklist",
       startAt: "2026-03-18T17:00:00.000Z",
-      endAt: "2026-03-18T18:00:00.000Z"
+      endAt: "2026-03-18T18:00:00.000Z",
     });
 
-    expect(updated.externalCalendarEventId).toBe(created.externalCalendarEventId);
+    expect(updated.externalCalendarEventId).toBe(
+      created.externalCalendarEventId,
+    );
     expect(updated.scheduledStartAt).toBe("2026-03-18T17:00:00.000Z");
     await expect(
       adapter.listBusyPeriods({
         startAt: "2026-03-18T16:00:00.000Z",
         endAt: "2026-03-18T19:00:00.000Z",
-        externalCalendarId: created.externalCalendarId
-      })
+        externalCalendarId: created.externalCalendarId,
+      }),
     ).resolves.toMatchObject([
       {
         startAt: "2026-03-18T17:00:00.000Z",
-        endAt: "2026-03-18T18:00:00.000Z"
-      }
+        endAt: "2026-03-18T18:00:00.000Z",
+      },
     ]);
   });
 
@@ -97,8 +101,8 @@ describe("integrations", () => {
       buildGoogleCalendarOAuthUrl({
         clientId: "google-client-id",
         redirectUri: "https://example.com/callback",
-        state: "state-1"
-      })
+        state: "state-1",
+      }),
     );
 
     expect(url.searchParams.get("client_id")).toBe("google-client-id");
@@ -115,17 +119,17 @@ describe("integrations", () => {
             access_token: "access-token",
             refresh_token: "refresh-token",
             expires_in: 3600,
-            scope: "scope-a scope-b"
-          })
-        )
+            scope: "scope-a scope-b",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             id: "google-user-1",
-            email: "max@example.com"
-          })
-        )
+            email: "max@example.com",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -134,17 +138,17 @@ describe("integrations", () => {
               {
                 id: "atlas-calendar-id",
                 summary: "Atlas",
-                accessRole: "owner"
+                accessRole: "owner",
               },
               {
                 id: "primary",
                 summary: "Primary",
                 primary: true,
-                accessRole: "owner"
-              }
-            ]
-          })
-        )
+                accessRole: "owner",
+              },
+            ],
+          }),
+        ),
       );
 
     await expect(
@@ -153,22 +157,22 @@ describe("integrations", () => {
         clientSecret: "google-client-secret",
         redirectUri: "https://example.com/callback",
         code: "oauth-code",
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
       accessToken: "access-token",
-      refreshToken: "refresh-token"
+      refreshToken: "refresh-token",
     });
 
     await expect(
       fetchGoogleCalendarIdentity({
         accessToken: "access-token",
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
       providerAccountId: "google-user-1",
       selectedCalendarId: "atlas-calendar-id",
-      selectedCalendarName: "Atlas"
+      selectedCalendarName: "Atlas",
     });
   });
 
@@ -179,9 +183,9 @@ describe("integrations", () => {
         new Response(
           JSON.stringify({
             id: "google-user-1",
-            email: "max@example.com"
-          })
-        )
+            email: "max@example.com",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -191,39 +195,39 @@ describe("integrations", () => {
                 id: "primary",
                 summary: "My Calendar",
                 primary: true,
-                accessRole: "owner"
-              }
-            ]
-          })
-        )
+                accessRole: "owner",
+              },
+            ],
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             id: "atlas-created-id",
-            summary: "Atlas"
-          })
-        )
+            summary: "Atlas",
+          }),
+        ),
       );
 
     await expect(
       fetchGoogleCalendarIdentity({
         accessToken: "access-token",
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
       providerAccountId: "google-user-1",
       email: "max@example.com",
       selectedCalendarId: "atlas-created-id",
-      selectedCalendarName: "Atlas"
+      selectedCalendarName: "Atlas",
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "https://www.googleapis.com/calendar/v3/calendars",
       expect.objectContaining({
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
   });
 
@@ -234,9 +238,9 @@ describe("integrations", () => {
         new Response(
           JSON.stringify({
             id: "google-user-1",
-            email: "max@example.com"
-          })
-        )
+            email: "max@example.com",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -246,63 +250,61 @@ describe("integrations", () => {
                 id: "primary",
                 summary: "My Calendar",
                 primary: true,
-                accessRole: "owner"
-              }
-            ]
-          })
-        )
+                accessRole: "owner",
+              },
+            ],
+          }),
+        ),
       )
       .mockResolvedValueOnce(new Response("nope", { status: 500 }));
 
     await expect(
       fetchGoogleCalendarIdentity({
         accessToken: "access-token",
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).rejects.toThrow("Google calendar creation failed with status 500.");
   });
 
   it("reads Google free busy periods through the real adapter contract", async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            calendars: {
-              primary: {
-                busy: [
-                  {
-                    start: "2026-03-18T17:00:00.000Z",
-                    end: "2026-03-18T18:00:00.000Z"
-                  }
-                ]
-              }
-            }
-          })
-        )
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          calendars: {
+            primary: {
+              busy: [
+                {
+                  start: "2026-03-18T17:00:00.000Z",
+                  end: "2026-03-18T18:00:00.000Z",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
     const adapter = createGoogleCalendarAdapter(
       {
         accessToken: "access-token",
-        selectedCalendarId: "primary"
+        selectedCalendarId: "primary",
       },
       {
-        fetch: fetchMock
-      }
+        fetch: fetchMock,
+      },
     );
 
     await expect(
       adapter.listBusyPeriods({
         startAt: "2026-03-18T16:00:00.000Z",
         endAt: "2026-03-18T19:00:00.000Z",
-        externalCalendarId: "primary"
-      })
+        externalCalendarId: "primary",
+      }),
     ).resolves.toMatchObject([
       {
         startAt: "2026-03-18T17:00:00.000Z",
         endAt: "2026-03-18T18:00:00.000Z",
-        externalCalendarId: "primary"
-      }
+        externalCalendarId: "primary",
+      },
     ]);
   });
 
@@ -312,35 +314,35 @@ describe("integrations", () => {
         JSON.stringify({
           id: "event-1",
           start: {
-            dateTime: "2026-03-18T17:00:00-07:00"
+            dateTime: "2026-03-18T17:00:00-07:00",
           },
           end: {
-            dateTime: "2026-03-18T18:00:00-07:00"
-          }
-        })
-      )
+            dateTime: "2026-03-18T18:00:00-07:00",
+          },
+        }),
+      ),
     );
     const adapter = createGoogleCalendarAdapter(
       {
         accessToken: "access-token",
-        selectedCalendarId: "primary"
+        selectedCalendarId: "primary",
       },
       {
-        fetch: fetchMock
-      }
+        fetch: fetchMock,
+      },
     );
 
     await expect(
       adapter.createEvent({
         title: "Review launch checklist",
         startAt: "2026-03-19T00:00:00.000Z",
-        endAt: "2026-03-19T01:00:00.000Z"
-      })
+        endAt: "2026-03-19T01:00:00.000Z",
+      }),
     ).resolves.toMatchObject({
       externalCalendarEventId: "event-1",
       externalCalendarId: "primary",
       scheduledStartAt: "2026-03-19T00:00:00.000Z",
-      scheduledEndAt: "2026-03-19T01:00:00.000Z"
+      scheduledEndAt: "2026-03-19T01:00:00.000Z",
     });
   });
 
@@ -353,36 +355,36 @@ describe("integrations", () => {
               busy: [
                 {
                   start: "2026-03-18T17:00:00-07:00",
-                  end: "2026-03-18T18:00:00-07:00"
-                }
-              ]
-            }
-          }
-        })
-      )
+                  end: "2026-03-18T18:00:00-07:00",
+                },
+              ],
+            },
+          },
+        }),
+      ),
     );
     const adapter = createGoogleCalendarAdapter(
       {
         accessToken: "access-token",
-        selectedCalendarId: "primary"
+        selectedCalendarId: "primary",
       },
       {
-        fetch: fetchMock
-      }
+        fetch: fetchMock,
+      },
     );
 
     await expect(
       adapter.listBusyPeriods({
         startAt: "2026-03-18T23:00:00.000Z",
         endAt: "2026-03-19T02:00:00.000Z",
-        externalCalendarId: "primary"
-      })
+        externalCalendarId: "primary",
+      }),
     ).resolves.toMatchObject([
       {
         startAt: "2026-03-19T00:00:00.000Z",
         endAt: "2026-03-19T01:00:00.000Z",
-        externalCalendarId: "primary"
-      }
+        externalCalendarId: "primary",
+      },
     ]);
   });
 
@@ -391,9 +393,9 @@ describe("integrations", () => {
       new Response(
         JSON.stringify({
           access_token: "fresh-token",
-          expires_in: 3600
-        })
-      )
+          expires_in: 3600,
+        }),
+      ),
     );
 
     await expect(
@@ -401,11 +403,11 @@ describe("integrations", () => {
         clientId: "google-client-id",
         clientSecret: "google-client-secret",
         refreshToken: "refresh-token",
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
       accessToken: "fresh-token",
-      refreshToken: "refresh-token"
+      refreshToken: "refresh-token",
     });
   });
 
@@ -420,12 +422,12 @@ describe("integrations", () => {
           normalizedText: "Submit taxes tomorrow at 3pm",
           processingStatus: "received",
           linkedTaskIds: [],
-          createdAt: "2026-03-13T08:00:00.000Z"
+          createdAt: "2026-03-13T08:00:00.000Z",
         },
         userProfile: buildDefaultUserProfile("123"),
         tasks: [],
         scheduleBlocks: [],
-        referenceTime: "2026-03-13T08:00:00.000Z"
+        referenceTime: "2026-03-13T08:00:00.000Z",
       },
       {
         responses: {
@@ -439,13 +441,13 @@ describe("integrations", () => {
                   alias: "new_task_1",
                   title: "Submit taxes",
                   priority: "medium",
-                  urgency: "high"
+                  urgency: "high",
                 },
                 {
                   type: "create_schedule_block",
                   taskRef: {
                     kind: "created_task",
-                    alias: "new_task_1"
+                    alias: "new_task_1",
                   },
                   scheduleConstraint: {
                     dayReference: "tomorrow",
@@ -454,15 +456,15 @@ describe("integrations", () => {
                     explicitHour: 15,
                     minute: 0,
                     preferredWindow: null,
-                    sourceText: "tomorrow at 3pm"
+                    sourceText: "tomorrow at 3pm",
                   },
-                  reason: "The user asked for tomorrow at 3pm."
-                }
-              ]
-            }
-          })
-        }
-      }
+                  reason: "The user asked for tomorrow at 3pm.",
+                },
+              ],
+            },
+          }),
+        },
+      },
     );
 
     expect(result.actions).toHaveLength(2);
@@ -480,11 +482,11 @@ describe("integrations", () => {
             rawText: "Move it to 3pm",
             normalizedText: "Move it to 3pm",
             processingStatus: "received",
-            linkedTaskIds: []
+            linkedTaskIds: [],
           },
           userProfile: buildDefaultUserProfile("123"),
           tasks: [],
-          scheduleBlocks: []
+          scheduleBlocks: [],
         },
         {
           responses: {
@@ -492,12 +494,12 @@ describe("integrations", () => {
               output_parsed: {
                 confidence: 2,
                 summary: "Bad output",
-                actions: []
-              }
-            })
-          }
-        }
-      )
+                actions: [],
+              },
+            }),
+          },
+        },
+      ),
     ).rejects.toThrow();
   });
 
@@ -512,12 +514,12 @@ describe("integrations", () => {
           normalizedText: "Schedule a tax task",
           processingStatus: "received",
           linkedTaskIds: [],
-          createdAt: "2026-03-13T08:00:00.000Z"
+          createdAt: "2026-03-13T08:00:00.000Z",
         },
         userProfile: buildDefaultUserProfile("123"),
         tasks: [],
         scheduleBlocks: [],
-        referenceTime: "2026-03-13T08:00:00.000Z"
+        referenceTime: "2026-03-13T08:00:00.000Z",
       },
       {
         responses: {
@@ -531,13 +533,13 @@ describe("integrations", () => {
                   alias: "new_task_1",
                   title: "Submit taxes",
                   priority: null,
-                  urgency: null
-                }
-              ]
-            }
-          })
-        }
-      }
+                  urgency: null,
+                },
+              ],
+            },
+          }),
+        },
+      },
     );
 
     expect(result.actions).toEqual([
@@ -546,8 +548,8 @@ describe("integrations", () => {
         alias: "new_task_1",
         title: "Submit taxes",
         priority: "medium",
-        urgency: "medium"
-      }
+        urgency: "medium",
+      },
     ]);
   });
 
@@ -563,15 +565,15 @@ describe("integrations", () => {
           parse: async () => ({
             output_parsed: {
               route: "conversation_then_mutation",
-              reason: "This is a mixed discussion and scheduling turn."
-            }
-          })
-        }
-      }
+              reason: "This is a mixed discussion and scheduling turn.",
+            },
+          }),
+        },
+      },
     );
 
     expect(result).toMatchObject({
-      route: "conversation_then_mutation"
+      route: "conversation_then_mutation",
     });
   });
 
@@ -588,12 +590,12 @@ describe("integrations", () => {
             parse: async () => ({
               output_parsed: {
                 route: "write_now",
-                reason: ""
-              }
-            })
-          }
-        }
-      )
+                reason: "",
+              },
+            }),
+          },
+        },
+      ),
     ).rejects.toThrow();
   });
 
@@ -606,8 +608,8 @@ describe("integrations", () => {
           {
             role: "assistant",
             text: "Would you like me to schedule it at 3pm?",
-            createdAt: "2026-03-17T16:00:00.000Z"
-          }
+            createdAt: "2026-03-17T16:00:00.000Z",
+          },
         ],
       },
       {
@@ -615,11 +617,11 @@ describe("integrations", () => {
           parse: async () => ({
             output_parsed: {
               route: "confirmed_mutation",
-              reason: "The latest turn confirms a recent concrete proposal."
-            }
-          })
-        }
-      }
+              reason: "The latest turn confirms a recent concrete proposal.",
+            },
+          }),
+        },
+      },
     );
 
     expect(result.route).toBe("confirmed_mutation");
@@ -634,15 +636,16 @@ describe("integrations", () => {
           {
             role: "assistant",
             text: "Would you like me to schedule the dentist reminder at 3pm?",
-            createdAt: "2026-03-17T16:00:00.000Z"
+            createdAt: "2026-03-17T16:00:00.000Z",
           },
           {
             role: "user",
             text: "Yes",
-            createdAt: "2026-03-17T16:01:00.000Z"
-          }
+            createdAt: "2026-03-17T16:01:00.000Z",
+          },
         ],
-        memorySummary: "The recent exchange contains a concrete 3pm proposal for the dentist reminder."
+        memorySummary:
+          "The recent exchange contains a concrete 3pm proposal for the dentist reminder.",
       },
       {
         responses: {
@@ -651,16 +654,16 @@ describe("integrations", () => {
               outcome: "recovered",
               recoveredText: "Schedule the dentist reminder at 3pm.",
               reason: "The user confirmed the recent concrete proposal.",
-              userReplyMessage: "Got it - dentest reminder scheduled at 3pm."
-            }
-          })
-        }
-      }
+              userReplyMessage: "Got it - dentest reminder scheduled at 3pm.",
+            },
+          }),
+        },
+      },
     );
 
     expect(result).toMatchObject({
       outcome: "recovered",
-      recoveredText: "Schedule the dentist reminder at 3pm."
+      recoveredText: "Schedule the dentist reminder at 3pm.",
     });
   });
 
@@ -674,10 +677,10 @@ describe("integrations", () => {
             {
               role: "assistant",
               text: "I can move it to Friday at 3pm.",
-              createdAt: "2026-03-17T16:00:00.000Z"
-            }
+              createdAt: "2026-03-17T16:00:00.000Z",
+            },
           ],
-          memorySummary: "The recent exchange includes a Friday proposal."
+          memorySummary: "The recent exchange includes a Friday proposal.",
         },
         {
           responses: {
@@ -685,20 +688,21 @@ describe("integrations", () => {
               output_parsed: {
                 outcome: "recovered",
                 recoveredText: null,
-                reason: "Missing recovered text."
-              }
-            })
-          }
-        }
-      )
+                reason: "Missing recovered text.",
+              },
+            }),
+          },
+        },
+      ),
     ).rejects.toThrow();
   });
 
   it("parses structured conversation response output from the Responses API client", async () => {
     const parse = vi.fn(async () => ({
       output_parsed: {
-        reply: "Start by picking the one thing that must happen tomorrow, then give it the first focus block."
-      }
+        reply:
+          "Start by picking the one thing that must happen tomorrow, then give it the first focus block.",
+      },
     }));
     const result = await respondToConversationTurnWithResponses(
       {
@@ -709,22 +713,32 @@ describe("integrations", () => {
           {
             role: "user",
             text: "I am overloaded this week.",
-            createdAt: "2026-03-16T16:00:00.000Z"
-          }
+            createdAt: "2026-03-16T16:00:00.000Z",
+          },
         ],
-        memorySummary: "The user wants help prioritizing tomorrow."
+        memorySummary: "The user wants help prioritizing tomorrow.",
       },
       {
-        responses: { parse }
-      }
+        responses: { parse },
+      },
     );
 
     expect(result.reply).toContain("first focus block");
-    const parseCall = (parse as unknown as { mock: { calls: Array<[{
-      input?: Array<{ content?: Array<{ text?: string }> }>;
-    }]> } }).mock.calls[0];
+    const parseCall = (
+      parse as unknown as {
+        mock: {
+          calls: Array<
+            [
+              {
+                input?: Array<{ content?: Array<{ text?: string }> }>;
+              },
+            ]
+          >;
+        };
+      }
+    ).mock.calls[0];
     const promptPayload = parseCall?.[0]?.input?.[1]?.content?.[0]?.text;
-    expect(promptPayload).toContain("\"rawText\":\"How should I plan tomorrow?\"");
+    expect(promptPayload).toContain('"rawText":"How should I plan tomorrow?"');
     expect(promptPayload).not.toContain("normalizedText");
   });
 
@@ -732,27 +746,39 @@ describe("integrations", () => {
     const parse = vi.fn(async () => ({
       output_parsed: {
         route: "conversation",
-        reason: "The user is asking for planning advice."
-      }
+        reason: "The user is asking for planning advice.",
+      },
     }));
 
     await routeTurnWithResponses(
       {
         rawText: " Review   launch checklist tomorrow morning ",
         normalizedText: "Review launch checklist tomorrow morning",
-        recentTurns: []
+        recentTurns: [],
       },
       {
-        responses: { parse }
-      }
+        responses: { parse },
+      },
     );
 
     expect(parse).toHaveBeenCalledTimes(1);
-    const parseCall = (parse as unknown as { mock: { calls: Array<[{
-      input?: Array<{ content?: Array<{ text?: string }> }>;
-    }]> } }).mock.calls[0];
+    const parseCall = (
+      parse as unknown as {
+        mock: {
+          calls: Array<
+            [
+              {
+                input?: Array<{ content?: Array<{ text?: string }> }>;
+              },
+            ]
+          >;
+        };
+      }
+    ).mock.calls[0];
     const promptPayload = parseCall?.[0]?.input?.[1]?.content?.[0]?.text;
-    expect(promptPayload).toContain("\"rawText\":\" Review   launch checklist tomorrow morning \"");
+    expect(promptPayload).toContain(
+      '"rawText":" Review   launch checklist tomorrow morning "',
+    );
     expect(promptPayload).not.toContain("normalizedText");
   });
 
@@ -767,21 +793,21 @@ describe("integrations", () => {
             {
               role: "assistant",
               text: "It sounds like you mean the dentist reminder.",
-              createdAt: "2026-03-16T16:01:00.000Z"
-            }
+              createdAt: "2026-03-16T16:01:00.000Z",
+            },
           ],
-          memorySummary: "The recent exchange is about a dentist reminder."
+          memorySummary: "The recent exchange is about a dentist reminder.",
         },
         {
           responses: {
             parse: async () => ({
               output_parsed: {
-                reply: ""
-              }
-            })
-          }
-        }
-      )
+                reply: "",
+              },
+            }),
+          },
+        },
+      ),
     ).rejects.toThrow();
   });
 
@@ -792,24 +818,25 @@ describe("integrations", () => {
           {
             role: "user",
             text: "Can we move the dentist thing to Friday?",
-            createdAt: "2026-03-16T16:00:00.000Z"
+            createdAt: "2026-03-16T16:00:00.000Z",
           },
           {
             role: "assistant",
             text: "If you mean the dentist reminder, Friday could work.",
-            createdAt: "2026-03-16T16:01:00.000Z"
-          }
-        ]
+            createdAt: "2026-03-16T16:01:00.000Z",
+          },
+        ],
       },
       {
         responses: {
           parse: async () => ({
             output_parsed: {
-              summary: "Recent exchange likely refers to the dentist reminder and a possible Friday move."
-            }
-          })
-        }
-      }
+              summary:
+                "Recent exchange likely refers to the dentist reminder and a possible Friday move.",
+            },
+          }),
+        },
+      },
     );
 
     expect(result.summary).toContain("dentist reminder");
@@ -823,214 +850,224 @@ describe("integrations", () => {
             {
               role: "user",
               text: "Did you already create that?",
-              createdAt: "2026-03-16T16:00:00.000Z"
-            }
-          ]
+              createdAt: "2026-03-16T16:00:00.000Z",
+            },
+          ],
         },
         {
           responses: {
             parse: async () => ({
               output_parsed: {
-                summary: 42
-              }
-            })
-          }
-        }
-      )
+                summary: 42,
+              },
+            }),
+          },
+        },
+      ),
     ).rejects.toThrow();
   });
 
   it("sends a Telegram follow-up message through sendMessage", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: true,
-          result: {
-            message_id: 88,
-            date: 1_700_000_000,
-            chat: {
-              id: "999",
-              type: "private"
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            result: {
+              message_id: 88,
+              date: 1_700_000_000,
+              chat: {
+                id: "999",
+                type: "private",
+              },
+              text: "Captured and scheduled Review launch checklist.",
             },
-            text: "Captured and scheduled Review launch checklist."
-          }
-        }),
-        {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     const result = await sendTelegramMessage(
       {
         chatId: "999",
-        text: "Captured and scheduled Review launch checklist."
+        text: "Captured and scheduled Review launch checklist.",
       },
-      fetchMock
+      fetchMock,
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.telegram.org/bottest-telegram-token/sendMessage",
       expect.objectContaining({
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
     expect(result.result.message_id).toBe(88);
   });
 
   it("builds a stable Telegram follow-up idempotency key", () => {
     expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
-      "telegram:followup:inbox-item:inbox-1"
+      "telegram:followup:inbox-item:inbox-1",
     );
   });
 
   it("includes Telegram error descriptions when sendMessage fails", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: false,
-          description: "Bad Request: chat not found"
-        }),
-        {
-          status: 400,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            description: "Bad Request: chat not found",
+          }),
+          {
+            status: 400,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     await expect(
       sendTelegramMessage(
         {
           chatId: "999",
-          text: "Captured and scheduled Review launch checklist."
+          text: "Captured and scheduled Review launch checklist.",
         },
-        fetchMock
-      )
-    ).rejects.toThrow("Telegram sendMessage failed with status 400: Bad Request: chat not found.");
+        fetchMock,
+      ),
+    ).rejects.toThrow(
+      "Telegram sendMessage failed with status 400: Bad Request: chat not found.",
+    );
   });
 
   it("sends Telegram chat actions through the Bot API", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: true,
-          result: true
-        }),
-        {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            result: true,
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     await expect(
       sendTelegramChatAction(
         {
           chatId: "999",
-          action: "typing"
+          action: "typing",
         },
-        fetchMock
-      )
+        fetchMock,
+      ),
     ).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.telegram.org/bottest-telegram-token/sendChatAction",
       expect.objectContaining({
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
   });
 
   it("includes Telegram error descriptions when sendChatAction fails", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: false,
-          description: "Bad Request: chat not found"
-        }),
-        {
-          status: 400,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            description: "Bad Request: chat not found",
+          }),
+          {
+            status: 400,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     await expect(
       sendTelegramChatAction(
         {
           chatId: "999",
-          action: "typing"
+          action: "typing",
         },
-        fetchMock
-      )
-    ).rejects.toThrow("Telegram sendChatAction failed with status 400: Bad Request: chat not found.");
+        fetchMock,
+      ),
+    ).rejects.toThrow(
+      "Telegram sendChatAction failed with status 400: Bad Request: chat not found.",
+    );
   });
 
   it("edits Telegram messages through the Bot API", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: true,
-          result: {
-            message_id: 88,
-            date: 1_700_000_000,
-            chat: {
-              id: "999",
-              type: "private"
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            result: {
+              message_id: 88,
+              date: 1_700_000_000,
+              chat: {
+                id: "999",
+                type: "private",
+              },
+              text: "Final reply",
             },
-            text: "Final reply"
-          }
-        }),
-        {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     const result = await editTelegramMessage(
       {
         chatId: "999",
         messageId: 88,
-        text: "Final reply"
+        text: "Final reply",
       },
-      fetchMock
+      fetchMock,
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.telegram.org/bottest-telegram-token/editMessageText",
       expect.objectContaining({
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
     expect(result.result.text).toBe("Final reply");
   });
 
   it("includes Telegram error descriptions when editMessageText fails", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          ok: false,
-          description: "Bad Request: message can't be edited"
-        }),
-        {
-          status: 400,
-          headers: {
-            "content-type": "application/json"
-          }
-        }
-      )
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            description: "Bad Request: message can't be edited",
+          }),
+          {
+            status: 400,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
     await expect(
@@ -1038,12 +1075,12 @@ describe("integrations", () => {
         {
           chatId: "999",
           messageId: 88,
-          text: "Final reply"
+          text: "Final reply",
         },
-        fetchMock
-      )
+        fetchMock,
+      ),
     ).rejects.toThrow(
-      "Telegram editMessageText failed with status 400: Bad Request: message can't be edited."
+      "Telegram editMessageText failed with status 400: Bad Request: message can't be edited.",
     );
   });
 });

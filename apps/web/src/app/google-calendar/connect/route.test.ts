@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { handleGoogleCalendarConnectConfirmMock, handleGoogleCalendarConnectPreviewMock } = vi.hoisted(() => ({
+const {
+  handleGoogleCalendarConnectConfirmMock,
+  handleGoogleCalendarConnectPreviewMock,
+} = vi.hoisted(() => ({
   handleGoogleCalendarConnectPreviewMock: vi.fn(),
-  handleGoogleCalendarConnectConfirmMock: vi.fn()
+  handleGoogleCalendarConnectConfirmMock: vi.fn(),
 }));
 
 vi.mock("@/lib/server/google-calendar", () => ({
   handleGoogleCalendarConnectPreview: handleGoogleCalendarConnectPreviewMock,
-  handleGoogleCalendarConnectConfirm: handleGoogleCalendarConnectConfirmMock
+  handleGoogleCalendarConnectConfirm: handleGoogleCalendarConnectConfirmMock,
 }));
 
 describe("google calendar connect route", () => {
@@ -16,17 +19,22 @@ describe("google calendar connect route", () => {
       status: 200,
       body: {
         accepted: true,
-        token: "signed-token"
+        token: "signed-token",
       },
       confirmation: {
         title: "Connect Google Calendar",
-        message: "Atlas needs access to your Google Calendar before it can schedule work for you.",
-        actionLabel: "Continue to Google"
-      }
+        message:
+          "Atlas needs access to your Google Calendar before it can schedule work for you.",
+        actionLabel: "Continue to Google",
+      },
     });
 
     const { GET } = await import("./route");
-    const response = await GET(new Request("http://localhost/google-calendar/connect?token=signed-token"));
+    const response = await GET(
+      new Request(
+        "http://localhost/google-calendar/connect?token=signed-token",
+      ),
+    );
     const html = await response.text();
 
     expect(response.status).toBe(200);
@@ -41,8 +49,8 @@ describe("google calendar connect route", () => {
       status: 302,
       headers: {
         location: "/api/google-calendar/oauth/start",
-        "set-cookie": "atlas_google_link_session=abc; Path=/"
-      }
+        "set-cookie": "atlas_google_link_session=abc; Path=/",
+      },
     });
 
     const { POST } = await import("./route");
@@ -50,13 +58,17 @@ describe("google calendar connect route", () => {
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: "signed-token"
-        })
-      })
+          token: "signed-token",
+        }),
+      }),
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("http://localhost/api/google-calendar/oauth/start");
-    expect(response.headers.get("set-cookie")).toContain("atlas_google_link_session=abc");
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/api/google-calendar/oauth/start",
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      "atlas_google_link_session=abc",
+    );
   });
 });

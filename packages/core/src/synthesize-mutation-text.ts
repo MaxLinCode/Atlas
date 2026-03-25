@@ -1,136 +1,148 @@
 import type { z } from "zod";
 import type { resolvedSlotsSchema } from "./discourse-state";
 import type {
-	conversationEntitySchema,
-	conversationProposalOptionEntitySchema,
+  conversationEntitySchema,
+  conversationProposalOptionEntitySchema,
 } from "./index";
-import { formatTimeSpec } from "./time-spec";
 
 type ResolvedSlots = z.infer<typeof resolvedSlotsSchema>;
 type ConversationEntity = z.infer<typeof conversationEntitySchema>;
 type ProposalOptionEntity = z.infer<
-	typeof conversationProposalOptionEntitySchema
+  typeof conversationProposalOptionEntitySchema
 >;
 
 export type SynthesizeMutationTextInput = {
-	resolvedSlots: ResolvedSlots;
-	proposalEntity?: ProposalOptionEntity | undefined;
-	entityRegistry: ConversationEntity[];
+  resolvedSlots: ResolvedSlots;
+  proposalEntity?: ProposalOptionEntity | undefined;
+  entityRegistry: ConversationEntity[];
 };
 
 export type SynthesizeMutationTextResult =
-	| { outcome: "synthesized"; text: string }
-	| { outcome: "insufficient_data"; reason: string };
+  | { outcome: "synthesized"; text: string }
+  | { outcome: "insufficient_data"; reason: string };
 
 export function synthesizeMutationText(
-	input: SynthesizeMutationTextInput,
+  input: SynthesizeMutationTextInput,
 ): SynthesizeMutationTextResult {
-	const { resolvedSlots, proposalEntity, entityRegistry } = input;
+  const { resolvedSlots, proposalEntity, entityRegistry } = input;
 
-	const originatingText = proposalEntity?.data.originatingTurnText;
-	const missingSlots = new Set(proposalEntity?.data.missingSlots ?? []);
+  const originatingText = proposalEntity?.data.originatingTurnText;
+  const missingSlots = new Set(proposalEntity?.data.missingSlots ?? []);
 
-	if (originatingText) {
-		const augmentations = buildSlotAugmentations(
-			resolvedSlots,
-			missingSlots,
-			entityRegistry,
-		);
-		const text =
-			augmentations.length > 0
-				? `${originatingText} ${augmentations.join(" ")}`
-				: originatingText;
-		return { outcome: "synthesized", text };
-	}
+  if (originatingText) {
+    const augmentations = buildSlotAugmentations(
+      resolvedSlots,
+      missingSlots,
+      entityRegistry,
+    );
+    const text =
+      augmentations.length > 0
+        ? `${originatingText} ${augmentations.join(" ")}`
+        : originatingText;
+    return { outcome: "synthesized", text };
+  }
 
-	const synthesized = buildFromSlotsOnly(resolvedSlots, entityRegistry);
-	if (synthesized) {
-		return { outcome: "synthesized", text: synthesized };
-	}
+  const synthesized = buildFromSlotsOnly(resolvedSlots, entityRegistry);
+  if (synthesized) {
+    return { outcome: "synthesized", text: synthesized };
+  }
 
-	return {
-		outcome: "insufficient_data",
-		reason:
-			"No originating turn text and insufficient resolved slots to synthesize a mutation request.",
-	};
+  return {
+    outcome: "insufficient_data",
+    reason:
+      "No originating turn text and insufficient resolved slots to synthesize a mutation request.",
+  };
 }
 
 function buildSlotAugmentations(
-	slots: ResolvedSlots,
-	missingSlots: Set<string>,
-	entityRegistry: ConversationEntity[],
+  slots: ResolvedSlots,
+  missingSlots: Set<string>,
+  entityRegistry: ConversationEntity[],
 ): string[] {
-	const parts: string[] = [];
+  const parts: string[] = [];
 
-	if (slots.day && missingSlots.has("day")) {
-		parts.push(`on ${slots.day}`);
-	}
-	if (slots.time && missingSlots.has("time")) {
-		parts.push(`at ${formatTimeSpec(slots.time)}`);
-	}
-	if (slots.duration != null && missingSlots.has("duration")) {
-		parts.push(formatDurationForPlanner(slots.duration));
-	}
-	if (slots.target && missingSlots.has("target")) {
-		const name = resolveEntityName(slots.target, entityRegistry);
-		if (name) {
-			parts.push(`for ${name}`);
-		}
-	}
+  if (slots.day && missingSlots.has("day")) {
+    parts.push(`on ${slots.day}`);
+  }
+  if (slots.time && missingSlots.has("time")) {
+    parts.push(`at ${formatTimeForPlanner(slots.time)}`);
+  }
+  if (slots.duration != null && missingSlots.has("duration")) {
+    parts.push(formatDurationForPlanner(slots.duration));
+  }
+  if (slots.target && missingSlots.has("target")) {
+    const name = resolveEntityName(slots.target, entityRegistry);
+    if (name) {
+      parts.push(`for ${name}`);
+    }
+  }
 
-	return parts;
+  return parts;
 }
 
 function buildFromSlotsOnly(
-	slots: ResolvedSlots,
-	entityRegistry: ConversationEntity[],
+  slots: ResolvedSlots,
+  entityRegistry: ConversationEntity[],
 ): string | null {
-	const parts: string[] = [];
+  const parts: string[] = [];
 
-	const targetName = slots.target
-		? resolveEntityName(slots.target, entityRegistry)
-		: null;
+  const targetName = slots.target
+    ? resolveEntityName(slots.target, entityRegistry)
+    : null;
 
-	if (targetName) {
-		parts.push(`Schedule ${targetName}`);
-	} else if (slots.day || slots.time) {
-		parts.push("Schedule");
-	} else {
-		return null;
-	}
+  if (targetName) {
+    parts.push(`Schedule ${targetName}`);
+  } else if (slots.day || slots.time) {
+    parts.push("Schedule");
+  } else {
+    return null;
+  }
 
-	if (slots.day) {
-		parts.push(`on ${slots.day}`);
-	}
-	if (slots.time) {
-		parts.push(`at ${formatTimeSpec(slots.time)}`);
-	}
-	if (slots.duration != null) {
-		parts.push(formatDurationForPlanner(slots.duration));
-	}
+  if (slots.day) {
+    parts.push(`on ${slots.day}`);
+  }
+  if (slots.time) {
+    parts.push(`at ${formatTimeForPlanner(slots.time)}`);
+  }
+  if (slots.duration != null) {
+    parts.push(formatDurationForPlanner(slots.duration));
+  }
 
-	return parts.join(" ");
+  return parts.join(" ");
 }
 
 function resolveEntityName(
-	entityId: string,
-	entityRegistry: ConversationEntity[],
+  entityId: string,
+  entityRegistry: ConversationEntity[],
 ): string | null {
-	const entity = entityRegistry.find((e) => e.id === entityId);
-	if (!entity) return null;
-	if (entity.kind === "task") return entity.data.title;
-	return entity.label;
+  const entity = entityRegistry.find((e) => e.id === entityId);
+  if (!entity) return null;
+  if (entity.kind === "task") return entity.data.title;
+  return entity.label;
 }
 
+export function formatTimeForPlanner(time24h: string): string {
+  const [hourStr, minuteStr] = time24h.split(":");
+  const hour = parseInt(hourStr!, 10);
+  const minute = parseInt(minuteStr ?? "0", 10);
+
+  const period = hour >= 12 ? "pm" : "am";
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+  if (minute === 0) {
+    return `${displayHour}${period}`;
+  }
+  return `${displayHour}:${String(minute).padStart(2, "0")}${period}`;
+}
 
 export function formatDurationForPlanner(minutes: number): string {
-	if (minutes < 60) {
-		return `for ${minutes} minutes`;
-	}
-	const hours = Math.floor(minutes / 60);
-	const remainder = minutes % 60;
-	if (remainder === 0) {
-		return `for ${hours} hour${hours > 1 ? "s" : ""}`;
-	}
-	return `for ${hours} hour${hours > 1 ? "s" : ""} ${remainder} minutes`;
+  if (minutes < 60) {
+    return `for ${minutes} minutes`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (remainder === 0) {
+    return `for ${hours} hour${hours > 1 ? "s" : ""}`;
+  }
+  return `for ${hours} hour${hours > 1 ? "s" : ""} ${remainder} minutes`;
 }

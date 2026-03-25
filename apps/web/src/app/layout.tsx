@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export const metadata = {
   title: "Atlas Admin",
-  description: "Internal admin surface for the Atlas brain-dump scheduler."
+  description: "Internal admin surface for the Atlas brain-dump scheduler.",
 };
 
 type RootLayoutProps = {
@@ -18,7 +18,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           fontFamily: "Georgia, serif",
           background:
             "linear-gradient(180deg, #f3efe2 0%, #f8f6ee 40%, #ffffff 100%)",
-          color: "#1f2a1f"
+          color: "#1f2a1f",
         }}
       >
         {children}
@@ -26,4 +26,3 @@ export default function RootLayout({ children }: RootLayoutProps) {
     </html>
   );
 }
-

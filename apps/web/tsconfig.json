@@ -5,18 +5,10 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "src/*"
-      ],
-      "@atlas/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@atlas/db": [
-        "../../packages/db/src/index.ts"
-      ],
-      "@atlas/integrations": [
-        "../../packages/integrations/src/index.ts"
-      ]
+      "@/*": ["src/*"],
+      "@atlas/core": ["../../packages/core/src/index.ts"],
+      "@atlas/db": ["../../packages/db/src/index.ts"],
+      "@atlas/integrations": ["../../packages/integrations/src/index.ts"]
     },
     "plugins": [
       {
@@ -33,7 +25,5 @@
     "src/**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

@@ -4,7 +4,7 @@ import { runConfirmedMutationRecoveryEvalSuite } from "./confirmed-mutation-reco
 import {
   ensureManualEvalEnv,
   writePromptImprovementBrief,
-  writeSuiteEvalReport
+  writeSuiteEvalReport,
 } from "./shared";
 
 beforeAll(() => {
@@ -27,8 +27,8 @@ describe.sequential("manual confirmed-mutation recovery eval", () => {
         recoveredText: testCase.details.recoveredText,
         reason: testCase.details.reason,
         userReplyMessage: testCase.details.userReplyMessage,
-        error: testCase.error ?? ""
-      }))
+        error: testCase.error ?? "",
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPath) {

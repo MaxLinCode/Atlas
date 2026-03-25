@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
 const { reconcileGoogleCalendarConnectionsMock } = vi.hoisted(() => ({
-  reconcileGoogleCalendarConnectionsMock: vi.fn()
+  reconcileGoogleCalendarConnectionsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/server/google-calendar", () => ({
-  reconcileGoogleCalendarConnections: reconcileGoogleCalendarConnectionsMock
+  reconcileGoogleCalendarConnections: reconcileGoogleCalendarConnectionsMock,
 }));
 
 describe("reconcile Google Calendar cron route", () => {
@@ -19,19 +19,21 @@ describe("reconcile Google Calendar cron route", () => {
       reconciledConnections: 0,
       syncedTasks: 0,
       outOfSyncTasks: 0,
-      failedConnections: 0
+      failedConnections: 0,
     });
   });
 
   it("rejects unauthenticated cron requests", async () => {
     process.env.CRON_SECRET = "cron-secret";
 
-    const response = await POST(new Request("http://localhost/api/cron/reconcile-google-calendar"));
+    const response = await POST(
+      new Request("http://localhost/api/cron/reconcile-google-calendar"),
+    );
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       accepted: false,
-      error: "invalid_cron_secret"
+      error: "invalid_cron_secret",
     });
     expect(reconcileGoogleCalendarConnectionsMock).not.toHaveBeenCalled();
   });
@@ -39,14 +41,14 @@ describe("reconcile Google Calendar cron route", () => {
   it("fails closed when the cron secret is not configured", async () => {
     const response = await POST(
       new Request("http://localhost/api/cron/reconcile-google-calendar", {
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       accepted: false,
-      error: "cron_secret_not_configured"
+      error: "cron_secret_not_configured",
     });
   });
 
@@ -57,15 +59,15 @@ describe("reconcile Google Calendar cron route", () => {
       new Request("http://localhost/api/cron/reconcile-google-calendar", {
         method: "POST",
         headers: {
-          authorization: "Bearer cron-secret"
-        }
-      })
+          authorization: "Bearer cron-secret",
+        },
+      }),
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       accepted: true,
-      reconciledConnections: 0
+      reconciledConnections: 0,
     });
     expect(reconcileGoogleCalendarConnectionsMock).toHaveBeenCalledTimes(1);
   });

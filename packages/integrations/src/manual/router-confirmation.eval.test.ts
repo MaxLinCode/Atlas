@@ -4,7 +4,7 @@ import { runRouterConfirmationEvalSuite } from "./router-confirmation.eval-suite
 import {
   ensureManualEvalEnv,
   writePromptImprovementBrief,
-  writeSuiteEvalReport
+  writeSuiteEvalReport,
 } from "./shared";
 
 beforeAll(() => {
@@ -26,8 +26,8 @@ describe.sequential("manual router confirmation eval", () => {
         expected: testCase.details.expected,
         actual: testCase.details.actual,
         reason: testCase.details.reason,
-        error: testCase.error ?? ""
-      }))
+        error: testCase.error ?? "",
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPath) {

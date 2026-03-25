@@ -9,19 +9,19 @@ import {
   getGoogleCalendarSecurityConfig,
   getTelegramAllowedUserIds,
   isTelegramUserAllowed,
-  verifyGoogleCalendarLinkToken
+  verifyGoogleCalendarLinkToken,
 } from "@atlas/core";
 import {
-  getDefaultGoogleCalendarConnectionStore,
   type GoogleCalendarConnection,
-  type GoogleCalendarConnectionStore
+  type GoogleCalendarConnectionStore,
+  getDefaultGoogleCalendarConnectionStore,
 } from "@atlas/db";
 import {
   buildGoogleCalendarOAuthUrl,
   createGoogleCalendarAdapter,
   exchangeGoogleOAuthCode,
   fetchGoogleCalendarIdentity,
-  refreshGoogleOAuthToken
+  refreshGoogleOAuthToken,
 } from "@atlas/integrations";
 
 const LINK_HANDOFF_TTL_MS = 5 * 60 * 1000;
@@ -39,25 +39,29 @@ export async function createGoogleCalendarConnectLink(
   },
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
   const config = getConfig();
   const securityConfig = getGoogleCalendarSecurityConfig();
   const allowedUserIds = getTelegramAllowedUserIds(config);
 
   if (!isTelegramUserAllowed(input.userId, allowedUserIds)) {
-    throw new Error(`Google Calendar connect link requested for non-allowlisted user ${input.userId}.`);
+    throw new Error(
+      `Google Calendar connect link requested for non-allowlisted user ${input.userId}.`,
+    );
   }
 
   const handoffId = randomUUID();
-  const expiresAt = input.expiresAt ?? new Date(Date.now() + LINK_HANDOFF_TTL_MS).toISOString();
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const expiresAt =
+    input.expiresAt ?? new Date(Date.now() + LINK_HANDOFF_TTL_MS).toISOString();
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
 
   await connectionStore.createLinkHandoff({
     id: handoffId,
     userId: input.userId,
     redirectPath: input.redirectPath ?? null,
-    expiresAt
+    expiresAt,
   });
 
   const url = new URL("/google-calendar/connect", input.baseUrl);
@@ -67,8 +71,8 @@ export async function createGoogleCalendarConnectLink(
       userId: input.userId,
       handoffId,
       expiresAt,
-      secret: securityConfig.GOOGLE_LINK_TOKEN_SECRET
-    })
+      secret: securityConfig.GOOGLE_LINK_TOKEN_SECRET,
+    }),
   );
 
   if (input.redirectPath) {
@@ -82,9 +86,10 @@ export async function hasActiveGoogleCalendarConnection(
   userId: string,
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
   const connection = await connectionStore.getConnection(userId);
   return connection !== null;
 }
@@ -97,7 +102,7 @@ export async function handleGoogleCalendarConnect(
   request: Request,
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
   return handleGoogleCalendarConnectPreview(request, dependencies);
 }
@@ -106,7 +111,7 @@ export async function handleGoogleCalendarConnectPreview(
   request: Request,
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
   void dependencies;
 
@@ -120,14 +125,14 @@ export async function handleGoogleCalendarConnectPreview(
       status: 400,
       body: {
         accepted: false,
-        error: "missing_link_token"
-      }
+        error: "missing_link_token",
+      },
     };
   }
 
   const verifiedToken = verifyGoogleCalendarLinkToken({
     token,
-    secret: securityConfig.GOOGLE_LINK_TOKEN_SECRET
+    secret: securityConfig.GOOGLE_LINK_TOKEN_SECRET,
   });
 
   if (!verifiedToken) {
@@ -135,8 +140,8 @@ export async function handleGoogleCalendarConnectPreview(
       status: 403,
       body: {
         accepted: false,
-        error: "invalid_link_token"
-      }
+        error: "invalid_link_token",
+      },
     };
   }
 
@@ -147,8 +152,8 @@ export async function handleGoogleCalendarConnectPreview(
       status: 403,
       body: {
         accepted: false,
-        error: "telegram_user_not_allowed"
-      }
+        error: "telegram_user_not_allowed",
+      },
     };
   }
 
@@ -156,13 +161,14 @@ export async function handleGoogleCalendarConnectPreview(
     status: 200,
     body: {
       accepted: true,
-      token
+      token,
     },
     confirmation: {
       title: "Connect Google Calendar",
-      message: "Atlas needs access to your Google Calendar before it can schedule work for you.",
-      actionLabel: "Continue to Google"
-    }
+      message:
+        "Atlas needs access to your Google Calendar before it can schedule work for you.",
+      actionLabel: "Continue to Google",
+    },
   };
 }
 
@@ -170,7 +176,7 @@ export async function handleGoogleCalendarConnectConfirm(
   request: Request,
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
   const formData = await request.formData().catch(() => null);
   const tokenValue = formData?.get("token");
@@ -180,23 +186,26 @@ export async function handleGoogleCalendarConnectConfirm(
       status: 400,
       body: {
         accepted: false,
-        error: "missing_link_token"
-      }
+        error: "missing_link_token",
+      },
     };
   }
 
   const url = new URL(request.url);
   url.searchParams.set("token", tokenValue);
-  const previewResult = await handleGoogleCalendarConnectPreview(new Request(url.toString()));
+  const previewResult = await handleGoogleCalendarConnectPreview(
+    new Request(url.toString()),
+  );
 
   if (previewResult.status !== 200) {
     return previewResult;
   }
 
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
   const verifiedToken = verifyGoogleCalendarLinkToken({
     token: tokenValue,
-    secret: getGoogleCalendarSecurityConfig().GOOGLE_LINK_TOKEN_SECRET
+    secret: getGoogleCalendarSecurityConfig().GOOGLE_LINK_TOKEN_SECRET,
   });
 
   if (!verifiedToken) {
@@ -204,30 +213,34 @@ export async function handleGoogleCalendarConnectConfirm(
       status: 403,
       body: {
         accepted: false,
-        error: "invalid_link_token"
-      }
+        error: "invalid_link_token",
+      },
     };
   }
 
-  const handoff = await connectionStore.consumeLinkHandoff(verifiedToken.handoffId);
+  const handoff = await connectionStore.consumeLinkHandoff(
+    verifiedToken.handoffId,
+  );
 
   if (!handoff || handoff.userId !== verifiedToken.userId) {
     return {
       status: 403,
       body: {
         accepted: false,
-        error: "invalid_link_token"
-      }
+        error: "invalid_link_token",
+      },
     };
   }
 
   const sessionId = randomUUID();
-  const sessionExpiresAt = new Date(Date.now() + LINK_SESSION_TTL_MS).toISOString();
+  const sessionExpiresAt = new Date(
+    Date.now() + LINK_SESSION_TTL_MS,
+  ).toISOString();
   await connectionStore.createLinkSession({
     id: sessionId,
     userId: handoff.userId,
     redirectPath: handoff.redirectPath,
-    expiresAt: sessionExpiresAt
+    expiresAt: sessionExpiresAt,
   });
 
   return {
@@ -237,9 +250,9 @@ export async function handleGoogleCalendarConnectConfirm(
       "set-cookie": serializeCookie({
         name: GOOGLE_LINK_SESSION_COOKIE,
         value: sessionId,
-        request
-      })
-    }
+        request,
+      }),
+    },
   };
 }
 
@@ -247,24 +260,28 @@ export async function startGoogleCalendarOauth(
   request: Request,
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
-  } = {}
+  } = {},
 ) {
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
-  const linkSession = await readLinkSessionFromRequest(request, connectionStore);
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const linkSession = await readLinkSessionFromRequest(
+    request,
+    connectionStore,
+  );
 
   if (!linkSession) {
     return {
       status: 403,
       body: {
         accepted: false,
-        error: "invalid_link_session"
+        error: "invalid_link_session",
       },
       headers: {
         "set-cookie": clearCookie({
           name: GOOGLE_LINK_SESSION_COOKIE,
-          request
-        })
-      }
+          request,
+        }),
+      },
     };
   }
 
@@ -275,7 +292,7 @@ export async function startGoogleCalendarOauth(
     state,
     userId: linkSession.userId,
     redirectPath: linkSession.redirectPath,
-    expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString()
+    expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
   });
 
   return {
@@ -284,9 +301,9 @@ export async function startGoogleCalendarOauth(
       location: buildGoogleCalendarOAuthUrl({
         clientId: oauthConfig.GOOGLE_CLIENT_ID,
         redirectUri: oauthConfig.GOOGLE_OAUTH_REDIRECT_URI,
-        state
-      })
-    }
+        state,
+      }),
+    },
   };
 }
 
@@ -295,7 +312,7 @@ export async function handleGoogleCalendarOauthCallback(
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
     fetch?: typeof fetch;
-  } = {}
+  } = {},
 ) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -306,18 +323,19 @@ export async function handleGoogleCalendarOauthCallback(
       status: 400,
       body: {
         accepted: false,
-        error: "missing_oauth_params"
+        error: "missing_oauth_params",
       },
       headers: {
         "set-cookie": clearCookie({
           name: GOOGLE_LINK_SESSION_COOKIE,
-          request
-        })
-      }
+          request,
+        }),
+      },
     };
   }
 
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
   const pendingState = await connectionStore.getOauthState(state);
 
   if (!pendingState) {
@@ -325,14 +343,14 @@ export async function handleGoogleCalendarOauthCallback(
       status: 400,
       body: {
         accepted: false,
-        error: "invalid_oauth_state"
+        error: "invalid_oauth_state",
       },
       headers: {
         "set-cookie": clearCookie({
           name: GOOGLE_LINK_SESSION_COOKIE,
-          request
-        })
-      }
+          request,
+        }),
+      },
     };
   }
 
@@ -342,11 +360,11 @@ export async function handleGoogleCalendarOauthCallback(
     clientSecret: oauthConfig.GOOGLE_CLIENT_SECRET,
     redirectUri: oauthConfig.GOOGLE_OAUTH_REDIRECT_URI,
     code,
-    ...(dependencies.fetch ? { fetch: dependencies.fetch } : {})
+    ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
   });
   const identity = await fetchGoogleCalendarIdentity({
     accessToken: tokens.accessToken,
-    ...(dependencies.fetch ? { fetch: dependencies.fetch } : {})
+    ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
   });
 
   const connection = await connectionStore.upsertConnection({
@@ -361,12 +379,14 @@ export async function handleGoogleCalendarOauthCallback(
     scopes: tokens.scopes,
     syncCursor: null,
     lastSyncedAt: null,
-    revokedAt: null
+    revokedAt: null,
   });
 
   await connectionStore.markOauthStateConsumed(state);
 
-  const linkSessionCookie = parseCookies(request.headers.get("cookie")).get(GOOGLE_LINK_SESSION_COOKIE);
+  const linkSessionCookie = parseCookies(request.headers.get("cookie")).get(
+    GOOGLE_LINK_SESSION_COOKIE,
+  );
 
   if (linkSessionCookie) {
     await connectionStore.consumeLinkSession(linkSessionCookie);
@@ -378,18 +398,19 @@ export async function handleGoogleCalendarOauthCallback(
       accepted: true,
       userId: connection.userId,
       selectedCalendarId: connection.selectedCalendarId,
-      selectedCalendarName: connection.selectedCalendarName
+      selectedCalendarName: connection.selectedCalendarName,
     },
     completion: {
       title: "Google Calendar connected",
-      message: "Google Calendar is connected. Go back to Telegram and send that again."
+      message:
+        "Google Calendar is connected. Go back to Telegram and send that again.",
     },
     headers: {
       "set-cookie": clearCookie({
         name: GOOGLE_LINK_SESSION_COOKIE,
-        request
-      })
-    }
+        request,
+      }),
+    },
   };
 }
 
@@ -397,12 +418,13 @@ export async function reconcileGoogleCalendarConnections(
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
     fetch?: typeof fetch;
-  } = {}
+  } = {},
 ) {
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
   const connections = await connectionStore.listActiveConnections();
   const scheduledThrough = new Date(
-    Date.now() + RECONCILIATION_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000
+    Date.now() + RECONCILIATION_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
   let syncedTasks = 0;
   let outOfSyncTasks = 0;
@@ -410,13 +432,14 @@ export async function reconcileGoogleCalendarConnections(
 
   for (const connection of connections) {
     try {
-      const { adapter, connection: refreshedConnection } = await resolveGoogleCalendarAdapter(connection, {
-        connectionStore,
-        ...(dependencies.fetch ? { fetch: dependencies.fetch } : {})
-      });
+      const { adapter, connection: refreshedConnection } =
+        await resolveGoogleCalendarAdapter(connection, {
+          connectionStore,
+          ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
+        });
       const tasks = await connectionStore.listTasksForReconciliation({
         userId: refreshedConnection.userId,
-        scheduledThrough
+        scheduledThrough,
       });
 
       for (const task of tasks) {
@@ -426,25 +449,30 @@ export async function reconcileGoogleCalendarConnections(
 
         const liveEvent = await adapter.getEvent({
           externalCalendarEventId: task.externalCalendarEventId,
-          externalCalendarId: task.externalCalendarId
+          externalCalendarId: task.externalCalendarId,
         });
         const drift = detectTaskCalendarDrift({
           task,
-          liveEvent
+          liveEvent,
         });
 
         await connectionStore.reconcileTaskProjection({
           taskId: task.id,
           externalCalendarEventId: drift
             ? task.externalCalendarEventId
-            : liveEvent?.externalCalendarEventId ?? task.externalCalendarEventId,
+            : (liveEvent?.externalCalendarEventId ??
+              task.externalCalendarEventId),
           externalCalendarId: drift
             ? task.externalCalendarId
-            : liveEvent?.externalCalendarId ?? task.externalCalendarId,
-          scheduledStartAt: drift ? task.scheduledStartAt : liveEvent?.scheduledStartAt ?? task.scheduledStartAt,
-          scheduledEndAt: drift ? task.scheduledEndAt : liveEvent?.scheduledEndAt ?? task.scheduledEndAt,
+            : (liveEvent?.externalCalendarId ?? task.externalCalendarId),
+          scheduledStartAt: drift
+            ? task.scheduledStartAt
+            : (liveEvent?.scheduledStartAt ?? task.scheduledStartAt),
+          scheduledEndAt: drift
+            ? task.scheduledEndAt
+            : (liveEvent?.scheduledEndAt ?? task.scheduledEndAt),
           calendarSyncStatus: drift ? "out_of_sync" : "in_sync",
-          calendarSyncUpdatedAt: new Date().toISOString()
+          calendarSyncUpdatedAt: new Date().toISOString(),
         });
 
         if (drift) {
@@ -459,8 +487,11 @@ export async function reconcileGoogleCalendarConnections(
     }
   }
 
-  const cleanedOauthStates = await connectionStore.purgeExpiredOauthStates(new Date().toISOString());
-  const scrubbedRevokedConnections = await connectionStore.scrubRevokedCredentials();
+  const cleanedOauthStates = await connectionStore.purgeExpiredOauthStates(
+    new Date().toISOString(),
+  );
+  const scrubbedRevokedConnections =
+    await connectionStore.scrubRevokedCredentials();
 
   return {
     accepted: true,
@@ -469,7 +500,7 @@ export async function reconcileGoogleCalendarConnections(
     outOfSyncTasks,
     failedConnections,
     cleanedOauthStates,
-    scrubbedRevokedConnections
+    scrubbedRevokedConnections,
   };
 }
 
@@ -478,13 +509,18 @@ export async function resolveGoogleCalendarAdapter(
   dependencies: {
     connectionStore?: GoogleCalendarConnectionStore;
     fetch?: typeof fetch;
-  } = {}
+  } = {},
 ) {
-  const connectionStore = dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
-  let credentials = await connectionStore.getConnectionCredentials(connection.userId);
+  const connectionStore =
+    dependencies.connectionStore ?? getDefaultGoogleCalendarConnectionStore();
+  let credentials = await connectionStore.getConnectionCredentials(
+    connection.userId,
+  );
 
   if (!credentials) {
-    throw new Error(`Google Calendar connection for user ${connection.userId} not found.`);
+    throw new Error(
+      `Google Calendar connection for user ${connection.userId} not found.`,
+    );
   }
 
   if (
@@ -492,7 +528,9 @@ export async function resolveGoogleCalendarAdapter(
     Date.parse(credentials.tokenExpiresAt) <= Date.now()
   ) {
     if (!credentials.refreshToken) {
-      throw new Error(`Google Calendar access token expired for user ${credentials.userId}.`);
+      throw new Error(
+        `Google Calendar access token expired for user ${credentials.userId}.`,
+      );
     }
 
     const oauthConfig = getGoogleCalendarOAuthConfig();
@@ -500,39 +538,41 @@ export async function resolveGoogleCalendarAdapter(
       clientId: oauthConfig.GOOGLE_CLIENT_ID,
       clientSecret: oauthConfig.GOOGLE_CLIENT_SECRET,
       refreshToken: credentials.refreshToken,
-      ...(dependencies.fetch ? { fetch: dependencies.fetch } : {})
+      ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
     });
 
     credentials = await connectionStore.updateConnectionTokens({
       userId: credentials.userId,
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
-      tokenExpiresAt: refreshed.tokenExpiresAt
+      tokenExpiresAt: refreshed.tokenExpiresAt,
     });
   }
 
   return {
     connection: {
       ...connection,
-      tokenExpiresAt: credentials.tokenExpiresAt
+      tokenExpiresAt: credentials.tokenExpiresAt,
     },
     adapter: createGoogleCalendarAdapter(
       {
         accessToken: credentials.accessToken,
-        selectedCalendarId: connection.selectedCalendarId
+        selectedCalendarId: connection.selectedCalendarId,
       },
       {
-        ...(dependencies.fetch ? { fetch: dependencies.fetch } : {})
-      }
-    )
+        ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
+      },
+    ),
   };
 }
 
 async function readLinkSessionFromRequest(
   request: Request,
-  connectionStore: GoogleCalendarConnectionStore
+  connectionStore: GoogleCalendarConnectionStore,
 ) {
-  const sessionId = parseCookies(request.headers.get("cookie")).get(GOOGLE_LINK_SESSION_COOKIE);
+  const sessionId = parseCookies(request.headers.get("cookie")).get(
+    GOOGLE_LINK_SESSION_COOKIE,
+  );
 
   if (!sessionId) {
     return null;
@@ -571,7 +611,8 @@ function serializeCookie(input: {
   request: Request;
 }) {
   const url = new URL(input.request.url);
-  const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const isLocalhost =
+    url.hostname === "localhost" || url.hostname === "127.0.0.1";
 
   return [
     `${input.name}=${encodeURIComponent(input.value)}`,
@@ -579,18 +620,16 @@ function serializeCookie(input: {
     "SameSite=Lax",
     "Path=/api/google-calendar",
     `Max-Age=${LINK_SESSION_TTL_MS / 1000}`,
-    !isLocalhost ? "Secure" : null
+    !isLocalhost ? "Secure" : null,
   ]
     .filter(Boolean)
     .join("; ");
 }
 
-function clearCookie(input: {
-  name: string;
-  request: Request;
-}) {
+function clearCookie(input: { name: string; request: Request }) {
   const url = new URL(input.request.url);
-  const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const isLocalhost =
+    url.hostname === "localhost" || url.hostname === "127.0.0.1";
 
   return [
     `${input.name}=`,
@@ -598,7 +637,7 @@ function clearCookie(input: {
     "SameSite=Lax",
     "Path=/api/google-calendar",
     "Max-Age=0",
-    !isLocalhost ? "Secure" : null
+    !isLocalhost ? "Secure" : null,
   ]
     .filter(Boolean)
     .join("; ");

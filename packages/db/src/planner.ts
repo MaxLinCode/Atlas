@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
 
 import type { InboxItem, ScheduleBlock, Task, UserProfile } from "@atlas/core";
-import { buildDefaultUserProfile, buildScheduleBlocksFromTasks } from "@atlas/core";
+import {
+  buildDefaultUserProfile,
+  buildScheduleBlocksFromTasks,
+} from "@atlas/core";
 import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-
-import { inboxItems, plannerRuns, tasks, userProfiles } from "./schema";
 import {
   attachGoogleCalendarConnectionStoreToTasks,
+  type GoogleCalendarConnection,
   getDefaultGoogleCalendarConnectionStore,
-  type GoogleCalendarConnection
 } from "./google-calendar";
+import { inboxItems, plannerRuns, tasks, userProfiles } from "./schema";
 
 export type PersistedPlannerRun = {
   id: string;
@@ -170,7 +172,9 @@ type StoredTask = Omit<Task, "createdAt"> & {
 
 type StoredUserProfile = UserProfile;
 
-class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRuntimeStore {
+class InMemoryInboxProcessingStore
+  implements InboxProcessingStore, FollowUpRuntimeStore
+{
   private readonly inboxItemsById = new Map<string, StoredInboxItem>();
   private readonly tasksById = new Map<string, StoredTask>();
   private readonly plannerRunsById = new Map<string, PersistedPlannerRun>();
@@ -203,22 +207,33 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     this.userProfilesById.clear();
   }
 
-  async loadContext(inboxItemId: string): Promise<InboxProcessingContext | null> {
+  async loadContext(
+    inboxItemId: string,
+  ): Promise<InboxProcessingContext | null> {
     const inboxItem = this.inboxItemsById.get(inboxItemId);
 
     if (!inboxItem) {
       return null;
     }
 
-      return {
-        inboxItem,
-        tasks: Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId),
-        scheduleBlocks: buildScheduleBlocksFromTasks(
-          Array.from(this.tasksById.values()).filter((task) => task.userId === inboxItem.userId)
+    return {
+      inboxItem,
+      tasks: Array.from(this.tasksById.values()).filter(
+        (task) => task.userId === inboxItem.userId,
+      ),
+      scheduleBlocks: buildScheduleBlocksFromTasks(
+        Array.from(this.tasksById.values()).filter(
+          (task) => task.userId === inboxItem.userId,
         ),
-        userProfile: this.userProfilesById.get(inboxItem.userId) ?? buildDefaultUserProfile(inboxItem.userId),
-        googleCalendarConnection: await getDefaultGoogleCalendarConnectionStore().getConnection(inboxItem.userId)
-      };
+      ),
+      userProfile:
+        this.userProfilesById.get(inboxItem.userId) ??
+        buildDefaultUserProfile(inboxItem.userId),
+      googleCalendarConnection:
+        await getDefaultGoogleCalendarConnectionStore().getConnection(
+          inboxItem.userId,
+        ),
+    };
   }
 
   async markInboxProcessing(inboxItemId: string) {
@@ -230,7 +245,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
 
     this.inboxItemsById.set(inboxItemId, {
       ...inboxItem,
-      processingStatus: "processing"
+      processingStatus: "processing",
     });
   }
 
@@ -247,7 +262,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const createdTasks = input.tasks.map(({ alias, task }) => {
       const createdTask: StoredTask = {
         ...task,
-        id: randomUUID()
+        id: randomUUID(),
       };
       this.tasksById.set(createdTask.id, createdTask);
       aliasToCreatedTaskId.set(alias, createdTask.id);
@@ -256,11 +271,12 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const linkedTaskIds = createdTasks.map((task) => task.id);
     const remappedBlocks = input.scheduleBlocks.map((block) => ({
       ...block,
-      taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId
+      taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId,
     }));
 
     const persistedCreatedTasks = createdTasks.map((task) => {
-      const currentBlock = remappedBlocks.find((block) => block.taskId === task.id) ?? null;
+      const currentBlock =
+        remappedBlocks.find((block) => block.taskId === task.id) ?? null;
       const persistedTask: StoredTask = {
         ...task,
         lifecycleState: currentBlock ? "scheduled" : task.lifecycleState,
@@ -269,8 +285,10 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         scheduledStartAt: currentBlock?.startAt ?? null,
         scheduledEndAt: currentBlock?.endAt ?? null,
         calendarSyncStatus: "in_sync",
-        calendarSyncUpdatedAt: currentBlock ? new Date().toISOString() : task.calendarSyncUpdatedAt,
-        followupReminderSentAt: null
+        calendarSyncUpdatedAt: currentBlock
+          ? new Date().toISOString()
+          : task.calendarSyncUpdatedAt,
+        followupReminderSentAt: null,
       };
       this.tasksById.set(task.id, persistedTask);
       return persistedTask;
@@ -280,7 +298,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const updatedInbox = {
       ...inboxItem,
       processingStatus: "planned" as const,
-      linkedTaskIds
+      linkedTaskIds,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -290,7 +308,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       plannerRun,
       createdTasks: persistedCreatedTasks,
       scheduleBlocks: remappedBlocks,
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -305,30 +323,32 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     followUpMessage: string;
   }): Promise<ProcessedInboxResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
-    const task = Array.from(this.tasksById.values()).find((candidate) => candidate.externalCalendarEventId === input.blockId);
+    const task = Array.from(this.tasksById.values()).find(
+      (candidate) => candidate.externalCalendarEventId === input.blockId,
+    );
 
     if (task) {
-        const updatedTask: StoredTask = {
-          ...task,
-          lastInboxItemId: input.inboxItemId,
-          lifecycleState: "scheduled",
-          externalCalendarEventId: input.blockId,
-          externalCalendarId: task.externalCalendarId,
-          scheduledStartAt: input.newStartAt,
-          scheduledEndAt: input.newEndAt,
-          calendarSyncStatus: "in_sync",
-          calendarSyncUpdatedAt: new Date().toISOString(),
-          rescheduleCount: task.rescheduleCount + 1,
-          lastFollowupAt: null,
-          followupReminderSentAt: null
-        };
+      const updatedTask: StoredTask = {
+        ...task,
+        lastInboxItemId: input.inboxItemId,
+        lifecycleState: "scheduled",
+        externalCalendarEventId: input.blockId,
+        externalCalendarId: task.externalCalendarId,
+        scheduledStartAt: input.newStartAt,
+        scheduledEndAt: input.newEndAt,
+        calendarSyncStatus: "in_sync",
+        calendarSyncUpdatedAt: new Date().toISOString(),
+        rescheduleCount: task.rescheduleCount + 1,
+        lastFollowupAt: null,
+        followupReminderSentAt: null,
+      };
       this.tasksById.set(task.id, updatedTask);
     }
 
     const plannerRun = this.insertPlannerRun(input.plannerRun);
     const updatedInbox = {
       ...inboxItem,
-      processingStatus: "planned" as const
+      processingStatus: "planned" as const,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -345,9 +365,9 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         confidence: input.confidence,
         reason: input.reason,
         rescheduleCount: (task?.rescheduleCount ?? 0) + 1,
-        externalCalendarId: task?.externalCalendarId ?? null
+        externalCalendarId: task?.externalCalendarId ?? null,
       },
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -383,15 +403,17 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
           scheduledEndAt: block.endAt,
           calendarSyncStatus: "in_sync",
           calendarSyncUpdatedAt: new Date().toISOString(),
-          rescheduleCount: isReschedule ? task.rescheduleCount + 1 : task.rescheduleCount,
+          rescheduleCount: isReschedule
+            ? task.rescheduleCount + 1
+            : task.rescheduleCount,
           lastFollowupAt: null,
-          followupReminderSentAt: null
+          followupReminderSentAt: null,
         };
         this.tasksById.set(task.id, updatedTask);
         scheduledTasks.push(updatedTask);
         scheduledBlocks.push({
           ...block,
-          taskId: updatedTask.id
+          taskId: updatedTask.id,
         });
       }
     }
@@ -400,7 +422,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const updatedInbox = {
       ...inboxItem,
       processingStatus: "planned" as const,
-      linkedTaskIds: input.taskIds
+      linkedTaskIds: input.taskIds,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -410,7 +432,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       plannerRun,
       scheduledTasks,
       scheduleBlocks: scheduledBlocks,
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -425,7 +447,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const plannerRun = this.insertPlannerRun(input.plannerRun);
     const updatedInbox = {
       ...inboxItem,
-      processingStatus: "needs_clarification" as const
+      processingStatus: "needs_clarification" as const,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -434,7 +456,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       inboxItem: updatedInbox,
       plannerRun,
       reason: input.reason,
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -466,7 +488,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         calendarSyncUpdatedAt: completedAt,
         lastFollowupAt: null,
         followupReminderSentAt: null,
-        completedAt
+        completedAt,
       };
       this.tasksById.set(task.id, updatedTask);
       return [updatedTask];
@@ -476,7 +498,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const updatedInbox = {
       ...inboxItem,
       processingStatus: "planned" as const,
-      linkedTaskIds: input.taskIds
+      linkedTaskIds: input.taskIds,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -485,7 +507,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       inboxItem: updatedInbox,
       plannerRun,
       completedTasks,
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -517,7 +539,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         calendarSyncUpdatedAt: archivedAt,
         lastFollowupAt: null,
         followupReminderSentAt: null,
-        archivedAt
+        archivedAt,
       };
       this.tasksById.set(task.id, updatedTask);
       return [updatedTask];
@@ -527,7 +549,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const updatedInbox = {
       ...inboxItem,
       processingStatus: "planned" as const,
-      linkedTaskIds: input.taskIds
+      linkedTaskIds: input.taskIds,
     };
     this.inboxItemsById.set(input.inboxItemId, updatedInbox);
 
@@ -536,7 +558,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       inboxItem: updatedInbox,
       plannerRun,
       archivedTasks,
-      followUpMessage: input.followUpMessage
+      followUpMessage: input.followUpMessage,
     };
   }
 
@@ -548,7 +570,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
-      processingStatus: "received"
+      processingStatus: "received",
     });
     return plannerRun;
   }
@@ -557,7 +579,7 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     const inboxItem = this.requireInboxItem(inboxItemId);
     this.inboxItemsById.set(inboxItemId, {
       ...inboxItem,
-      processingStatus: "received"
+      processingStatus: "received",
     });
   }
 
@@ -583,15 +605,21 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
       scheduledStartAt: input.scheduledStartAt,
       scheduledEndAt: input.scheduledEndAt,
       calendarSyncStatus: input.calendarSyncStatus,
-      calendarSyncUpdatedAt: input.calendarSyncUpdatedAt
+      calendarSyncUpdatedAt: input.calendarSyncUpdatedAt,
     });
   }
 
-  async listDueFollowUpTasks(now = new Date().toISOString()): Promise<FollowUpDueTask[]> {
+  async listDueFollowUpTasks(
+    now = new Date().toISOString(),
+  ): Promise<FollowUpDueTask[]> {
     const due: FollowUpDueTask[] = [];
 
     for (const task of this.tasksById.values()) {
-      if (task.lifecycleState === "scheduled" && task.scheduledEndAt && Date.parse(task.scheduledEndAt) <= Date.parse(now)) {
+      if (
+        task.lifecycleState === "scheduled" &&
+        task.scheduledEndAt &&
+        Date.parse(task.scheduledEndAt) <= Date.parse(now)
+      ) {
         due.push({ ...task, dueType: "initial" });
         continue;
       }
@@ -600,7 +628,8 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         task.lifecycleState === "awaiting_followup" &&
         task.lastFollowupAt &&
         !task.followupReminderSentAt &&
-        Date.parse(task.lastFollowupAt) + FOLLOWUP_REMINDER_DELAY_MS <= Date.parse(now)
+        Date.parse(task.lastFollowupAt) + FOLLOWUP_REMINDER_DELAY_MS <=
+          Date.parse(now)
       ) {
         due.push({ ...task, dueType: "reminder" });
       }
@@ -609,23 +638,37 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     return due.sort(
       (left, right) =>
         Date.parse(left.scheduledEndAt ?? left.lastFollowupAt ?? now) -
-        Date.parse(right.scheduledEndAt ?? right.lastFollowupAt ?? now)
+        Date.parse(right.scheduledEndAt ?? right.lastFollowupAt ?? now),
     );
   }
 
   async listOutstandingFollowUpTasks(userId: string): Promise<Task[]> {
     return Array.from(this.tasksById.values())
-      .filter((task) => task.userId === userId && task.lifecycleState === "awaiting_followup" && task.lastFollowupAt !== null)
+      .filter(
+        (task) =>
+          task.userId === userId &&
+          task.lifecycleState === "awaiting_followup" &&
+          task.lastFollowupAt !== null,
+      )
       .sort(
         (left, right) =>
-          Date.parse(left.lastFollowupAt ?? left.scheduledEndAt ?? new Date(0).toISOString()) -
-          Date.parse(right.lastFollowupAt ?? right.scheduledEndAt ?? new Date(0).toISOString())
+          Date.parse(
+            left.lastFollowupAt ??
+              left.scheduledEndAt ??
+              new Date(0).toISOString(),
+          ) -
+          Date.parse(
+            right.lastFollowupAt ??
+              right.scheduledEndAt ??
+              new Date(0).toISOString(),
+          ),
       );
   }
 
   async hasInFlightInboxItem(userId: string): Promise<boolean> {
     return Array.from(this.inboxItemsById.values()).some(
-      (item) => item.userId === userId && item.processingStatus === "processing"
+      (item) =>
+        item.userId === userId && item.processingStatus === "processing",
     );
   }
 
@@ -633,7 +676,11 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
     for (const taskId of taskIds) {
       const task = this.tasksById.get(taskId);
 
-      if (!task || (task.lifecycleState !== "scheduled" && task.lifecycleState !== "awaiting_followup")) {
+      if (
+        !task ||
+        (task.lifecycleState !== "scheduled" &&
+          task.lifecycleState !== "awaiting_followup")
+      ) {
         continue;
       }
 
@@ -641,22 +688,29 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
         ...task,
         lifecycleState: "awaiting_followup",
         lastFollowupAt: sentAt,
-        followupReminderSentAt: null
+        followupReminderSentAt: null,
       });
     }
   }
 
-  async markFollowUpReminderSent(taskIds: string[], sentAt: string): Promise<void> {
+  async markFollowUpReminderSent(
+    taskIds: string[],
+    sentAt: string,
+  ): Promise<void> {
     for (const taskId of taskIds) {
       const task = this.tasksById.get(taskId);
 
-      if (!task || task.lifecycleState !== "awaiting_followup" || task.lastFollowupAt === null) {
+      if (
+        !task ||
+        task.lifecycleState !== "awaiting_followup" ||
+        task.lastFollowupAt === null
+      ) {
         continue;
       }
 
       this.tasksById.set(taskId, {
         ...task,
-        followupReminderSentAt: sentAt
+        followupReminderSentAt: sentAt,
       });
     }
   }
@@ -674,25 +728,29 @@ class InMemoryInboxProcessingStore implements InboxProcessingStore, FollowUpRunt
   private insertPlannerRun(plannerRun: Omit<PersistedPlannerRun, "id">) {
     const created = {
       ...plannerRun,
-      id: randomUUID()
+      id: randomUUID(),
     };
     this.plannerRunsById.set(created.id, created);
     return created;
   }
 }
 
-export class PostgresInboxProcessingStore implements InboxProcessingStore, FollowUpRuntimeStore {
+export class PostgresInboxProcessingStore
+  implements InboxProcessingStore, FollowUpRuntimeStore
+{
   private readonly client;
   private readonly db;
 
   constructor(databaseUrl = getRequiredDatabaseUrl()) {
     this.client = postgres(databaseUrl, {
-      prepare: false
+      prepare: false,
     });
     this.db = drizzle(this.client);
   }
 
-  async loadContext(inboxItemId: string): Promise<InboxProcessingContext | null> {
+  async loadContext(
+    inboxItemId: string,
+  ): Promise<InboxProcessingContext | null> {
     const inboxItemRows = await this.db
       .select()
       .from(inboxItems)
@@ -707,7 +765,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
 
     const [taskRows, profileRows] = await Promise.all([
       this.db.select().from(tasks).where(eq(tasks.userId, inboxItem.userId)),
-      this.db.select().from(userProfiles).where(eq(userProfiles.userId, inboxItem.userId)).limit(1)
+      this.db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, inboxItem.userId))
+        .limit(1),
     ]);
 
     const parsedTasks = taskRows.map((task) => ({
@@ -725,12 +787,13 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
       calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
       rescheduleCount: task.rescheduleCount,
       lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-      followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+      followupReminderSentAt:
+        task.followupReminderSentAt?.toISOString() ?? null,
       completedAt: task.completedAt?.toISOString() ?? null,
       archivedAt: task.archivedAt?.toISOString() ?? null,
       priority: task.priority as Task["priority"],
       urgency: task.urgency as Task["urgency"],
-      createdAt: task.createdAt.toISOString()
+      createdAt: task.createdAt.toISOString(),
     }));
 
     return {
@@ -740,9 +803,10 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         sourceEventId: inboxItem.sourceEventId ?? undefined,
         rawText: inboxItem.rawText,
         normalizedText: inboxItem.normalizedText,
-        processingStatus: inboxItem.processingStatus as InboxItem["processingStatus"],
+        processingStatus:
+          inboxItem.processingStatus as InboxItem["processingStatus"],
         linkedTaskIds: inboxItem.linkedTaskIds,
-        createdAt: inboxItem.createdAt.toISOString()
+        createdAt: inboxItem.createdAt.toISOString(),
       },
       tasks: parsedTasks,
       scheduleBlocks: buildScheduleBlocksFromTasks(parsedTasks),
@@ -752,14 +816,20 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             timezone: profileRows[0].timezone,
             workdayStartHour: profileRows[0].workdayStartHour,
             workdayEndHour: profileRows[0].workdayEndHour,
-            deepWorkWindows: profileRows[0].deepWorkWindows as UserProfile["deepWorkWindows"],
-            blackoutWindows: profileRows[0].blackoutWindows as UserProfile["blackoutWindows"],
+            deepWorkWindows: profileRows[0]
+              .deepWorkWindows as UserProfile["deepWorkWindows"],
+            blackoutWindows: profileRows[0]
+              .blackoutWindows as UserProfile["blackoutWindows"],
             focusBlockMinutes: profileRows[0].focusBlockMinutes,
-            reminderStyle: profileRows[0].reminderStyle as UserProfile["reminderStyle"],
-            breakdownLevel: profileRows[0].breakdownLevel
+            reminderStyle: profileRows[0]
+              .reminderStyle as UserProfile["reminderStyle"],
+            breakdownLevel: profileRows[0].breakdownLevel,
           }
         : buildDefaultUserProfile(inboxItem.userId),
-      googleCalendarConnection: await getDefaultGoogleCalendarConnectionStore().getConnection(inboxItem.userId)
+      googleCalendarConnection:
+        await getDefaultGoogleCalendarConnectionStore().getConnection(
+          inboxItem.userId,
+        ),
     };
   }
 
@@ -767,7 +837,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
     await this.db
       .update(inboxItems)
       .set({
-        processingStatus: "processing"
+        processingStatus: "processing",
       })
       .where(eq(inboxItems.id, inboxItemId));
   }
@@ -795,18 +865,28 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             lifecycleState: task.lifecycleState,
             externalCalendarEventId: task.externalCalendarEventId,
             externalCalendarId: task.externalCalendarId,
-            scheduledStartAt: task.scheduledStartAt ? new Date(task.scheduledStartAt) : null,
-            scheduledEndAt: task.scheduledEndAt ? new Date(task.scheduledEndAt) : null,
+            scheduledStartAt: task.scheduledStartAt
+              ? new Date(task.scheduledStartAt)
+              : null,
+            scheduledEndAt: task.scheduledEndAt
+              ? new Date(task.scheduledEndAt)
+              : null,
             calendarSyncStatus: task.calendarSyncStatus,
-            calendarSyncUpdatedAt: task.calendarSyncUpdatedAt ? new Date(task.calendarSyncUpdatedAt) : null,
+            calendarSyncUpdatedAt: task.calendarSyncUpdatedAt
+              ? new Date(task.calendarSyncUpdatedAt)
+              : null,
             rescheduleCount: task.rescheduleCount,
-            lastFollowupAt: task.lastFollowupAt ? new Date(task.lastFollowupAt) : null,
-            followupReminderSentAt: task.followupReminderSentAt ? new Date(task.followupReminderSentAt) : null,
+            lastFollowupAt: task.lastFollowupAt
+              ? new Date(task.lastFollowupAt)
+              : null,
+            followupReminderSentAt: task.followupReminderSentAt
+              ? new Date(task.followupReminderSentAt)
+              : null,
             completedAt: task.completedAt ? new Date(task.completedAt) : null,
             archivedAt: task.archivedAt ? new Date(task.archivedAt) : null,
             priority: task.priority,
-            urgency: task.urgency
-          }))
+            urgency: task.urgency,
+          })),
         )
         .returning();
 
@@ -819,35 +899,48 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
 
       const remappedBlocks = input.scheduleBlocks.map((block) => ({
         ...block,
-        taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId
+        taskId: aliasToCreatedTaskId.get(block.taskId) ?? block.taskId,
       }));
 
       for (const createdTask of createdTasks) {
-        const currentBlock = remappedBlocks.find((block) => block.taskId === createdTask.id) ?? null;
+        const currentBlock =
+          remappedBlocks.find((block) => block.taskId === createdTask.id) ??
+          null;
 
         await tx
           .update(tasks)
           .set({
-            lifecycleState: currentBlock ? "scheduled" : createdTask.lifecycleState,
+            lifecycleState: currentBlock
+              ? "scheduled"
+              : createdTask.lifecycleState,
             externalCalendarEventId: currentBlock?.id ?? null,
             externalCalendarId: currentBlock?.externalCalendarId ?? null,
-            scheduledStartAt: currentBlock?.startAt ? new Date(currentBlock.startAt) : null,
-            scheduledEndAt: currentBlock?.endAt ? new Date(currentBlock.endAt) : null,
+            scheduledStartAt: currentBlock?.startAt
+              ? new Date(currentBlock.startAt)
+              : null,
+            scheduledEndAt: currentBlock?.endAt
+              ? new Date(currentBlock.endAt)
+              : null,
             calendarSyncStatus: "in_sync",
-            calendarSyncUpdatedAt: currentBlock ? new Date() : createdTask.calendarSyncUpdatedAt,
-            followupReminderSentAt: null
+            calendarSyncUpdatedAt: currentBlock
+              ? new Date()
+              : createdTask.calendarSyncUpdatedAt,
+            followupReminderSentAt: null,
           })
           .where(eq(tasks.id, createdTask.id));
       }
 
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
       const linkedTaskIds = createdTasks.map((task) => task.id);
 
       await tx
         .update(inboxItems)
         .set({
           processingStatus: "planned",
-          linkedTaskIds
+          linkedTaskIds,
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -856,7 +949,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         inboxItem: {
           ...inboxItem,
           processingStatus: "planned",
-          linkedTaskIds
+          linkedTaskIds,
         },
         plannerRun,
         createdTasks: createdTasks.map((task) => ({
@@ -865,13 +958,17 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           sourceInboxItemId: task.sourceInboxItemId,
           lastInboxItemId: task.lastInboxItemId,
           title: task.title,
-          lifecycleState: remappedBlocks.some((block) => block.taskId === task.id)
+          lifecycleState: remappedBlocks.some(
+            (block) => block.taskId === task.id,
+          )
             ? "scheduled"
             : (task.lifecycleState as Task["lifecycleState"]),
           externalCalendarEventId:
-            remappedBlocks.find((block) => block.taskId === task.id)?.id ?? task.externalCalendarEventId,
+            remappedBlocks.find((block) => block.taskId === task.id)?.id ??
+            task.externalCalendarEventId,
           externalCalendarId:
-            remappedBlocks.find((block) => block.taskId === task.id)?.externalCalendarId ?? task.externalCalendarId,
+            remappedBlocks.find((block) => block.taskId === task.id)
+              ?.externalCalendarId ?? task.externalCalendarId,
           scheduledStartAt:
             remappedBlocks.find((block) => block.taskId === task.id)?.startAt ??
             task.scheduledStartAt?.toISOString() ??
@@ -882,20 +979,22 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             null,
           calendarSyncStatus: "in_sync",
           calendarSyncUpdatedAt:
-            remappedBlocks.find((block) => block.taskId === task.id) !== undefined
+            remappedBlocks.find((block) => block.taskId === task.id) !==
+            undefined
               ? new Date().toISOString()
-              : task.calendarSyncUpdatedAt?.toISOString() ?? null,
+              : (task.calendarSyncUpdatedAt?.toISOString() ?? null),
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-          followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+          followupReminderSentAt:
+            task.followupReminderSentAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
           archivedAt: task.archivedAt?.toISOString() ?? null,
           priority: task.priority as Task["priority"],
           urgency: task.urgency as Task["urgency"],
-          createdAt: task.createdAt.toISOString()
+          createdAt: task.createdAt.toISOString(),
         })),
         scheduleBlocks: remappedBlocks,
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -932,19 +1031,22 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             calendarSyncUpdatedAt: new Date(),
             rescheduleCount: existingTask.rescheduleCount + 1,
             lastFollowupAt: null,
-            followupReminderSentAt: null
+            followupReminderSentAt: null,
           })
           .where(eq(tasks.id, existingTask.id));
       } else {
         throw new Error(`Schedule block ${input.blockId} not found.`);
       }
 
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
-          processingStatus: "planned"
+          processingStatus: "planned",
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -952,7 +1054,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         outcome: "updated_schedule",
         inboxItem: {
           ...inboxItem,
-          processingStatus: "planned"
+          processingStatus: "planned",
         },
         plannerRun,
         updatedBlock: {
@@ -964,9 +1066,9 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           confidence: input.confidence,
           reason: input.reason,
           rescheduleCount: existingTask.rescheduleCount + 1,
-          externalCalendarId: existingTask.externalCalendarId
+          externalCalendarId: existingTask.externalCalendarId,
         },
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -982,9 +1084,14 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
       const existingTasksRows = input.taskIds.length
-        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        ? await tx
+            .select()
+            .from(tasks)
+            .where(eq(tasks.userId, inboxItem.userId))
         : [];
-      const existingTasksById = new Map(existingTasksRows.map((task) => [task.id, task]));
+      const existingTasksById = new Map(
+        existingTasksRows.map((task) => [task.id, task]),
+      );
 
       for (const block of input.scheduleBlocks) {
         const existingTask = existingTasksById.get(block.taskId);
@@ -1009,13 +1116,16 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
               ? (existingTask?.rescheduleCount ?? 0) + 1
               : (existingTask?.rescheduleCount ?? 0),
             lastFollowupAt: null,
-            followupReminderSentAt: null
+            followupReminderSentAt: null,
           })
           .where(eq(tasks.id, block.taskId));
       }
 
       const updatedScheduledTasksRows = input.taskIds.length
-        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        ? await tx
+            .select()
+            .from(tasks)
+            .where(eq(tasks.userId, inboxItem.userId))
         : [];
       const scheduledTasks = updatedScheduledTasksRows
         .filter((task) => input.taskIds.includes(task.id))
@@ -1030,25 +1140,31 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           externalCalendarId: task.externalCalendarId,
           scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
           scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
-          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
-          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
+          calendarSyncStatus:
+            task.calendarSyncStatus as Task["calendarSyncStatus"],
+          calendarSyncUpdatedAt:
+            task.calendarSyncUpdatedAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-          followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+          followupReminderSentAt:
+            task.followupReminderSentAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
           archivedAt: task.archivedAt?.toISOString() ?? null,
           priority: task.priority as Task["priority"],
           urgency: task.urgency as Task["urgency"],
-          createdAt: task.createdAt.toISOString()
+          createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -1057,12 +1173,12 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         inboxItem: {
           ...inboxItem,
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         },
         plannerRun,
         scheduledTasks,
         scheduleBlocks: input.scheduleBlocks,
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -1076,12 +1192,15 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
   }): Promise<ProcessedInboxResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
-          processingStatus: "needs_clarification"
+          processingStatus: "needs_clarification",
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -1089,11 +1208,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         outcome: "needs_clarification",
         inboxItem: {
           ...inboxItem,
-          processingStatus: "needs_clarification"
+          processingStatus: "needs_clarification",
         },
         plannerRun,
         reason: input.reason,
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -1123,13 +1242,16 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             calendarSyncUpdatedAt: completedAt,
             lastFollowupAt: null,
             followupReminderSentAt: null,
-            completedAt
+            completedAt,
           })
           .where(eq(tasks.id, taskId));
       }
 
       const completedTasksRows = input.taskIds.length
-        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        ? await tx
+            .select()
+            .from(tasks)
+            .where(eq(tasks.userId, inboxItem.userId))
         : [];
       const completedTasks = completedTasksRows
         .filter((task) => input.taskIds.includes(task.id))
@@ -1144,25 +1266,31 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           externalCalendarId: task.externalCalendarId,
           scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
           scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
-          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
-          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
+          calendarSyncStatus:
+            task.calendarSyncStatus as Task["calendarSyncStatus"],
+          calendarSyncUpdatedAt:
+            task.calendarSyncUpdatedAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-          followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+          followupReminderSentAt:
+            task.followupReminderSentAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
           archivedAt: task.archivedAt?.toISOString() ?? null,
           priority: task.priority as Task["priority"],
           urgency: task.urgency as Task["urgency"],
-          createdAt: task.createdAt.toISOString()
+          createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -1171,11 +1299,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         inboxItem: {
           ...inboxItem,
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         },
         plannerRun,
         completedTasks,
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -1205,13 +1333,16 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
             calendarSyncUpdatedAt: archivedAt,
             lastFollowupAt: null,
             followupReminderSentAt: null,
-            archivedAt
+            archivedAt,
           })
           .where(eq(tasks.id, taskId));
       }
 
       const archivedTasksRows = input.taskIds.length
-        ? await tx.select().from(tasks).where(eq(tasks.userId, inboxItem.userId))
+        ? await tx
+            .select()
+            .from(tasks)
+            .where(eq(tasks.userId, inboxItem.userId))
         : [];
       const archivedTasks = archivedTasksRows
         .filter((task) => input.taskIds.includes(task.id))
@@ -1226,25 +1357,31 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           externalCalendarId: task.externalCalendarId,
           scheduledStartAt: task.scheduledStartAt?.toISOString() ?? null,
           scheduledEndAt: task.scheduledEndAt?.toISOString() ?? null,
-          calendarSyncStatus: task.calendarSyncStatus as Task["calendarSyncStatus"],
-          calendarSyncUpdatedAt: task.calendarSyncUpdatedAt?.toISOString() ?? null,
+          calendarSyncStatus:
+            task.calendarSyncStatus as Task["calendarSyncStatus"],
+          calendarSyncUpdatedAt:
+            task.calendarSyncUpdatedAt?.toISOString() ?? null,
           rescheduleCount: task.rescheduleCount,
           lastFollowupAt: task.lastFollowupAt?.toISOString() ?? null,
-          followupReminderSentAt: task.followupReminderSentAt?.toISOString() ?? null,
+          followupReminderSentAt:
+            task.followupReminderSentAt?.toISOString() ?? null,
           completedAt: task.completedAt?.toISOString() ?? null,
           archivedAt: task.archivedAt?.toISOString() ?? null,
           priority: task.priority as Task["priority"],
           urgency: task.urgency as Task["urgency"],
-          createdAt: task.createdAt.toISOString()
+          createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -1253,11 +1390,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         inboxItem: {
           ...inboxItem,
           processingStatus: "planned",
-          linkedTaskIds: input.taskIds
+          linkedTaskIds: input.taskIds,
         },
         plannerRun,
         archivedTasks,
-        followUpMessage: input.followUpMessage
+        followUpMessage: input.followUpMessage,
       };
     });
   }
@@ -1267,12 +1404,15 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
     plannerRun: Omit<PersistedPlannerRun, "id">;
   }) {
     return this.db.transaction(async (tx) => {
-      const plannerRun = await this.insertPlannerRunWithin(tx, input.plannerRun);
+      const plannerRun = await this.insertPlannerRunWithin(
+        tx,
+        input.plannerRun,
+      );
 
       await tx
         .update(inboxItems)
         .set({
-          processingStatus: "received"
+          processingStatus: "received",
         })
         .where(eq(inboxItems.id, input.inboxItemId));
 
@@ -1284,7 +1424,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
     await this.db
       .update(inboxItems)
       .set({
-        processingStatus: "received"
+        processingStatus: "received",
       })
       .where(eq(inboxItems.id, inboxItemId));
   }
@@ -1303,23 +1443,29 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
       .set({
         externalCalendarEventId: input.externalCalendarEventId,
         externalCalendarId: input.externalCalendarId,
-        scheduledStartAt: input.scheduledStartAt ? new Date(input.scheduledStartAt) : null,
-        scheduledEndAt: input.scheduledEndAt ? new Date(input.scheduledEndAt) : null,
+        scheduledStartAt: input.scheduledStartAt
+          ? new Date(input.scheduledStartAt)
+          : null,
+        scheduledEndAt: input.scheduledEndAt
+          ? new Date(input.scheduledEndAt)
+          : null,
         calendarSyncStatus: input.calendarSyncStatus,
-        calendarSyncUpdatedAt: new Date(input.calendarSyncUpdatedAt)
+        calendarSyncUpdatedAt: new Date(input.calendarSyncUpdatedAt),
       })
       .where(eq(tasks.id, input.taskId));
   }
 
-  async listDueFollowUpTasks(now = new Date().toISOString()): Promise<FollowUpDueTask[]> {
+  async listDueFollowUpTasks(
+    now = new Date().toISOString(),
+  ): Promise<FollowUpDueTask[]> {
     const initialRows = await this.db
       .select()
       .from(tasks)
       .where(
         and(
           eq(tasks.lifecycleState, "scheduled"),
-          lte(tasks.scheduledEndAt, new Date(now))
-        )
+          lte(tasks.scheduledEndAt, new Date(now)),
+        ),
       );
 
     const reminderRows = await this.db
@@ -1330,8 +1476,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
           eq(tasks.lifecycleState, "awaiting_followup"),
           isNull(tasks.followupReminderSentAt),
           isNotNull(tasks.lastFollowupAt),
-          lte(tasks.lastFollowupAt, new Date(Date.parse(now) - FOLLOWUP_REMINDER_DELAY_MS))
-        )
+          lte(
+            tasks.lastFollowupAt,
+            new Date(Date.parse(now) - FOLLOWUP_REMINDER_DELAY_MS),
+          ),
+        ),
       );
 
     const due: FollowUpDueTask[] = [];
@@ -1359,16 +1508,24 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         and(
           eq(tasks.userId, userId),
           eq(tasks.lifecycleState, "awaiting_followup"),
-          isNotNull(tasks.lastFollowupAt)
-        )
+          isNotNull(tasks.lastFollowupAt),
+        ),
       );
 
     return taskRows
       .map((task) => toPersistedTask(task))
       .sort(
         (left, right) =>
-          Date.parse(left.lastFollowupAt ?? left.scheduledEndAt ?? new Date(0).toISOString()) -
-          Date.parse(right.lastFollowupAt ?? right.scheduledEndAt ?? new Date(0).toISOString())
+          Date.parse(
+            left.lastFollowupAt ??
+              left.scheduledEndAt ??
+              new Date(0).toISOString(),
+          ) -
+          Date.parse(
+            right.lastFollowupAt ??
+              right.scheduledEndAt ??
+              new Date(0).toISOString(),
+          ),
       );
   }
 
@@ -1388,18 +1545,21 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         .set({
           lifecycleState: "awaiting_followup",
           lastFollowupAt: new Date(sentAt),
-          followupReminderSentAt: null
+          followupReminderSentAt: null,
         })
         .where(eq(tasks.id, taskId));
     }
   }
 
-  async markFollowUpReminderSent(taskIds: string[], sentAt: string): Promise<void> {
+  async markFollowUpReminderSent(
+    taskIds: string[],
+    sentAt: string,
+  ): Promise<void> {
     for (const taskId of taskIds) {
       await this.db
         .update(tasks)
         .set({
-          followupReminderSentAt: new Date(sentAt)
+          followupReminderSentAt: new Date(sentAt),
         })
         .where(eq(tasks.id, taskId));
     }
@@ -1410,7 +1570,11 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
   }
 
   private async loadInboxItemWithin(tx: any, inboxItemId: string) {
-    const [row] = await tx.select().from(inboxItems).where(eq(inboxItems.id, inboxItemId)).limit(1);
+    const [row] = await tx
+      .select()
+      .from(inboxItems)
+      .where(eq(inboxItems.id, inboxItemId))
+      .limit(1);
 
     if (!row) {
       throw new Error(`Inbox item ${inboxItemId} not found.`);
@@ -1424,13 +1588,13 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
       normalizedText: row.normalizedText,
       processingStatus: row.processingStatus as InboxItem["processingStatus"],
       linkedTaskIds: row.linkedTaskIds,
-      createdAt: row.createdAt.toISOString()
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
   private async insertPlannerRunWithin(
     tx: any,
-    plannerRun: Omit<PersistedPlannerRun, "id">
+    plannerRun: Omit<PersistedPlannerRun, "id">,
   ): Promise<PersistedPlannerRun> {
     const insertedRows = await tx
       .insert(plannerRuns)
@@ -1441,7 +1605,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
         version: plannerRun.version,
         modelInput: plannerRun.modelInput,
         modelOutput: plannerRun.modelOutput,
-        confidence: plannerRun.confidence
+        confidence: plannerRun.confidence,
       })
       .returning();
     const inserted = insertedRows[0];
@@ -1457,7 +1621,7 @@ export class PostgresInboxProcessingStore implements InboxProcessingStore, Follo
       version: inserted.version,
       modelInput: inserted.modelInput,
       modelOutput: inserted.modelOutput,
-      confidence: inserted.confidence
+      confidence: inserted.confidence,
     };
   }
 }
@@ -1483,14 +1647,14 @@ function toPersistedTask(task: typeof tasks.$inferSelect): Task {
     archivedAt: task.archivedAt?.toISOString() ?? null,
     priority: task.priority as Task["priority"],
     urgency: task.urgency as Task["urgency"],
-    createdAt: task.createdAt.toISOString()
+    createdAt: task.createdAt.toISOString(),
   };
 }
 
 const defaultInMemoryStore = new InMemoryInboxProcessingStore();
 attachGoogleCalendarConnectionStoreToTasks({
   getTasks: () => defaultInMemoryStore.listTasks(),
-  replaceTask: (taskId, task) => defaultInMemoryStore.replaceTask(taskId, task)
+  replaceTask: (taskId, task) => defaultInMemoryStore.replaceTask(taskId, task),
 });
 let postgresStore: PostgresInboxProcessingStore | null = null;
 
@@ -1521,7 +1685,7 @@ export function getDefaultFollowUpRuntimeStore(): FollowUpRuntimeStore {
 export function seedInboxItemForProcessingTests(inboxItem: InboxItem) {
   defaultInMemoryStore.seedInboxItem({
     ...inboxItem,
-    createdAt: inboxItem.createdAt ?? new Date().toISOString()
+    createdAt: inboxItem.createdAt ?? new Date().toISOString(),
   });
 }
 

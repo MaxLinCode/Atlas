@@ -5,10 +5,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@atlas/core": path.resolve(__dirname, "../core/src/index.ts")
-    }
+      "@atlas/core": path.resolve(__dirname, "../core/src/index.ts"),
+    },
   },
   test: {
-    environment: "node"
-  }
+    environment: "node",
+  },
 });

@@ -5,28 +5,28 @@ import {
   buildScheduleAdjustment,
   buildScheduleProposal,
   detectTaskCalendarDrift,
-  resolveScheduleBlockReference,
-  resolveTaskReference,
   type InboxPlanningContext,
   type InboxPlanningOutput,
   type PlanningAction,
+  resolveScheduleBlockReference,
+  resolveTaskReference,
   type ScheduleBlock,
-  type Task
+  type Task,
 } from "@atlas/core";
 import {
-  getDefaultInboxProcessingStore,
   type DraftTaskForPersistence,
+  getDefaultInboxProcessingStore,
   type InboxProcessingStore,
-  type ProcessedInboxResult
+  type ProcessedInboxResult,
 } from "@atlas/db";
 import {
-  planInboxItemWithResponses,
-  type CalendarEventSnapshot,
   type CalendarBusyPeriod,
-  type ExternalCalendarAdapter
+  type CalendarEventSnapshot,
+  type ExternalCalendarAdapter,
+  planInboxItemWithResponses,
 } from "@atlas/integrations";
-import { renderMutationReply } from "./mutation-reply";
 import { resolveGoogleCalendarAdapter } from "./google-calendar";
+import { renderMutationReply } from "./mutation-reply";
 
 export type ProcessInboxItemRequest = {
   inboxItemId: string;
@@ -45,7 +45,7 @@ const CALENDAR_BUSY_LOOKAHEAD_DAYS = 14;
 
 export async function processInboxItem(
   input: ProcessInboxItemRequest,
-  dependencies: ProcessInboxItemDependencies = {}
+  dependencies: ProcessInboxItemDependencies = {},
 ): Promise<ProcessedInboxResult> {
   const parsed = parseProcessInboxItemRequest(input);
   const store = dependencies.store ?? getDefaultInboxProcessingStore();
@@ -64,13 +64,13 @@ export async function processInboxItem(
       ? {
           ...context.inboxItem,
           rawText: input.planningInboxTextOverride.text,
-          normalizedText: input.planningInboxTextOverride.text
+          normalizedText: input.planningInboxTextOverride.text,
         }
       : context.inboxItem,
     userProfile: context.userProfile,
     tasks: context.tasks,
     scheduleBlocks: context.scheduleBlocks,
-    referenceTime
+    referenceTime,
   });
 
   let planning: InboxPlanningOutput;
@@ -81,8 +81,8 @@ export async function processInboxItem(
     await store.saveFailedPlannerRun({
       inboxItemId: context.inboxItem.id,
       plannerRun: buildPlannerRun(context, planningContext, {
-        failure: buildErrorEnvelope(error)
-      })
+        failure: buildErrorEnvelope(error),
+      }),
     });
     throw error;
   }
@@ -95,7 +95,9 @@ export async function processInboxItem(
         ? dependencies.calendar
         : context.googleCalendarConnection
           ? (
-              await resolveGoogleCalendarAdapter(context.googleCalendarConnection)
+              await resolveGoogleCalendarAdapter(
+                context.googleCalendarConnection,
+              )
             ).adapter
           : null;
 
@@ -105,22 +107,24 @@ export async function processInboxItem(
       planning,
       plannerRun,
       store,
-      calendar
+      calendar,
     });
   } catch (error) {
     await store.saveFailedPlannerRun({
       inboxItemId: context.inboxItem.id,
       plannerRun: buildPlannerRun(context, planningContext, {
         ...planning,
-        failure: buildErrorEnvelope(error)
-      })
+        failure: buildErrorEnvelope(error),
+      }),
     });
     throw error;
   }
 }
 
 type ApplyPlanningResultInput = {
-  context: Awaited<ReturnType<InboxProcessingStore["loadContext"]>> extends infer T
+  context: Awaited<
+    ReturnType<InboxProcessingStore["loadContext"]>
+  > extends infer T
     ? Exclude<T, null>
     : never;
   planningContext: InboxPlanningContext;
@@ -137,17 +141,30 @@ type ApplyPlanningResultInput = {
   calendar: ExternalCalendarAdapter | null;
 };
 
-async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<ProcessedInboxResult> {
+async function applyPlanningResult(
+  input: ApplyPlanningResultInput,
+): Promise<ProcessedInboxResult> {
   const actions = input.planning.actions;
   const clarifyAction = actions.find((action) => action.type === "clarify");
-  const createTaskActions = actions.filter((action) => action.type === "create_task");
-  const createScheduleActions = actions.filter((action) => action.type === "create_schedule_block");
-  const moveActions = actions.filter((action) => action.type === "move_schedule_block");
-  const completeActions = actions.filter((action) => action.type === "complete_task");
+  const createTaskActions = actions.filter(
+    (action) => action.type === "create_task",
+  );
+  const createScheduleActions = actions.filter(
+    (action) => action.type === "create_schedule_block",
+  );
+  const moveActions = actions.filter(
+    (action) => action.type === "move_schedule_block",
+  );
+  const completeActions = actions.filter(
+    (action) => action.type === "complete_task",
+  );
 
   if (clarifyAction) {
     if (actions.length > 1) {
-      return saveClarification(input, "Model returned clarify alongside mutating actions.");
+      return saveClarification(
+        input,
+        "Model returned clarify alongside mutating actions.",
+      );
     }
 
     return withRenderedFollowUp(
@@ -156,9 +173,9 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
         confidence: input.planning.confidence,
         plannerRun: input.plannerRun,
         reason: clarifyAction.reason,
-        followUpMessage: buildClarificationReply(clarifyAction.reason)
+        followUpMessage: buildClarificationReply(clarifyAction.reason),
       }),
-      input.context.userProfile.timezone
+      input.context.userProfile.timezone,
     );
   }
 
@@ -169,17 +186,26 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
       createScheduleActions.length > 0 ||
       completeActions.length > 0
     ) {
-      return saveClarification(input, "Model returned an unsupported mix of move and create actions.");
+      return saveClarification(
+        input,
+        "Model returned an unsupported mix of move and create actions.",
+      );
     }
 
     if (!input.calendar) {
-      return saveClarification(input, "Please connect Google Calendar before moving scheduled work.");
+      return saveClarification(
+        input,
+        "Please connect Google Calendar before moving scheduled work.",
+      );
     }
 
     const moveAction = moveActions[0];
 
     if (!moveAction) {
-      return saveClarification(input, "Model did not provide a valid move action.");
+      return saveClarification(
+        input,
+        "Model did not provide a valid move action.",
+      );
     }
 
     return applyMoveAction(input, moveAction);
@@ -187,19 +213,32 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
 
   if (createTaskActions.length > 0) {
     if (completeActions.length > 0) {
-      return saveClarification(input, "Model returned an unsupported mix of completion and creation actions.");
+      return saveClarification(
+        input,
+        "Model returned an unsupported mix of completion and creation actions.",
+      );
     }
 
     if (!input.calendar) {
-      return saveClarification(input, "Please connect Google Calendar before scheduling tasks.");
+      return saveClarification(
+        input,
+        "Please connect Google Calendar before scheduling tasks.",
+      );
     }
 
-    return applyCreatedTaskActions(input, createTaskActions, createScheduleActions);
+    return applyCreatedTaskActions(
+      input,
+      createTaskActions,
+      createScheduleActions,
+    );
   }
 
   if (completeActions.length > 0) {
     if (createScheduleActions.length > 0) {
-      return saveClarification(input, "Model returned an unsupported mix of completion and scheduling actions.");
+      return saveClarification(
+        input,
+        "Model returned an unsupported mix of completion and scheduling actions.",
+      );
     }
 
     return applyCompletionActions(input, completeActions);
@@ -207,71 +246,89 @@ async function applyPlanningResult(input: ApplyPlanningResultInput): Promise<Pro
 
   if (createScheduleActions.length > 0) {
     if (!input.calendar) {
-      return saveClarification(input, "Please connect Google Calendar before scheduling tasks.");
+      return saveClarification(
+        input,
+        "Please connect Google Calendar before scheduling tasks.",
+      );
     }
 
     return applyExistingTaskScheduleActions(input, createScheduleActions);
   }
 
-  return saveClarification(input, "Model returned no actionable planning actions.");
+  return saveClarification(
+    input,
+    "Model returned no actionable planning actions.",
+  );
 }
 
 async function applyCreatedTaskActions(
   input: ApplyPlanningResultInput,
   createTaskActions: Extract<PlanningAction, { type: "create_task" }>[],
-  createScheduleActions: Extract<PlanningAction, { type: "create_schedule_block" }>[]
+  createScheduleActions: Extract<
+    PlanningAction,
+    { type: "create_schedule_block" }
+  >[],
 ) {
   if (!input.calendar) {
-    return saveClarification(input, "Please connect Google Calendar before scheduling tasks.");
+    return saveClarification(
+      input,
+      "Please connect Google Calendar before scheduling tasks.",
+    );
   }
 
-  const createdTaskAliases = new Set(createTaskActions.map((action) => action.alias));
+  const createdTaskAliases = new Set(
+    createTaskActions.map((action) => action.alias),
+  );
   const scheduleActionsForCreatedTasks = createScheduleActions.filter(
-    (action) => action.taskRef.kind === "created_task"
+    (action) => action.taskRef.kind === "created_task",
   );
   const invalidCreatedTaskReferences = scheduleActionsForCreatedTasks.some(
-    (action) => !createdTaskAliases.has(action.taskRef.alias)
+    (action) => !createdTaskAliases.has(action.taskRef.alias),
   );
-  const hasExistingTaskReferences = createScheduleActions.some((action) => action.taskRef.kind === "existing_task");
+  const hasExistingTaskReferences = createScheduleActions.some(
+    (action) => action.taskRef.kind === "existing_task",
+  );
 
   if (invalidCreatedTaskReferences || hasExistingTaskReferences) {
     return saveClarification(
       input,
-      "Model returned invalid or mixed schedule references for newly created tasks."
+      "Model returned invalid or mixed schedule references for newly created tasks.",
     );
   }
 
   if (scheduleActionsForCreatedTasks.length !== createTaskActions.length) {
     return saveClarification(
       input,
-      "Each created task must have exactly one schedule action in schedule-forward mode."
+      "Each created task must have exactly one schedule action in schedule-forward mode.",
     );
   }
 
-  const draftTasks: DraftTaskForPersistence[] = createTaskActions.map((action) => ({
-    alias: action.alias,
-    task: buildCapturedTask({
-      userId: input.context.inboxItem.userId,
-      inboxItemId: input.context.inboxItem.id,
-      title: action.title,
-      priority: action.priority,
-      urgency: action.urgency
-    })
-  }));
+  const draftTasks: DraftTaskForPersistence[] = createTaskActions.map(
+    (action) => ({
+      alias: action.alias,
+      task: buildCapturedTask({
+        userId: input.context.inboxItem.userId,
+        inboxItemId: input.context.inboxItem.id,
+        title: action.title,
+        priority: action.priority,
+        urgency: action.urgency,
+      }),
+    }),
+  );
   const taskAliasToDraftTask = new Map<string, Task>(
     draftTasks.map(({ alias, task }) => [
       alias,
       {
         id: alias,
-        ...task
-      }
-    ])
+        ...task,
+      },
+    ]),
   );
   const scheduleBlocks = await buildScheduleBlocksForCreatedTasks(
     input.context,
     scheduleActionsForCreatedTasks,
     taskAliasToDraftTask,
-    input.calendar
+    input.calendar,
   );
 
   if ("reason" in scheduleBlocks) {
@@ -280,35 +337,50 @@ async function applyCreatedTaskActions(
 
   return withRenderedFollowUp(
     await input.store.saveTaskCaptureResult({
-    inboxItemId: input.context.inboxItem.id,
-    confidence: input.planning.confidence,
-    plannerRun: input.plannerRun,
-    tasks: draftTasks,
-    scheduleBlocks: scheduleBlocks.blocks,
-    followUpMessage: ""
-  }),
-    input.context.userProfile.timezone
+      inboxItemId: input.context.inboxItem.id,
+      confidence: input.planning.confidence,
+      plannerRun: input.plannerRun,
+      tasks: draftTasks,
+      scheduleBlocks: scheduleBlocks.blocks,
+      followUpMessage: "",
+    }),
+    input.context.userProfile.timezone,
   );
 }
 
 async function applyExistingTaskScheduleActions(
   input: ApplyPlanningResultInput,
-  createScheduleActions: Extract<PlanningAction, { type: "create_schedule_block" }>[]
+  createScheduleActions: Extract<
+    PlanningAction,
+    { type: "create_schedule_block" }
+  >[],
 ) {
   if (!input.calendar) {
-    return saveClarification(input, "Please connect Google Calendar before scheduling tasks.");
+    return saveClarification(
+      input,
+      "Please connect Google Calendar before scheduling tasks.",
+    );
   }
 
-  if (createScheduleActions.some((action) => action.taskRef.kind !== "existing_task")) {
-    return saveClarification(input, "Model returned a created-task schedule action without a create_task action.");
+  if (
+    createScheduleActions.some(
+      (action) => action.taskRef.kind !== "existing_task",
+    )
+  ) {
+    return saveClarification(
+      input,
+      "Model returned a created-task schedule action without a create_task action.",
+    );
   }
 
-  const referencedTaskAliases = createScheduleActions.map((action) => action.taskRef.alias);
+  const referencedTaskAliases = createScheduleActions.map(
+    (action) => action.taskRef.alias,
+  );
 
   if (new Set(referencedTaskAliases).size !== referencedTaskAliases.length) {
     return saveClarification(
       input,
-      "Model returned multiple schedule actions for the same existing task."
+      "Model returned multiple schedule actions for the same existing task.",
     );
   }
 
@@ -317,14 +389,17 @@ async function applyExistingTaskScheduleActions(
   let existingBlocks = await buildRuntimeScheduleBlocks(
     input.context,
     input.calendar,
-    input.planningContext.referenceTime
+    input.planningContext.referenceTime,
   );
 
   for (const action of createScheduleActions) {
     const task = resolveTaskReference(input.planningContext, action.taskRef);
 
     if (!task) {
-      return saveClarification(input, `Could not resolve task alias ${action.taskRef.alias}.`);
+      return saveClarification(
+        input,
+        `Could not resolve task alias ${action.taskRef.alias}.`,
+      );
     }
 
     if (hasAmbiguousTaskTitle(input.context.tasks, task)) {
@@ -334,8 +409,8 @@ async function applyExistingTaskScheduleActions(
           tasks: findActionableTasksWithSameTitle(input.context.tasks, task),
           title: task.title,
           actionPrompt: "update",
-          timeZone: input.context.userProfile.timezone
-        })
+          timeZone: input.context.userProfile.timezone,
+        }),
       );
     }
 
@@ -347,24 +422,29 @@ async function applyExistingTaskScheduleActions(
       userProfile: input.context.userProfile,
       existingBlocks,
       scheduleConstraint: action.scheduleConstraint,
-      referenceTime: input.planningContext.referenceTime
+      referenceTime: input.planningContext.referenceTime,
     });
     const [scheduledBlock] = proposal.inserts;
 
     if (!scheduledBlock) {
-      return saveClarification(input, `Could not build a schedule block for task alias ${action.taskRef.alias}.`);
+      return saveClarification(
+        input,
+        `Could not build a schedule block for task alias ${action.taskRef.alias}.`,
+      );
     }
 
     const persistedSchedule = await scheduleTaskWithCalendar({
       calendar: input.calendar,
       task,
-      selectedCalendarId: input.context.googleCalendarConnection?.selectedCalendarId ?? null,
+      selectedCalendarId:
+        input.context.googleCalendarConnection?.selectedCalendarId ?? null,
       proposedBlock: {
         ...scheduledBlock,
         externalCalendarId:
-          input.context.googleCalendarConnection?.selectedCalendarId ?? scheduledBlock.externalCalendarId,
-        reason: action.reason
-      }
+          input.context.googleCalendarConnection?.selectedCalendarId ??
+          scheduledBlock.externalCalendarId,
+        reason: action.reason,
+      },
     });
 
     scheduleBlocks.push(persistedSchedule);
@@ -373,65 +453,89 @@ async function applyExistingTaskScheduleActions(
 
   return withRenderedFollowUp(
     await input.store.saveScheduleRequestResult({
-    inboxItemId: input.context.inboxItem.id,
-    confidence: input.planning.confidence,
-    plannerRun: input.plannerRun,
-    taskIds: existingTaskIds,
-    scheduleBlocks,
-    followUpMessage: ""
-  }),
-    input.context.userProfile.timezone
+      inboxItemId: input.context.inboxItem.id,
+      confidence: input.planning.confidence,
+      plannerRun: input.plannerRun,
+      taskIds: existingTaskIds,
+      scheduleBlocks,
+      followUpMessage: "",
+    }),
+    input.context.userProfile.timezone,
   );
 }
 
 async function applyMoveAction(
   input: ApplyPlanningResultInput,
-  action: Extract<PlanningAction, { type: "move_schedule_block" }>
+  action: Extract<PlanningAction, { type: "move_schedule_block" }>,
 ) {
   if (!input.calendar) {
-    return saveClarification(input, "Please connect Google Calendar before moving scheduled work.");
+    return saveClarification(
+      input,
+      "Please connect Google Calendar before moving scheduled work.",
+    );
   }
 
-  const block = resolveScheduleBlockReference(input.planningContext, action.blockRef);
+  const block = resolveScheduleBlockReference(
+    input.planningContext,
+    action.blockRef,
+  );
 
   if (!block) {
-    return saveClarification(input, `Could not resolve schedule block alias ${action.blockRef.alias}.`);
+    return saveClarification(
+      input,
+      `Could not resolve schedule block alias ${action.blockRef.alias}.`,
+    );
   }
 
   const existingBlocks = await buildRuntimeScheduleBlocks(
     input.context,
     input.calendar,
-    input.planningContext.referenceTime
+    input.planningContext.referenceTime,
   );
   const adjustment = buildScheduleAdjustment({
     block,
     userProfile: input.context.userProfile,
     scheduleConstraint: action.scheduleConstraint,
     existingBlocks,
-    referenceTime: input.planningContext.referenceTime
+    referenceTime: input.planningContext.referenceTime,
   });
 
-  const task = input.context.tasks.find((candidate) => candidate.id === block.taskId);
+  const task = input.context.tasks.find(
+    (candidate) => candidate.id === block.taskId,
+  );
 
   if (!task || task.externalCalendarId === null) {
-    return saveClarification(input, `Could not resolve current scheduled task for alias ${action.blockRef.alias}.`);
+    return saveClarification(
+      input,
+      `Could not resolve current scheduled task for alias ${action.blockRef.alias}.`,
+    );
   }
 
-  if (hasAmbiguousScheduledTitle(input.context.tasks, input.context.scheduleBlocks, block.taskId)) {
+  if (
+    hasAmbiguousScheduledTitle(
+      input.context.tasks,
+      input.context.scheduleBlocks,
+      block.taskId,
+    )
+  ) {
     return saveClarification(
       input,
       buildAmbiguousTaskReply({
-        tasks: findScheduledTasksWithSameTitle(input.context.tasks, input.context.scheduleBlocks, block.taskId),
+        tasks: findScheduledTasksWithSameTitle(
+          input.context.tasks,
+          input.context.scheduleBlocks,
+          block.taskId,
+        ),
         title: task.title,
         actionPrompt: "move",
-        timeZone: input.context.userProfile.timezone
-      })
+        timeZone: input.context.userProfile.timezone,
+      }),
     );
   }
 
   const liveEvent = await input.calendar.getEvent({
     externalCalendarEventId: block.id,
-    externalCalendarId: task.externalCalendarId
+    externalCalendarId: task.externalCalendarId,
   });
 
   if (!liveEvent) {
@@ -442,15 +546,18 @@ async function applyMoveAction(
       scheduledStartAt: task.scheduledStartAt,
       scheduledEndAt: task.scheduledEndAt,
       calendarSyncStatus: "out_of_sync",
-      calendarSyncUpdatedAt: new Date().toISOString()
+      calendarSyncUpdatedAt: new Date().toISOString(),
     });
 
-    return saveClarification(input, `Could not resolve schedule block alias ${action.blockRef.alias}.`);
+    return saveClarification(
+      input,
+      `Could not resolve schedule block alias ${action.blockRef.alias}.`,
+    );
   }
 
   const drift = detectTaskCalendarDrift({
     task,
-    liveEvent
+    liveEvent,
   });
 
   if (drift) {
@@ -461,12 +568,12 @@ async function applyMoveAction(
       scheduledStartAt: task.scheduledStartAt,
       scheduledEndAt: task.scheduledEndAt,
       calendarSyncStatus: "out_of_sync",
-      calendarSyncUpdatedAt: new Date().toISOString()
+      calendarSyncUpdatedAt: new Date().toISOString(),
     });
 
     return saveClarification(
       input,
-      "The linked Google Calendar event changed outside Atlas. Please confirm the current slot or choose a new time."
+      "The linked Google Calendar event changed outside Atlas. Please confirm the current slot or choose a new time.",
     );
   }
 
@@ -475,45 +582,56 @@ async function applyMoveAction(
     externalCalendarId: liveEvent.externalCalendarId,
     title: task.title,
     startAt: adjustment.newStartAt,
-    endAt: adjustment.newEndAt
+    endAt: adjustment.newEndAt,
   });
 
   return withRenderedFollowUp(
     await input.store.saveScheduleAdjustmentResult({
-    inboxItemId: input.context.inboxItem.id,
-    confidence: input.planning.confidence,
-    plannerRun: input.plannerRun,
-    blockId: updatedEvent.externalCalendarEventId,
-    newStartAt: updatedEvent.scheduledStartAt,
-    newEndAt: updatedEvent.scheduledEndAt,
-    reason: action.reason,
-    followUpMessage: ""
-  }),
-    input.context.userProfile.timezone
+      inboxItemId: input.context.inboxItem.id,
+      confidence: input.planning.confidence,
+      plannerRun: input.plannerRun,
+      blockId: updatedEvent.externalCalendarEventId,
+      newStartAt: updatedEvent.scheduledStartAt,
+      newEndAt: updatedEvent.scheduledEndAt,
+      reason: action.reason,
+      followUpMessage: "",
+    }),
+    input.context.userProfile.timezone,
   );
 }
 
 async function applyCompletionActions(
   input: ApplyPlanningResultInput,
-  completeActions: Extract<PlanningAction, { type: "complete_task" }>[]
+  completeActions: Extract<PlanningAction, { type: "complete_task" }>[],
 ) {
-  const referencedTaskAliases = completeActions.map((action) => action.taskRef.alias);
+  const referencedTaskAliases = completeActions.map(
+    (action) => action.taskRef.alias,
+  );
 
   if (new Set(referencedTaskAliases).size !== referencedTaskAliases.length) {
-    return saveClarification(input, "Model returned multiple completion actions for the same task.");
+    return saveClarification(
+      input,
+      "Model returned multiple completion actions for the same task.",
+    );
   }
 
   const taskIds: string[] = [];
 
   for (const action of completeActions) {
     if (action.taskRef.kind !== "existing_task") {
-      return saveClarification(input, "Model returned a completion action for a non-persisted task.");
+      return saveClarification(
+        input,
+        "Model returned a completion action for a non-persisted task.",
+      );
     }
 
     const task = resolveTaskReference(input.planningContext, action.taskRef);
 
     if (!task) {
-      return saveClarification(input, `Could not resolve task alias ${action.taskRef.alias}.`);
+      return saveClarification(
+        input,
+        `Could not resolve task alias ${action.taskRef.alias}.`,
+      );
     }
 
     if (hasAmbiguousTaskTitle(input.context.tasks, task)) {
@@ -523,8 +641,8 @@ async function applyCompletionActions(
           tasks: findActionableTasksWithSameTitle(input.context.tasks, task),
           title: task.title,
           actionPrompt: "update",
-          timeZone: input.context.userProfile.timezone
-        })
+          timeZone: input.context.userProfile.timezone,
+        }),
       );
     }
 
@@ -537,29 +655,33 @@ async function applyCompletionActions(
       confidence: input.planning.confidence,
       plannerRun: input.plannerRun,
       taskIds,
-      followUpMessage: ""
+      followUpMessage: "",
     }),
-    input.context.userProfile.timezone
+    input.context.userProfile.timezone,
   );
 }
 
 async function buildScheduleBlocksForCreatedTasks(
   context: ApplyPlanningResultInput["context"],
-  createScheduleActions: Extract<PlanningAction, { type: "create_schedule_block" }>[],
+  createScheduleActions: Extract<
+    PlanningAction,
+    { type: "create_schedule_block" }
+  >[],
   createdTaskAliases: Map<string, Task>,
-  calendar: ExternalCalendarAdapter
+  calendar: ExternalCalendarAdapter,
 ) {
   const blocks: ScheduleBlock[] = [];
   let existingBlocks = await buildRuntimeScheduleBlocks(
     context,
     calendar,
-    requireInboxReferenceTime(context.inboxItem)
+    requireInboxReferenceTime(context.inboxItem),
   );
 
   for (const action of createScheduleActions) {
     if (action.taskRef.kind !== "created_task") {
       return {
-        reason: "Expected created-task references while building new task schedule blocks."
+        reason:
+          "Expected created-task references while building new task schedule blocks.",
       };
     }
 
@@ -567,7 +689,7 @@ async function buildScheduleBlocksForCreatedTasks(
 
     if (!task) {
       return {
-        reason: `Could not resolve created task alias ${action.taskRef.alias}.`
+        reason: `Could not resolve created task alias ${action.taskRef.alias}.`,
       };
     }
 
@@ -577,27 +699,29 @@ async function buildScheduleBlocksForCreatedTasks(
       userProfile: context.userProfile,
       existingBlocks,
       scheduleConstraint: action.scheduleConstraint,
-      referenceTime: requireInboxReferenceTime(context.inboxItem)
+      referenceTime: requireInboxReferenceTime(context.inboxItem),
     });
     const [scheduledBlock] = proposal.inserts;
 
     if (!scheduledBlock) {
       return {
-        reason: `Could not build a schedule block for created task alias ${action.taskRef.alias}.`
+        reason: `Could not build a schedule block for created task alias ${action.taskRef.alias}.`,
       };
     }
 
     const persistedSchedule = await scheduleTaskWithCalendar({
       calendar,
       task,
-      selectedCalendarId: context.googleCalendarConnection?.selectedCalendarId ?? null,
+      selectedCalendarId:
+        context.googleCalendarConnection?.selectedCalendarId ?? null,
       proposedBlock: {
         ...scheduledBlock,
         taskId: action.taskRef.alias,
         externalCalendarId:
-          context.googleCalendarConnection?.selectedCalendarId ?? scheduledBlock.externalCalendarId,
-        reason: action.reason
-      }
+          context.googleCalendarConnection?.selectedCalendarId ??
+          scheduledBlock.externalCalendarId,
+        reason: action.reason,
+      },
     });
 
     blocks.push(persistedSchedule);
@@ -605,7 +729,7 @@ async function buildScheduleBlocksForCreatedTasks(
   }
 
   return {
-    blocks
+    blocks,
   };
 }
 
@@ -615,7 +739,10 @@ async function scheduleTaskWithCalendar(input: {
   selectedCalendarId: string | null;
   proposedBlock: ScheduleBlock;
 }): Promise<ScheduleBlock> {
-  const currentEvent = await getCurrentCalendarEvent(input.calendar, input.task);
+  const currentEvent = await getCurrentCalendarEvent(
+    input.calendar,
+    input.task,
+  );
   const operation = currentEvent ? "update" : "create";
   const externalCalendarId =
     currentEvent?.externalCalendarId ??
@@ -630,7 +757,7 @@ async function scheduleTaskWithCalendar(input: {
     externalCalendarEventId: currentEvent?.externalCalendarEventId ?? null,
     externalCalendarId,
     startAt: input.proposedBlock.startAt,
-    endAt: input.proposedBlock.endAt
+    endAt: input.proposedBlock.endAt,
   });
 
   try {
@@ -640,13 +767,13 @@ async function scheduleTaskWithCalendar(input: {
           externalCalendarId: currentEvent.externalCalendarId,
           title: input.task.title,
           startAt: input.proposedBlock.startAt,
-          endAt: input.proposedBlock.endAt
+          endAt: input.proposedBlock.endAt,
         })
       : await input.calendar.createEvent({
           title: input.task.title,
           startAt: input.proposedBlock.startAt,
           endAt: input.proposedBlock.endAt,
-          externalCalendarId
+          externalCalendarId,
         });
 
     logCalendarWriteSuccess({
@@ -656,7 +783,7 @@ async function scheduleTaskWithCalendar(input: {
       externalCalendarEventId: calendarEvent.externalCalendarEventId,
       externalCalendarId: calendarEvent.externalCalendarId,
       startAt: calendarEvent.scheduledStartAt,
-      endAt: calendarEvent.scheduledEndAt
+      endAt: calendarEvent.scheduledEndAt,
     });
 
     return buildScheduleBlockFromCalendarEvent({
@@ -665,7 +792,7 @@ async function scheduleTaskWithCalendar(input: {
       reason: input.proposedBlock.reason,
       rescheduleCount: input.proposedBlock.rescheduleCount,
       confidence: input.proposedBlock.confidence,
-      calendarEvent
+      calendarEvent,
     });
   } catch (error) {
     logCalendarWriteFailure({
@@ -676,7 +803,7 @@ async function scheduleTaskWithCalendar(input: {
       externalCalendarId,
       startAt: input.proposedBlock.startAt,
       endAt: input.proposedBlock.endAt,
-      error
+      error,
     });
     throw error;
   }
@@ -685,7 +812,7 @@ async function scheduleTaskWithCalendar(input: {
 async function buildRuntimeScheduleBlocks(
   context: ApplyPlanningResultInput["context"],
   calendar: ExternalCalendarAdapter,
-  referenceTime: string
+  referenceTime: string,
 ) {
   const existingBlocks = [...context.scheduleBlocks];
 
@@ -695,44 +822,54 @@ async function buildRuntimeScheduleBlocks(
 
   const busyWindowStart = new Date(referenceTime);
   const busyWindowEnd = new Date(
-    busyWindowStart.getTime() + CALENDAR_BUSY_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000
+    busyWindowStart.getTime() +
+      CALENDAR_BUSY_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000,
   );
 
   const busyPeriods = await calendar.listBusyPeriods({
     startAt: busyWindowStart.toISOString(),
     endAt: busyWindowEnd.toISOString(),
-    externalCalendarId: context.googleCalendarConnection.selectedCalendarId
+    externalCalendarId: context.googleCalendarConnection.selectedCalendarId,
   });
 
   return [
     ...existingBlocks,
     ...buildBusyScheduleBlocks({
       userId: context.inboxItem.userId,
-      periods: filterBusyPeriodsAgainstAtlasTasks(context.tasks, busyPeriods)
-    })
+      periods: filterBusyPeriodsAgainstAtlasTasks(context.tasks, busyPeriods),
+    }),
   ];
 }
 
-function filterBusyPeriodsAgainstAtlasTasks(tasks: Task[], busyPeriods: CalendarBusyPeriod[]) {
+function filterBusyPeriodsAgainstAtlasTasks(
+  tasks: Task[],
+  busyPeriods: CalendarBusyPeriod[],
+) {
   return busyPeriods.filter(
     (period) =>
       !tasks.some(
         (task) =>
           task.externalCalendarId === period.externalCalendarId &&
           task.scheduledStartAt === period.startAt &&
-          task.scheduledEndAt === period.endAt
-      )
+          task.scheduledEndAt === period.endAt,
+      ),
   );
 }
 
-async function getCurrentCalendarEvent(calendar: ExternalCalendarAdapter, task: Task) {
-  if (task.externalCalendarEventId === null || task.externalCalendarId === null) {
+async function getCurrentCalendarEvent(
+  calendar: ExternalCalendarAdapter,
+  task: Task,
+) {
+  if (
+    task.externalCalendarEventId === null ||
+    task.externalCalendarId === null
+  ) {
     return null;
   }
 
   return calendar.getEvent({
     externalCalendarEventId: task.externalCalendarEventId,
-    externalCalendarId: task.externalCalendarId
+    externalCalendarId: task.externalCalendarId,
   });
 }
 
@@ -753,7 +890,7 @@ function buildScheduleBlockFromCalendarEvent(input: {
     confidence: input.confidence,
     reason: input.reason,
     rescheduleCount: input.rescheduleCount,
-    externalCalendarId: input.calendarEvent.externalCalendarId
+    externalCalendarId: input.calendarEvent.externalCalendarId,
   };
 }
 
@@ -803,22 +940,26 @@ function logCalendarWriteFailure(input: {
       input.error instanceof Error
         ? {
             name: input.error.name,
-            message: input.error.message
+            message: input.error.message,
           }
         : {
-            message: String(input.error)
-          }
+            message: String(input.error),
+          },
   });
 }
 
 function saveClarification(input: ApplyPlanningResultInput, reason: string) {
-  return input.store.saveNeedsClarificationResult({
-    inboxItemId: input.context.inboxItem.id,
-    confidence: input.planning.confidence,
-    plannerRun: input.plannerRun,
-    reason,
-    followUpMessage: buildClarificationReply(reason)
-  }).then((result) => withRenderedFollowUp(result, input.context.userProfile.timezone));
+  return input.store
+    .saveNeedsClarificationResult({
+      inboxItemId: input.context.inboxItem.id,
+      confidence: input.planning.confidence,
+      plannerRun: input.plannerRun,
+      reason,
+      followUpMessage: buildClarificationReply(reason),
+    })
+    .then((result) =>
+      withRenderedFollowUp(result, input.context.userProfile.timezone),
+    );
 }
 
 function buildClarificationReply(reason: string) {
@@ -837,12 +978,18 @@ function isSafeUserFacingClarificationReason(reason: string) {
     reason.startsWith("Each created task must") ||
     reason.startsWith("Model did not provide") ||
     reason.startsWith("Please connect Google Calendar before") ||
-    reason.startsWith("The linked Google Calendar event changed outside Atlas.") ||
+    reason.startsWith(
+      "The linked Google Calendar event changed outside Atlas.",
+    ) ||
     reason.startsWith("I couldn't safely apply that update.")
   ) {
-    return reason.startsWith("Please connect Google Calendar before") ||
-      reason.startsWith("The linked Google Calendar event changed outside Atlas.") ||
-      reason.startsWith("I couldn't safely apply that update.");
+    return (
+      reason.startsWith("Please connect Google Calendar before") ||
+      reason.startsWith(
+        "The linked Google Calendar event changed outside Atlas.",
+      ) ||
+      reason.startsWith("I couldn't safely apply that update.")
+    );
   }
 
   return true;
@@ -852,7 +999,11 @@ function hasAmbiguousTaskTitle(tasks: Task[], task: Task) {
   return findActionableTasksWithSameTitle(tasks, task).length > 1;
 }
 
-function hasAmbiguousScheduledTitle(tasks: Task[], scheduleBlocks: ScheduleBlock[], taskId: string) {
+function hasAmbiguousScheduledTitle(
+  tasks: Task[],
+  scheduleBlocks: ScheduleBlock[],
+  taskId: string,
+) {
   const task = tasks.find((candidate) => candidate.id === taskId);
 
   if (!task) {
@@ -863,9 +1014,14 @@ function hasAmbiguousScheduledTitle(tasks: Task[], scheduleBlocks: ScheduleBlock
   let matchingScheduledCount = 0;
 
   for (const block of scheduleBlocks) {
-    const scheduledTask = tasks.find((candidate) => candidate.id === block.taskId);
+    const scheduledTask = tasks.find(
+      (candidate) => candidate.id === block.taskId,
+    );
 
-    if (scheduledTask && normalizeTaskTitle(scheduledTask.title) === normalizedTitle) {
+    if (
+      scheduledTask &&
+      normalizeTaskTitle(scheduledTask.title) === normalizedTitle
+    ) {
       matchingScheduledCount += 1;
     }
   }
@@ -877,11 +1033,17 @@ function findActionableTasksWithSameTitle(tasks: Task[], task: Task) {
   const normalizedTitle = normalizeTaskTitle(task.title);
 
   return tasks.filter(
-    (candidate) => isTaskActionable(candidate) && normalizeTaskTitle(candidate.title) === normalizedTitle
+    (candidate) =>
+      isTaskActionable(candidate) &&
+      normalizeTaskTitle(candidate.title) === normalizedTitle,
   );
 }
 
-function findScheduledTasksWithSameTitle(tasks: Task[], scheduleBlocks: ScheduleBlock[], taskId: string) {
+function findScheduledTasksWithSameTitle(
+  tasks: Task[],
+  scheduleBlocks: ScheduleBlock[],
+  taskId: string,
+) {
   const task = tasks.find((candidate) => candidate.id === taskId);
 
   if (!task) {
@@ -891,7 +1053,9 @@ function findScheduledTasksWithSameTitle(tasks: Task[], scheduleBlocks: Schedule
   const normalizedTitle = normalizeTaskTitle(task.title);
 
   return scheduleBlocks.flatMap((block) => {
-    const scheduledTask = tasks.find((candidate) => candidate.id === block.taskId);
+    const scheduledTask = tasks.find(
+      (candidate) => candidate.id === block.taskId,
+    );
 
     if (
       scheduledTask &&
@@ -924,7 +1088,10 @@ function buildAmbiguousTaskReply(input: {
       : `I found multiple tasks named '${input.title}'. Tell me which one you want me to update:`;
 
   return `${header}\n${input.tasks
-    .map((task, index) => `${index + 1}. ${describeTaskOption(task, input.timeZone)}`)
+    .map(
+      (task, index) =>
+        `${index + 1}. ${describeTaskOption(task, input.timeZone)}`,
+    )
     .join("\n")}`;
 }
 
@@ -950,13 +1117,17 @@ function formatClarificationTime(iso: string, timeZone: string) {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(new Date(iso));
 }
 
-function requireInboxReferenceTime(inboxItem: ApplyPlanningResultInput["context"]["inboxItem"]) {
+function requireInboxReferenceTime(
+  inboxItem: ApplyPlanningResultInput["context"]["inboxItem"],
+) {
   if (!inboxItem.createdAt) {
-    throw new Error(`Inbox item ${inboxItem.id} is missing createdAt for scheduling reference time.`);
+    throw new Error(
+      `Inbox item ${inboxItem.id} is missing createdAt for scheduling reference time.`,
+    );
   }
 
   return inboxItem.createdAt;
@@ -965,7 +1136,7 @@ function requireInboxReferenceTime(inboxItem: ApplyPlanningResultInput["context"
 function buildPlannerRun(
   context: ApplyPlanningResultInput["context"],
   planningContext: InboxPlanningContext,
-  modelOutput: unknown
+  modelOutput: unknown,
 ) {
   return {
     userId: context.inboxItem.userId,
@@ -979,7 +1150,7 @@ function buildPlannerRun(
       "confidence" in modelOutput &&
       typeof modelOutput.confidence === "number"
         ? modelOutput.confidence
-        : 0
+        : 0,
   };
 }
 
@@ -987,17 +1158,19 @@ function buildErrorEnvelope(error: unknown) {
   if (error instanceof Error) {
     return {
       name: error.name,
-      message: error.message
+      message: error.message,
     };
   }
 
   return {
     name: "UnknownError",
-    message: "Unknown inbox planner failure."
+    message: "Unknown inbox planner failure.",
   };
 }
 
-function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessInboxItemRequest {
+function parseProcessInboxItemRequest(
+  input: ProcessInboxItemRequest,
+): ProcessInboxItemRequest {
   if (typeof input.inboxItemId !== "string" || input.inboxItemId.length === 0) {
     throw new Error("processInboxItem requires an inboxItemId.");
   }
@@ -1012,9 +1185,12 @@ function parseProcessInboxItemRequest(input: ProcessInboxItemRequest): ProcessIn
   return input;
 }
 
-function withRenderedFollowUp(result: ProcessedInboxResult, timeZone: string): ProcessedInboxResult {
+function withRenderedFollowUp(
+  result: ProcessedInboxResult,
+  timeZone: string,
+): ProcessedInboxResult {
   return {
     ...result,
-    followUpMessage: renderMutationReply(result, { timeZone })
+    followUpMessage: renderMutationReply(result, { timeZone }),
   };
 }

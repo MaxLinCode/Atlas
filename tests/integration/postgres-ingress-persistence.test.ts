@@ -1,19 +1,18 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import postgres from "postgres";
-
 import {
   PostgresIncomingTelegramIngressStore,
-  recordIncomingTelegramMessageIfNew
+  recordIncomingTelegramMessageIfNew,
 } from "@atlas/db";
+
+import postgres from "postgres";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL;
 const migrationsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../packages/db/drizzle"
+  "../../packages/db/drizzle",
 );
 
 if (!databaseUrl) {
@@ -23,7 +22,7 @@ if (!databaseUrl) {
 } else {
   describe("postgres ingress persistence", () => {
     const sql = postgres(databaseUrl, {
-      prepare: false
+      prepare: false,
     });
     const store = new PostgresIncomingTelegramIngressStore(databaseUrl);
 
@@ -45,13 +44,13 @@ if (!databaseUrl) {
           eventType: "telegram_message",
           idempotencyKey: "telegram:webhook:update:42",
           payload: {
-            update_id: 42
+            update_id: 42,
           },
           rawText: " Review   launch checklist ",
           normalizedText: "Review launch checklist",
-          createdAt: "2026-03-19T16:00:00.000Z"
+          createdAt: "2026-03-19T16:00:00.000Z",
         },
-        store
+        store,
       );
 
       expect(first.status).toBe("recorded");
@@ -69,7 +68,7 @@ if (!databaseUrl) {
       expect(insertedBotEvents[0]).toMatchObject({
         id: first.status === "recorded" ? first.eventId : "",
         user_id: "123",
-        idempotency_key: "telegram:webhook:update:42"
+        idempotency_key: "telegram:webhook:update:42",
       });
 
       expect(insertedInboxItems).toHaveLength(1);
@@ -78,7 +77,7 @@ if (!databaseUrl) {
         user_id: "123",
         source_event_id: first.status === "recorded" ? first.eventId : "",
         raw_text: " Review   launch checklist ",
-        normalized_text: "Review launch checklist"
+        normalized_text: "Review launch checklist",
       });
 
       const duplicate = await recordIncomingTelegramMessageIfNew(
@@ -87,21 +86,23 @@ if (!databaseUrl) {
           eventType: "telegram_message",
           idempotencyKey: "telegram:webhook:update:42",
           payload: {
-            update_id: 42
+            update_id: 42,
           },
           rawText: " Review   launch checklist ",
           normalizedText: "Review launch checklist",
-          createdAt: "2026-03-19T16:00:00.000Z"
+          createdAt: "2026-03-19T16:00:00.000Z",
         },
-        store
+        store,
       );
 
       expect(duplicate).toEqual({
-        status: "duplicate"
+        status: "duplicate",
       });
 
-      const botEventCount = await sql`select count(*)::int as count from bot_events`;
-      const inboxItemCount = await sql`select count(*)::int as count from inbox_items`;
+      const botEventCount =
+        await sql`select count(*)::int as count from bot_events`;
+      const inboxItemCount =
+        await sql`select count(*)::int as count from inbox_items`;
 
       expect(botEventCount[0]?.count).toBe(1);
       expect(inboxItemCount[0]?.count).toBe(1);
