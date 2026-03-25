@@ -270,34 +270,26 @@ PR #53 (`codex/turn-routing-refactor`) implements the 3-layer turn routing pipel
 
 ### Medium — fix before merge
 
-1. **`interpretTurn.ts` is now a divergent partial pipeline.** `turn-router.ts` runs the full 3-layer pipeline and builds `TurnInterpretation` via `buildInterpretation()`. `interpretTurn.ts` does its own classification + ambiguity derivation without slot extraction or commit policy. The two files derive ambiguity differently — `turn-router.ts` considers `commitResult.missingSlots` and `needsClarification`, `interpretTurn.ts` does not. Either consolidate into one entry point or remove `interpretTurn` if nothing calls it directly anymore.
-
-2. **`SLOT_COMMITTING_TURN_TYPES` is duplicated** in `packages/core/src/commit-policy.ts:20` and `apps/web/src/lib/server/turn-router.ts:27`. Export from one location (core) and import in the other. If they diverge, the pipeline gate breaks silently.
-
-3. **No hour/minute range validation in `slot-normalizer.ts`.** The zod schema validates `z.number().int()` but not 0–23 for hour or 0–59 for minute. If the LLM returns `{ hour: 25, minute: 70 }`, it becomes `"25:70"` — an invalid time committed as a resolved slot. Add range constraints to the schema or a guard in the normalizer.
-
-4. **Business logic growing in `decide-turn-policy.ts`** (`deriveConsentRequirement`, `deriveProposalCompatibility`, `deriveParameterFingerprint`, `deriveActionKind`) — these are product-level decision functions that should live in `packages/core` per the architecture rules. The file grew from ~70 to ~375 lines.
-
-5. **Slot extraction is gated on `pending_write_contract` being truthy** (`turn-router.ts:53-55`), not just on turn type. The first planning request in a conversation (before any contract is set) skips extraction entirely. `DEFAULT_CONTRACT` is defined but only used for `applyCommitPolicy`. This may cause the initial "schedule gym tomorrow at 6pm" to get no extracted slots. Decide whether this is intentional or whether extraction should run against `DEFAULT_CONTRACT` when no contract exists.
+1. **Slot extraction is gated on `pending_write_contract` being truthy** (`turn-router.ts:53-55`), not just on turn type. The first planning request in a conversation (before any contract is set) skips extraction entirely. `DEFAULT_CONTRACT` is defined but only used for `applyCommitPolicy`. This may cause the initial "schedule gym tomorrow at 6pm" to get no extracted slots. Decide whether this is intentional or whether extraction should run against `DEFAULT_CONTRACT` when no contract exists.
 
 ### Low — address in follow-up
 
-6. **`resolved_slots` is `.optional()` in the discourse state schema** but `createEmptyDiscourseState` always initializes it to `{}`. Defensive `?? {}` fallbacks are scattered throughout. Make it required in the schema.
+2. **`resolved_slots` is `.optional()` in the discourse state schema** but `createEmptyDiscourseState` always initializes it to `{}`. Defensive `?? {}` fallbacks are scattered throughout. Make it required in the schema.
 
-7. **Nullable confidence types in schema vs non-nullable in policy.** `slotConfidenceSchema` uses `.nullable().optional()` per slot but `CommitPolicyInput` types confidence as `Partial<Record<SlotKey, number>>`. The `compactConfidence` bridge function handles the mismatch, but the schema should be non-nullable to match.
+3. **Nullable confidence types in schema vs non-nullable in policy.** `slotConfidenceSchema` uses `.nullable().optional()` per slot but `CommitPolicyInput` types confidence as `Partial<Record<SlotKey, number>>`. The `compactConfidence` bridge function handles the mismatch, but the schema should be non-nullable to match.
 
-8. **`TurnTrace` and `_provenance` from the spec are not implemented.** The observability and provenance section calls for fire-and-forget turn traces and a provenance map on `ResolvedSlots`. These may be intentionally deferred but should be tracked.
+4. **`TurnTrace` and `_provenance` from the spec are not implemented.** The observability and provenance section calls for fire-and-forget turn traces and a provenance map on `ResolvedSlots`. These may be intentionally deferred but should be tracked.
 
-9. **No integration test for multi-turn slot accumulation.** Commit policy tests verify slot preservation in isolation, but no test exercises the full path where `committedSlots` are persisted through `conversation-state.ts` and used as `priorResolvedSlots` in a subsequent turn.
+5. **No integration test for multi-turn slot accumulation.** Commit policy tests verify slot preservation in isolation, but no test exercises the full path where `committedSlots` are persisted through `conversation-state.ts` and used as `priorResolvedSlots` in a subsequent turn.
 
-10. **`deriveParameterFingerprint` regex** (`\b\d{1,2}(?::\d{2})?\s?(?:am|pm)?\b`) matches bare numbers like "3" in any context, which may trigger unnecessary re-consent in proposal compatibility checks.
+6. **`deriveParameterFingerprint` regex** (`\b\d{1,2}(?::\d{2})?\s?(?:am|pm)?\b`) matches bare numbers like "3" in any context, which may trigger unnecessary re-consent in proposal compatibility checks.
 
 ### Recommended merge sequence
 
-1. Fix items 1–5 on the existing branch
+1. Address item 1 on the existing branch if needed
 2. Run `pnpm typecheck && pnpm --filter @atlas/core test && pnpm --filter @atlas/web test`
 3. Merge PR #53
-4. Open follow-up issue for items 6–10
+4. Open follow-up issue for items 2–6
 
 ### Follow-up — clarification state cleanup (separate PR)
 

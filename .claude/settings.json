@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.worktree_path // .path // \"\"' | { read -r p; [ -n \"$p\" ] && (cd \"$p\" && pnpm install) || true; }",
+            "statusMessage": "Installing dependencies in worktree"
+          }
+        ]
+      }
+    ]
+  }
+}
