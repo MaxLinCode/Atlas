@@ -1,6 +1,7 @@
 import {
   type CommitPolicyOutput,
   containsWriteVerb,
+  type ConversationEntity,
   deriveAmbiguity,
   deriveConsentRequirement,
   type TurnAmbiguity,
@@ -64,8 +65,12 @@ export function decideTurnPolicy(
         ...(targetEntityId ? { targetEntityId } : {}),
         committedSlots: commitResult.committedSlots,
       };
-    case "confirmation":
-      if (classification.resolvedProposalId) {
+    case "confirmation": {
+      const proposalId =
+        classification.resolvedProposalId ??
+        resolveSingleActiveProposalId(input.routingContext.entityRegistry ?? []);
+
+      if (proposalId) {
         return {
           action: "recover_and_execute",
           reason: "The turn confirms one recoverable pending proposal.",
@@ -73,7 +78,7 @@ export function decideTurnPolicy(
           requiresConfirmation: false,
           useMutationPipeline: true,
           ...(targetEntityId ? { targetEntityId } : {}),
-          targetProposalId: classification.resolvedProposalId,
+          targetProposalId: proposalId,
           mutationInputSource: "recovered_proposal",
           committedSlots: commitResult.committedSlots,
         };
@@ -82,22 +87,14 @@ export function decideTurnPolicy(
       return {
         action: "present_proposal",
         reason:
-          "Confirmation language arrived for a ready consent-gated write, but no recoverable proposal exists yet; present proposal now.",
+          "Confirmation language arrived but no recoverable proposal exists; present proposal now.",
         requiresWrite: true,
         requiresConfirmation: true,
         useMutationPipeline: false,
         clarificationSlots: [],
         committedSlots: commitResult.committedSlots,
       };
-    // return {
-    //   action: "ask_clarification",
-    //   reason: "Confirmation language without one recoverable proposal should ask which proposal to apply.",
-    //   requiresWrite: false,
-    //   requiresConfirmation: false,
-    //   useMutationPipeline: false,
-    //   clarificationSlots: ["proposal"],
-    //   committedSlots: commitResult.committedSlots
-    // };
+    }
     case "clarification_answer":
     case "planning_request":
     case "edit_request":
@@ -208,6 +205,17 @@ function deriveStructuredWriteReadiness(
         ? "Clarification answer resolved the missing detail needed for the write path."
         : "Write-ready request can go straight to the mutation pipeline.",
   };
+}
+
+function resolveSingleActiveProposalId(
+  registry: ConversationEntity[],
+): string | undefined {
+  const active = registry.filter(
+    (e) =>
+      e.kind === "proposal_option" &&
+      (e.status === "active" || e.status === "presented"),
+  );
+  return active.length === 1 ? active[0]!.id : undefined;
 }
 
 function buildPolicyFromStructuredReadiness(
