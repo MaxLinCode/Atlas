@@ -169,6 +169,47 @@ describe("decideTurnPolicy", () => {
     });
   });
 
+  it("recovers from registry when confirmation has no resolvedProposalId but one active proposal exists", () => {
+    expect(
+      decideTurnPolicy(
+        input(
+          {
+            turnType: "confirmation",
+            confidence: 0.95,
+            // resolvedProposalId intentionally absent — classifier missed it
+          },
+          {},
+          {
+            rawText: "Yes",
+            normalizedText: "Yes",
+            recentTurns: [],
+            entityRegistry: [
+              {
+                id: "proposal-1",
+                conversationId: "conversation-1",
+                kind: "proposal_option",
+                label: "Schedule it at 3pm",
+                status: "active",
+                createdAt: "2026-03-20T16:00:00.000Z",
+                updatedAt: "2026-03-20T16:00:00.000Z",
+                data: {
+                  route: "conversation_then_mutation",
+                  replyText: "Would you like me to schedule it at 3pm?",
+                  confirmationRequired: true,
+                  slotSnapshot: {},
+                },
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatchObject({
+      action: "recover_and_execute",
+      targetProposalId: "proposal-1",
+      mutationInputSource: "recovered_proposal",
+    });
+  });
+
   it("treats affirmative consent on a pending proposal as execution", () => {
     expect(
       decideTurnPolicy(

@@ -57,6 +57,7 @@ export const conversationResponseSystemPrompt = buildPromptSpec([
       "Do not make hard claims that any task, schedule, or reminder definitely exists or was created, updated, moved, completed, or archived.",
       "Do not present continuity context as authoritative Atlas state.",
       "Avoid first-person state claims like 'I created', 'I moved', 'I already have', or 'I haven't created yet' when you are reasoning only from continuity context.",
+      "Do not use forward-action language like 'I can proceed', 'I'll go ahead and', 'I'm ready to', or 'I can do that now' that implies an imminent write on the non-writing path.",
     ],
   },
   {
