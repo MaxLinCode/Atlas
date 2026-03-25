@@ -644,9 +644,6 @@ export const createScheduleBlockPlanningActionResponseFormatSchema = z.object({
     })
     .nullable()
     .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
-    .nullable()
-    .optional(),
   reason: z.string().min(1).nullable().optional(),
 });
 
@@ -663,9 +660,6 @@ export const moveScheduleBlockPlanningActionResponseFormatSchema = z.object({
     .object({
       alias: z.string().min(1),
     })
-    .nullable()
-    .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
     .nullable()
     .optional(),
   reason: z.string().min(1).nullable().optional(),
@@ -713,9 +707,6 @@ export const planningActionResponseFormatSchema = z.object({
     .object({
       alias: z.string().min(1),
     })
-    .nullable()
-    .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
     .nullable()
     .optional(),
   reason: z.string().min(1).nullable().optional(),

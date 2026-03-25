@@ -487,14 +487,14 @@ function normalizePlanningOutput(
           return {
             type: action.type,
             taskRef: action.taskRef,
-            scheduleConstraint: action.scheduleConstraint ?? null,
+            scheduleConstraint: null,
             reason: action.reason,
           };
         case "move_schedule_block":
           return {
             type: action.type,
             blockRef: action.blockRef,
-            scheduleConstraint: action.scheduleConstraint ?? null,
+            scheduleConstraint: null,
             reason: action.reason,
           };
         case "complete_task":

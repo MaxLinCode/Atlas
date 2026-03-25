@@ -11,6 +11,7 @@ import {
   resolveScheduleBlockReference,
   resolveTaskReference,
   type ScheduleBlock,
+  type ScheduleConstraint,
   type Task,
 } from "@atlas/core";
 import {
@@ -33,6 +34,7 @@ export type ProcessInboxItemRequest = {
   planningInboxTextOverride?: {
     text: string;
   };
+  scheduleConstraint?: ScheduleConstraint | null;
 };
 
 export type ProcessInboxItemDependencies = {
@@ -85,6 +87,10 @@ export async function processInboxItem(
       }),
     });
     throw error;
+  }
+
+  if (input.scheduleConstraint !== undefined) {
+    planning = injectScheduleConstraint(planning, input.scheduleConstraint);
   }
 
   const plannerRun = buildPlannerRun(context, planningContext, planning);
@@ -1183,6 +1189,24 @@ function parseProcessInboxItemRequest(
   }
 
   return input;
+}
+
+function injectScheduleConstraint(
+  planning: InboxPlanningOutput,
+  constraint: ScheduleConstraint | null,
+): InboxPlanningOutput {
+  return {
+    ...planning,
+    actions: planning.actions.map((action) => {
+      if (
+        action.type === "create_schedule_block" ||
+        action.type === "move_schedule_block"
+      ) {
+        return { ...action, scheduleConstraint: constraint };
+      }
+      return action;
+    }),
+  };
 }
 
 function withRenderedFollowUp(

@@ -1,4 +1,77 @@
-import type { TimeSpec } from "./discourse-state";
+import type { TimeSpec, ResolvedSlots } from "./discourse-state";
+
+type Weekday =
+  | "sunday"
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday";
+
+const WEEKDAYS = new Set<string>([
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+]);
+
+export function buildScheduleConstraintFromSlots(
+  slots: Pick<ResolvedSlots, "day" | "time">,
+): {
+  dayReference: "today" | "tomorrow" | "weekday" | null;
+  weekday: Weekday | null;
+  weekOffset: number | null;
+  relativeMinutes?: number | null;
+  explicitHour: number | null;
+  minute: number | null;
+  preferredWindow: "morning" | "afternoon" | "evening" | null;
+  sourceText: string;
+} | null {
+  if (!slots.day && !slots.time) return null;
+
+  const timeFields = slots.time
+    ? timeSpecToConstraintFields(slots.time)
+    : {
+        explicitHour: null,
+        minute: null,
+        relativeMinutes: null,
+        preferredWindow: "morning" as const,
+      };
+
+  let dayReference: "today" | "tomorrow" | "weekday" | null = null;
+  let weekday: Weekday | null = null;
+  let weekOffset: number | null = null;
+
+  if (slots.day) {
+    const lower = slots.day.toLowerCase();
+    if (lower === "today") {
+      dayReference = "today";
+    } else if (lower === "tomorrow") {
+      dayReference = "tomorrow";
+    } else if (WEEKDAYS.has(lower)) {
+      dayReference = "weekday";
+      weekday = lower as Weekday;
+      weekOffset = 0;
+    }
+  }
+
+  const parts: string[] = [];
+  if (slots.day) parts.push(slots.day);
+  if (slots.time) parts.push(formatTimeSpec(slots.time));
+  const sourceText = parts.join(" at ") || "scheduled";
+
+  return {
+    dayReference,
+    weekday,
+    weekOffset,
+    ...timeFields,
+    sourceText,
+  };
+}
 
 export function timeSpecToHHMM(spec: TimeSpec): string | null {
   if (spec.kind === "absolute") {

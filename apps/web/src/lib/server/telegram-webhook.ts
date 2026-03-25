@@ -1,4 +1,5 @@
 import {
+  buildScheduleConstraintFromSlots,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   type ConfirmedMutationRecoveryInput,
@@ -528,12 +529,17 @@ export async function handleTelegramWebhook(
 
     await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
+    const recoveryConstraint = buildScheduleConstraintFromSlots(
+      routedWithContext.policy.committedSlots,
+    );
+
     const processing = await processInboxItem(
       {
         inboxItemId: ingress.inboxItem.id,
         planningInboxTextOverride: {
           text: synthesis.text,
         },
+        scheduleConstraint: recoveryConstraint,
       },
       {
         ...(dependencies.store ? { store: dependencies.store } : {}),
@@ -611,9 +617,14 @@ export async function handleTelegramWebhook(
   });
   await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
+  const mutationConstraint = buildScheduleConstraintFromSlots(
+    routedWithContext.policy.committedSlots,
+  );
+
   const processing = await processInboxItem(
     {
       inboxItemId: ingress.inboxItem.id,
+      scheduleConstraint: mutationConstraint,
     },
     {
       ...(dependencies.store ? { store: dependencies.store } : {}),
