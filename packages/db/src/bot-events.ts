@@ -92,33 +92,45 @@ export type OutgoingTelegramMessageRecordResult =
 export interface IncomingTelegramIngressStore {
   recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: StoredInboxItem
+    inboxItem: StoredInboxItem,
   ): Promise<IncomingTelegramMessageRecordResult>;
 }
 
 export interface OutgoingTelegramDeliveryStore {
-  reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult>;
-  updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void>;
+  reserveOutgoingIfAbsent(
+    event: StoredBotEvent,
+  ): Promise<OutgoingTelegramMessageRecordResult>;
+  updateOutgoing(
+    event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">,
+  ): Promise<void>;
 }
 
 export interface ConversationHistoryStore {
-  listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]>;
-  getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null>;
+  listRecentConversationTurns(
+    userId: string,
+    limit: number,
+  ): Promise<ConversationTurn[]>;
+  getLatestFollowUpBundleContext(
+    userId: string,
+  ): Promise<FollowUpBundleContext | null>;
 }
 
 class InMemoryTelegramBotEventStore
-  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore, ConversationHistoryStore
+  implements
+    IncomingTelegramIngressStore,
+    OutgoingTelegramDeliveryStore,
+    ConversationHistoryStore
 {
   private readonly eventsByKey = new Map<string, StoredBotEvent>();
   private readonly inboxItemsById = new Map<string, StoredInboxItem>();
 
   async recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: StoredInboxItem
+    inboxItem: StoredInboxItem,
   ): Promise<IncomingTelegramMessageRecordResult> {
     if (this.eventsByKey.has(event.idempotencyKey)) {
       return {
-        status: "duplicate"
+        status: "duplicate",
       };
     }
 
@@ -128,14 +140,16 @@ class InMemoryTelegramBotEventStore
     return {
       status: "recorded",
       eventId: event.id,
-      inboxItem
+      inboxItem,
     };
   }
 
-  async reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult> {
+  async reserveOutgoingIfAbsent(
+    event: StoredBotEvent,
+  ): Promise<OutgoingTelegramMessageRecordResult> {
     if (this.eventsByKey.has(event.idempotencyKey)) {
       return {
-        status: "duplicate"
+        status: "duplicate",
       };
     }
 
@@ -143,11 +157,13 @@ class InMemoryTelegramBotEventStore
 
     return {
       status: "reserved",
-      eventId: event.id
+      eventId: event.id,
     };
   }
 
-  async updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void> {
+  async updateOutgoing(
+    event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">,
+  ): Promise<void> {
     const existingEvent = this.eventsByKey.get(event.idempotencyKey);
 
     if (!existingEvent) {
@@ -157,28 +173,40 @@ class InMemoryTelegramBotEventStore
     this.eventsByKey.set(event.idempotencyKey, {
       ...existingEvent,
       payload: event.payload,
-      retryState: event.retryState
+      retryState: event.retryState,
     });
   }
 
-  async listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]> {
+  async listRecentConversationTurns(
+    userId: string,
+    limit: number,
+  ): Promise<ConversationTurn[]> {
     return buildRecentConversationTurns({
-      inboxItems: Array.from(this.inboxItemsById.values()).filter((item) => item.userId === userId),
-      events: Array.from(this.eventsByKey.values()).filter((event) => event.userId === userId),
-      limit
+      inboxItems: Array.from(this.inboxItemsById.values()).filter(
+        (item) => item.userId === userId,
+      ),
+      events: Array.from(this.eventsByKey.values()).filter(
+        (event) => event.userId === userId,
+      ),
+      limit,
     });
   }
 
-  async getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null> {
+  async getLatestFollowUpBundleContext(
+    userId: string,
+  ): Promise<FollowUpBundleContext | null> {
     const latest = Array.from(this.eventsByKey.values())
       .filter(
         (event) =>
           event.userId === userId &&
           event.direction === "outgoing" &&
           event.retryState === "sent" &&
-          isFollowUpBundlePayload(event.payload)
+          isFollowUpBundlePayload(event.payload),
       )
-      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+      .sort(
+        (left, right) =>
+          Date.parse(right.createdAt) - Date.parse(left.createdAt),
+      )[0];
 
     if (!latest || !isFollowUpBundlePayload(latest.payload)) {
       return null;
@@ -186,7 +214,7 @@ class InMemoryTelegramBotEventStore
 
     return {
       ...latest.payload,
-      createdAt: latest.createdAt
+      createdAt: latest.createdAt,
     };
   }
 
@@ -205,21 +233,24 @@ class InMemoryTelegramBotEventStore
 }
 
 export class PostgresTelegramBotEventStore
-  implements IncomingTelegramIngressStore, OutgoingTelegramDeliveryStore, ConversationHistoryStore
+  implements
+    IncomingTelegramIngressStore,
+    OutgoingTelegramDeliveryStore,
+    ConversationHistoryStore
 {
   private readonly client;
   private readonly db;
 
   constructor(databaseUrl = getRequiredDatabaseUrl()) {
     this.client = postgres(databaseUrl, {
-      prepare: false
+      prepare: false,
     });
     this.db = drizzle(this.client);
   }
 
   async recordIncomingIfAbsent(
     event: StoredBotEvent,
-    inboxItem: StoredInboxItem
+    inboxItem: StoredInboxItem,
   ): Promise<IncomingTelegramMessageRecordResult> {
     return this.db.transaction(async (tx) => {
       const insertedEvent = await tx
@@ -232,18 +263,18 @@ export class PostgresTelegramBotEventStore
           idempotencyKey: event.idempotencyKey,
           payload: event.payload,
           retryState: event.retryState,
-          createdAt: new Date(event.createdAt)
+          createdAt: new Date(event.createdAt),
         })
         .onConflictDoNothing({
-          target: botEvents.idempotencyKey
+          target: botEvents.idempotencyKey,
         })
         .returning({
-          id: botEvents.id
+          id: botEvents.id,
         });
 
       if (insertedEvent.length === 0) {
         return {
-          status: "duplicate" as const
+          status: "duplicate" as const,
         };
       }
 
@@ -255,18 +286,20 @@ export class PostgresTelegramBotEventStore
         normalizedText: inboxItem.normalizedText,
         processingStatus: inboxItem.processingStatus,
         linkedTaskIds: inboxItem.linkedTaskIds,
-        createdAt: new Date(inboxItem.createdAt)
+        createdAt: new Date(inboxItem.createdAt),
       });
 
       return {
         status: "recorded" as const,
         eventId: event.id,
-        inboxItem
+        inboxItem,
       };
     });
   }
 
-  async reserveOutgoingIfAbsent(event: StoredBotEvent): Promise<OutgoingTelegramMessageRecordResult> {
+  async reserveOutgoingIfAbsent(
+    event: StoredBotEvent,
+  ): Promise<OutgoingTelegramMessageRecordResult> {
     const insertedEvent = await this.db
       .insert(botEvents)
       .values({
@@ -277,43 +310,50 @@ export class PostgresTelegramBotEventStore
         idempotencyKey: event.idempotencyKey,
         payload: event.payload,
         retryState: event.retryState,
-        createdAt: new Date(event.createdAt)
+        createdAt: new Date(event.createdAt),
       })
       .onConflictDoNothing({
-        target: botEvents.idempotencyKey
+        target: botEvents.idempotencyKey,
       })
       .returning({
-        id: botEvents.id
+        id: botEvents.id,
       });
 
     if (insertedEvent.length === 0) {
       return {
-        status: "duplicate"
+        status: "duplicate",
       };
     }
 
     return {
       status: "reserved",
-      eventId: event.id
+      eventId: event.id,
     };
   }
 
-  async updateOutgoing(event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">): Promise<void> {
+  async updateOutgoing(
+    event: Pick<StoredBotEvent, "idempotencyKey" | "payload" | "retryState">,
+  ): Promise<void> {
     await this.db
       .update(botEvents)
       .set({
         payload: event.payload,
-        retryState: event.retryState
+        retryState: event.retryState,
       })
-      .where(sql`${botEvents.idempotencyKey} = ${event.idempotencyKey} and ${botEvents.direction} = 'outgoing'`);
+      .where(
+        sql`${botEvents.idempotencyKey} = ${event.idempotencyKey} and ${botEvents.direction} = 'outgoing'`,
+      );
   }
 
-  async listRecentConversationTurns(userId: string, limit: number): Promise<ConversationTurn[]> {
+  async listRecentConversationTurns(
+    userId: string,
+    limit: number,
+  ): Promise<ConversationTurn[]> {
     const [inboxItemRows, eventRows] = await Promise.all([
       this.db
         .select({
           rawText: inboxItems.rawText,
-          createdAt: inboxItems.createdAt
+          createdAt: inboxItems.createdAt,
         })
         .from(inboxItems)
         .where(sql`${inboxItems.userId} = ${userId}`)
@@ -323,40 +363,42 @@ export class PostgresTelegramBotEventStore
         .select({
           eventType: botEvents.eventType,
           payload: botEvents.payload,
-          createdAt: botEvents.createdAt
+          createdAt: botEvents.createdAt,
         })
         .from(botEvents)
         .where(
-          sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`
+          sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`,
         )
         .orderBy(sql`${botEvents.createdAt} desc`)
-        .limit(limit)
+        .limit(limit),
     ]);
 
     return buildRecentConversationTurns({
       inboxItems: inboxItemRows.reverse().map((row) => ({
         rawText: row.rawText,
-        createdAt: row.createdAt.toISOString()
+        createdAt: row.createdAt.toISOString(),
       })),
       events: eventRows.reverse().map((row) => ({
         eventType: row.eventType,
         payload: row.payload,
         createdAt: row.createdAt.toISOString(),
-        retryState: "sent" as const
+        retryState: "sent" as const,
       })),
-      limit
+      limit,
     });
   }
 
-  async getLatestFollowUpBundleContext(userId: string): Promise<FollowUpBundleContext | null> {
+  async getLatestFollowUpBundleContext(
+    userId: string,
+  ): Promise<FollowUpBundleContext | null> {
     const rows = await this.db
       .select({
         payload: botEvents.payload,
-        createdAt: botEvents.createdAt
+        createdAt: botEvents.createdAt,
       })
       .from(botEvents)
       .where(
-        sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`
+        sql`${botEvents.userId} = ${userId} and ${botEvents.direction} = 'outgoing' and ${botEvents.retryState} = 'sent'`,
       )
       .orderBy(sql`${botEvents.createdAt} desc`)
       .limit(20);
@@ -369,7 +411,7 @@ export class PostgresTelegramBotEventStore
 
     return {
       ...latest.payload,
-      createdAt: latest.createdAt.toISOString()
+      createdAt: latest.createdAt.toISOString(),
     };
   }
 
@@ -386,7 +428,7 @@ let postgresStore: PostgresTelegramBotEventStore | null = null;
 
 export async function recordIncomingTelegramMessageIfNew(
   input: IncomingTelegramMessage,
-  store: IncomingTelegramIngressStore = getDefaultStore()
+  store: IncomingTelegramIngressStore = getDefaultStore(),
 ): Promise<IncomingTelegramMessageRecordResult> {
   const eventId = randomUUID();
   const inboxItemId = randomUUID();
@@ -401,7 +443,7 @@ export async function recordIncomingTelegramMessageIfNew(
       idempotencyKey: input.idempotencyKey,
       payload: input.payload,
       retryState: "received",
-      createdAt
+      createdAt,
     },
     {
       id: inboxItemId,
@@ -411,14 +453,14 @@ export async function recordIncomingTelegramMessageIfNew(
       normalizedText: input.normalizedText,
       processingStatus: "received",
       linkedTaskIds: [],
-      createdAt
-    }
+      createdAt,
+    },
   );
 }
 
 export async function recordOutgoingTelegramMessageIfNew(
   input: OutgoingTelegramMessage,
-  store: OutgoingTelegramDeliveryStore = getDefaultStore()
+  store: OutgoingTelegramDeliveryStore = getDefaultStore(),
 ): Promise<OutgoingTelegramMessageRecordResult> {
   return store.reserveOutgoingIfAbsent({
     id: randomUUID(),
@@ -428,28 +470,31 @@ export async function recordOutgoingTelegramMessageIfNew(
     idempotencyKey: input.idempotencyKey,
     payload: input.payload,
     retryState: input.retryState,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   });
 }
 
 export async function listRecentConversationTurns(
   userId: string,
   limit: number,
-  store: ConversationHistoryStore = getDefaultStore()
+  store: ConversationHistoryStore = getDefaultStore(),
 ) {
   return store.listRecentConversationTurns(userId, limit);
 }
 
 export async function getLatestFollowUpBundleContext(
   userId: string,
-  store: ConversationHistoryStore = getDefaultStore()
+  store: ConversationHistoryStore = getDefaultStore(),
 ) {
   return store.getLatestFollowUpBundleContext(userId);
 }
 
 export async function updateOutgoingTelegramMessage(
-  input: Pick<OutgoingTelegramMessage, "idempotencyKey" | "payload" | "retryState">,
-  store: OutgoingTelegramDeliveryStore = getDefaultStore()
+  input: Pick<
+    OutgoingTelegramMessage,
+    "idempotencyKey" | "payload" | "retryState"
+  >,
+  store: OutgoingTelegramDeliveryStore = getDefaultStore(),
 ) {
   await store.updateOutgoing(input);
 }
@@ -459,18 +504,24 @@ export function resetIncomingTelegramIngressStoreForTests() {
 }
 
 export function listIncomingBotEventsForTests() {
-  return defaultInMemoryStore.listEvents().filter((event) => event.direction === "incoming");
+  return defaultInMemoryStore
+    .listEvents()
+    .filter((event) => event.direction === "incoming");
 }
 
 export function listOutgoingBotEventsForTests() {
-  return defaultInMemoryStore.listEvents().filter((event) => event.direction === "outgoing");
+  return defaultInMemoryStore
+    .listEvents()
+    .filter((event) => event.direction === "outgoing");
 }
 
 export function listInboxItemsForTests() {
   return defaultInMemoryStore.listInboxItems();
 }
 
-function getDefaultStore(): InMemoryTelegramBotEventStore | PostgresTelegramBotEventStore {
+function getDefaultStore():
+  | InMemoryTelegramBotEventStore
+  | PostgresTelegramBotEventStore {
   if (isTestEnvironment()) {
     return defaultInMemoryStore;
   }
@@ -499,7 +550,7 @@ function buildRecentConversationTurns(input: {
     ...input.inboxItems.map<ConversationTurn>((item) => ({
       role: "user",
       text: item.rawText,
-      createdAt: item.createdAt
+      createdAt: item.createdAt,
     })),
     ...input.events.flatMap<ConversationTurn>((event) => {
       if (event.retryState && event.retryState !== "sent") {
@@ -516,14 +567,16 @@ function buildRecentConversationTurns(input: {
         {
           role: "assistant",
           text,
-          createdAt: event.createdAt
-        }
+          createdAt: event.createdAt,
+        },
       ];
-    })
+    }),
   ];
 
   return turns
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+    .sort(
+      (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
+    )
     .slice(-input.limit);
 }
 
@@ -536,7 +589,10 @@ function readOutgoingText(payload: unknown) {
   return typeof text === "string" && text.trim() ? text : null;
 }
 
-function shouldExcludeConversationEvent(eventType: string | undefined, text: string) {
+function shouldExcludeConversationEvent(
+  eventType: string | undefined,
+  text: string,
+) {
   if (eventType === "telegram_google_calendar_link") {
     return true;
   }
@@ -547,7 +603,9 @@ function shouldExcludeConversationEvent(eventType: string | undefined, text: str
   );
 }
 
-function isFollowUpBundlePayload(payload: unknown): payload is Omit<FollowUpBundleContext, "createdAt"> {
+function isFollowUpBundlePayload(
+  payload: unknown,
+): payload is Omit<FollowUpBundleContext, "createdAt"> {
   if (!payload || typeof payload !== "object") {
     return false;
   }

@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import {
   getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
+  listTasksForTests,
   resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
   seedInboxItemForProcessingTests,
-  listTasksForTests
 } from "@atlas/db";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildGoogleCalendarConnectCookieName,
@@ -17,7 +16,7 @@ import {
   handleGoogleCalendarOauthCallback,
   reconcileGoogleCalendarConnections,
   resolveGoogleCalendarAdapter,
-  startGoogleCalendarOauth
+  startGoogleCalendarOauth,
 } from "./google-calendar";
 
 describe("google calendar app services", () => {
@@ -30,9 +29,13 @@ describe("google calendar app services", () => {
     process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
     process.env.GOOGLE_CLIENT_ID = "google-client-id";
     process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
-    process.env.GOOGLE_OAUTH_REDIRECT_URI = "https://example.com/api/google-calendar/oauth/callback";
+    process.env.GOOGLE_OAUTH_REDIRECT_URI =
+      "https://example.com/api/google-calendar/oauth/callback";
     process.env.GOOGLE_LINK_TOKEN_SECRET = "google-link-secret";
-    process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = Buffer.alloc(
+      32,
+      7,
+    ).toString("base64");
     resetGoogleCalendarConnectionStoreForTests();
     resetInboxProcessingStoreForTests();
   });
@@ -43,51 +46,67 @@ describe("google calendar app services", () => {
       {
         baseUrl: "http://localhost",
         userId: "123",
-        redirectPath: "/settings"
+        redirectPath: "/settings",
       },
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
 
-    const previewResult = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
-      connectionStore
-    });
+    const previewResult = await handleGoogleCalendarConnectPreview(
+      new Request(connectLink),
+      {
+        connectionStore,
+      },
+    );
 
     expect(previewResult.status).toBe(200);
-    expect("confirmation" in previewResult ? previewResult.confirmation : null).toMatchObject({
-      title: "Connect Google Calendar"
+    expect(
+      "confirmation" in previewResult ? previewResult.confirmation : null,
+    ).toMatchObject({
+      title: "Connect Google Calendar",
     });
 
     const previewUrl = new URL(connectLink);
     const token = previewUrl.searchParams.get("token");
-    const confirmRequest = new Request("http://localhost/google-calendar/connect", {
-      method: "POST",
-      body: new URLSearchParams({
-        token: token ?? ""
-      })
-    });
-    const connectResult = await handleGoogleCalendarConnectConfirm(confirmRequest, {
-      connectionStore
-    });
+    const confirmRequest = new Request(
+      "http://localhost/google-calendar/connect",
+      {
+        method: "POST",
+        body: new URLSearchParams({
+          token: token ?? "",
+        }),
+      },
+    );
+    const connectResult = await handleGoogleCalendarConnectConfirm(
+      confirmRequest,
+      {
+        connectionStore,
+      },
+    );
 
     expect(connectResult.status).toBe(302);
-    expect("headers" in connectResult ? connectResult.headers.location : "").toBe("/api/google-calendar/oauth/start");
-    const cookie = "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
+    expect(
+      "headers" in connectResult ? connectResult.headers.location : "",
+    ).toBe("/api/google-calendar/oauth/start");
+    const cookie =
+      "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
 
     const startResult = await startGoogleCalendarOauth(
       new Request("http://localhost/api/google-calendar/oauth/start", {
         headers: {
-          cookie
-        }
+          cookie,
+        },
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
 
     expect(startResult.status).toBe(302);
-    expect("headers" in startResult ? startResult.headers.location : "").toContain("accounts.google.com");
+    expect(
+      "headers" in startResult ? startResult.headers.location : "",
+    ).toContain("accounts.google.com");
   });
 
   it("persists the linked account from the OAuth callback and clears the link session cookie", async () => {
@@ -95,40 +114,46 @@ describe("google calendar app services", () => {
     const connectLink = await createGoogleCalendarConnectLink(
       {
         baseUrl: "http://localhost",
-        userId: "123"
+        userId: "123",
       },
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
     const previewUrl = new URL(connectLink);
-    const previewResult = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
-      connectionStore
-    });
+    const previewResult = await handleGoogleCalendarConnectPreview(
+      new Request(connectLink),
+      {
+        connectionStore,
+      },
+    );
     expect(previewResult.status).toBe(200);
     const connectResult = await handleGoogleCalendarConnectConfirm(
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: previewUrl.searchParams.get("token") ?? ""
-        })
+          token: previewUrl.searchParams.get("token") ?? "",
+        }),
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
-    const cookie = "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
+    const cookie =
+      "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
     const start = await startGoogleCalendarOauth(
       new Request("http://localhost/api/google-calendar/oauth/start", {
         headers: {
-          cookie
-        }
+          cookie,
+        },
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
-    const redirectUrl = new URL(("headers" in start ? start.headers.location : "") || "http://localhost");
+    const redirectUrl = new URL(
+      ("headers" in start ? start.headers.location : "") || "http://localhost",
+    );
     const state = redirectUrl.searchParams.get("state");
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -138,17 +163,17 @@ describe("google calendar app services", () => {
             access_token: "access-token",
             refresh_token: "refresh-token",
             expires_in: 3600,
-            scope: "scope-a scope-b"
-          })
-        )
+            scope: "scope-a scope-b",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             id: "google-user-1",
-            email: "max@example.com"
-          })
-        )
+            email: "max@example.com",
+          }),
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -157,42 +182,45 @@ describe("google calendar app services", () => {
               {
                 id: "atlas-calendar-id",
                 summary: "Atlas",
-                accessRole: "owner"
+                accessRole: "owner",
               },
               {
                 id: "primary",
                 summary: "Primary",
                 primary: true,
-                accessRole: "owner"
-              }
-            ]
-          })
-        )
+                accessRole: "owner",
+              },
+            ],
+          }),
+        ),
       );
 
     const result = await handleGoogleCalendarOauthCallback(
-      new Request(`http://localhost/api/google-calendar/oauth/callback?code=oauth-code&state=${state}`, {
-        headers: {
-          cookie
-        }
-      }),
+      new Request(
+        `http://localhost/api/google-calendar/oauth/callback?code=oauth-code&state=${state}`,
+        {
+          headers: {
+            cookie,
+          },
+        },
+      ),
       {
         connectionStore,
-        fetch: fetchMock
-      }
+        fetch: fetchMock,
+      },
     );
 
     expect(result.status).toBe(200);
     expect("completion" in result ? result.completion : null).toMatchObject({
-      title: "Google Calendar connected"
+      title: "Google Calendar connected",
     });
     await expect(connectionStore.getConnection("123")).resolves.toMatchObject({
       email: "max@example.com",
       selectedCalendarId: "atlas-calendar-id",
-      selectedCalendarName: "Atlas"
+      selectedCalendarName: "Atlas",
     });
     expect("headers" in result ? result.headers["set-cookie"] : "").toContain(
-      `${buildGoogleCalendarConnectCookieName()}=`
+      `${buildGoogleCalendarConnectCookieName()}=`,
     );
   });
 
@@ -201,55 +229,58 @@ describe("google calendar app services", () => {
     const connectLink = await createGoogleCalendarConnectLink(
       {
         baseUrl: "http://localhost",
-        userId: "123"
+        userId: "123",
       },
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
 
     const previewUrl = new URL(connectLink);
-    const firstPreview = await handleGoogleCalendarConnectPreview(new Request(connectLink), {
-      connectionStore
-    });
+    const firstPreview = await handleGoogleCalendarConnectPreview(
+      new Request(connectLink),
+      {
+        connectionStore,
+      },
+    );
     const first = await handleGoogleCalendarConnectConfirm(
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: previewUrl.searchParams.get("token") ?? ""
-        })
+          token: previewUrl.searchParams.get("token") ?? "",
+        }),
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
     const replay = await handleGoogleCalendarConnectConfirm(
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: previewUrl.searchParams.get("token") ?? ""
-        })
+          token: previewUrl.searchParams.get("token") ?? "",
+        }),
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
     const forgedPreview = await handleGoogleCalendarConnectPreview(
       new Request("http://localhost/google-calendar/connect?token=forged"),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
     const forged = await handleGoogleCalendarConnectConfirm(
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: "forged"
-        })
+          token: "forged",
+        }),
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
 
     expect(firstPreview.status).toBe(200);
@@ -266,18 +297,18 @@ describe("google calendar app services", () => {
       createGoogleCalendarConnectLink(
         {
           baseUrl: "http://localhost",
-          userId: "999"
+          userId: "999",
         },
         {
-          connectionStore
-        }
-      )
+          connectionStore,
+        },
+      ),
     ).rejects.toThrow(/non-allowlisted user/);
   });
 
   it("does not start OAuth without a valid link session cookie", async () => {
     const result = await startGoogleCalendarOauth(
-      new Request("http://localhost/api/google-calendar/oauth/start")
+      new Request("http://localhost/api/google-calendar/oauth/start"),
     );
 
     expect(result.status).toBe(403);
@@ -288,54 +319,62 @@ describe("google calendar app services", () => {
     const connectLink = await createGoogleCalendarConnectLink(
       {
         baseUrl: "http://localhost",
-        userId: "123"
+        userId: "123",
       },
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
     const connectResult = await handleGoogleCalendarConnectConfirm(
       new Request("http://localhost/google-calendar/connect", {
         method: "POST",
         body: new URLSearchParams({
-          token: new URL(connectLink).searchParams.get("token") ?? ""
-        })
+          token: new URL(connectLink).searchParams.get("token") ?? "",
+        }),
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
-    const cookie = "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
+    const cookie =
+      "headers" in connectResult ? connectResult.headers["set-cookie"] : "";
     const start = await startGoogleCalendarOauth(
       new Request("http://localhost/api/google-calendar/oauth/start", {
         headers: {
-          cookie
-        }
+          cookie,
+        },
       }),
       {
-        connectionStore
-      }
+        connectionStore,
+      },
     );
-    const redirectUrl = new URL(("headers" in start ? start.headers.location : "") || "http://localhost");
+    const redirectUrl = new URL(
+      ("headers" in start ? start.headers.location : "") || "http://localhost",
+    );
     const state = redirectUrl.searchParams.get("state");
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response("bad", { status: 500 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("bad", { status: 500 }));
 
     await expect(
       handleGoogleCalendarOauthCallback(
-        new Request(`http://localhost/api/google-calendar/oauth/callback?code=oauth-code&state=${state}`, {
-          headers: {
-            cookie
-          }
-        }),
+        new Request(
+          `http://localhost/api/google-calendar/oauth/callback?code=oauth-code&state=${state}`,
+          {
+            headers: {
+              cookie,
+            },
+          },
+        ),
         {
           connectionStore,
-          fetch: fetchMock
-        }
-      )
+          fetch: fetchMock,
+        },
+      ),
     ).rejects.toThrow();
 
     await expect(connectionStore.getOauthState(state!)).resolves.toMatchObject({
-      state
+      state,
     });
   });
 
@@ -353,26 +392,28 @@ describe("google calendar app services", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
     const connection = await connectionStore.getConnection("123");
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           access_token: "fresh-token",
-          expires_in: 3600
-        })
-      )
+          expires_in: 3600,
+        }),
+      ),
     );
 
     const resolved = await resolveGoogleCalendarAdapter(connection!, {
       connectionStore,
-      fetch: fetchMock
+      fetch: fetchMock,
     });
 
     expect("accessToken" in resolved.connection).toBe(false);
-    await expect(connectionStore.getConnectionCredentials("123")).resolves.toMatchObject({
-      accessToken: "fresh-token"
+    await expect(
+      connectionStore.getConnectionCredentials("123"),
+    ).resolves.toMatchObject({
+      accessToken: "fresh-token",
     });
   });
 
@@ -387,7 +428,7 @@ describe("google calendar app services", () => {
       rawText: "Review launch checklist",
       normalizedText: "Review launch checklist",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await inboxStore.saveTaskCaptureResult({
@@ -399,7 +440,7 @@ describe("google calendar app services", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       tasks: [
         {
@@ -422,9 +463,9 @@ describe("google calendar app services", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -436,10 +477,10 @@ describe("google calendar app services", () => {
           confidence: 0.9,
           reason: "Scheduled",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Scheduled"
+      followUpMessage: "Scheduled",
     });
 
     await connectionStore.upsertConnection({
@@ -454,7 +495,7 @@ describe("google calendar app services", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
 
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
@@ -462,26 +503,26 @@ describe("google calendar app services", () => {
         JSON.stringify({
           id: "event-1",
           start: {
-            dateTime: "2026-03-20T18:00:00.000Z"
+            dateTime: "2026-03-20T18:00:00.000Z",
           },
           end: {
-            dateTime: "2026-03-20T19:00:00.000Z"
-          }
-        })
-      )
+            dateTime: "2026-03-20T19:00:00.000Z",
+          },
+        }),
+      ),
     );
 
     await expect(
       reconcileGoogleCalendarConnections({
         connectionStore,
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
-      outOfSyncTasks: 1
+      outOfSyncTasks: 1,
     });
 
     expect(listTasksForTests()[0]).toMatchObject({
-      calendarSyncStatus: "out_of_sync"
+      calendarSyncStatus: "out_of_sync",
     });
   });
 
@@ -500,7 +541,7 @@ describe("google calendar app services", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
     await connectionStore.upsertConnection({
       userId: "456",
@@ -514,7 +555,7 @@ describe("google calendar app services", () => {
       scopes: ["calendar"],
       syncCursor: null,
       lastSyncedAt: null,
-      revokedAt: null
+      revokedAt: null,
     });
 
     seedInboxItemForProcessingTests({
@@ -524,7 +565,7 @@ describe("google calendar app services", () => {
       rawText: "Prepare review",
       normalizedText: "Prepare review",
       processingStatus: "received",
-      linkedTaskIds: []
+      linkedTaskIds: [],
     });
 
     await getDefaultInboxProcessingStore().saveTaskCaptureResult({
@@ -536,7 +577,7 @@ describe("google calendar app services", () => {
         version: "test-v1",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       tasks: [
         {
@@ -559,9 +600,9 @@ describe("google calendar app services", () => {
             completedAt: null,
             archivedAt: null,
             priority: "medium",
-            urgency: "medium"
-          }
-        }
+            urgency: "medium",
+          },
+        },
       ],
       scheduleBlocks: [
         {
@@ -573,10 +614,10 @@ describe("google calendar app services", () => {
           confidence: 0.9,
           reason: "Scheduled",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: "Scheduled"
+      followUpMessage: "Scheduled",
     });
 
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
@@ -584,24 +625,24 @@ describe("google calendar app services", () => {
         JSON.stringify({
           id: "event-2",
           start: {
-            dateTime: "2026-03-20T17:00:00.000Z"
+            dateTime: "2026-03-20T17:00:00.000Z",
           },
           end: {
-            dateTime: "2026-03-20T18:00:00.000Z"
-          }
-        })
-      )
+            dateTime: "2026-03-20T18:00:00.000Z",
+          },
+        }),
+      ),
     );
 
     await expect(
       reconcileGoogleCalendarConnections({
         connectionStore,
-        fetch: fetchMock
-      })
+        fetch: fetchMock,
+      }),
     ).resolves.toMatchObject({
       reconciledConnections: 2,
       failedConnections: 1,
-      syncedTasks: 1
+      syncedTasks: 1,
     });
   });
 });

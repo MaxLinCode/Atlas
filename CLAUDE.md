@@ -110,10 +110,12 @@ Build Atlas as a production-quality, Telegram-first planning assistant. The code
 
 ## Git Workflow Rules
 
+- **Every workflow — no exceptions — must use a git worktree and a dedicated branch.**
+  - Create a worktree before touching any files: `git worktree add ../atlas-<short-description> -b codex/<short-description>`
+  - All edits, experiments, and commits happen inside that worktree, never in the main checkout.
+  - This prevents dirty-worktree collisions between concurrent tasks (e.g. formatting runs vs. feature work).
 - Follow `docs/workflows/feature-delivery.md` for product features, fixes, and behavior changes.
-- For any non-trivial code change, work on a feature branch named `codex/<short-description>`.
 - Do not commit or push implementation work directly to `main`.
-- Before pushing, confirm the current branch is not `main`.
 - If work is accidentally committed on `main`, move it to a feature branch before pushing.
 
 ## Execution Rules

@@ -1,558 +1,554 @@
-import type { ConversationStateSnapshot, TimeSpec } from "@atlas/core";
-import type { ProcessedInboxResult } from "@atlas/db";
 import { describe, expect, it } from "vitest";
-
-function t(hour: number, minute: number): TimeSpec {
-	return { kind: "absolute", hour, minute };
-}
+import type { ConversationStateSnapshot } from "@atlas/core";
+import type { ProcessedInboxResult } from "@atlas/db";
 
 import {
-	deriveConversationReplyState,
-	deriveMutationState,
+  deriveConversationReplyState,
+  deriveMutationState,
 } from "./conversation-state";
 
 function buildSnapshot(): ConversationStateSnapshot {
-	return {
-		conversation: {
-			id: "conversation-1",
-			userId: "user-1",
-			title: null,
-			mode: "conversation" as const,
-			summaryText: null,
-			createdAt: "2026-03-22T16:00:00.000Z",
-			updatedAt: "2026-03-22T16:00:00.000Z",
-		},
-		transcript: [],
-		entityRegistry: [],
-		discourseState: {
-			focus_entity_id: null,
-			currently_editable_entity_id: null,
-			last_user_mentioned_entity_ids: [],
-			last_presented_items: [],
-			pending_clarifications: [],
-			mode: "planning" as const,
-		},
-	};
+  return {
+    conversation: {
+      id: "conversation-1",
+      userId: "user-1",
+      title: null,
+      mode: "conversation" as const,
+      summaryText: null,
+      createdAt: "2026-03-22T16:00:00.000Z",
+      updatedAt: "2026-03-22T16:00:00.000Z",
+    },
+    transcript: [],
+    entityRegistry: [],
+    discourseState: {
+      focus_entity_id: null,
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [],
+      mode: "planning" as const,
+    },
+  };
 }
 
 describe("deriveConversationReplyState", () => {
-	it("persists a clarification only when structured interpretation still has a real missing slot", () => {
-		const result = deriveConversationReplyState({
-			snapshot: buildSnapshot(),
-			policy: {
-				action: "ask_clarification",
-				clarificationSlots: ["time"],
-				committedSlots: {},
-			},
-			interpretation: {
-				turnType: "planning_request",
-				confidence: 0.58,
-				resolvedEntityIds: [],
-				ambiguity: "high",
-				missingSlots: ["time"],
-			},
-			reply: "What time should I schedule the Malaysia trip planning?",
-			userTurnText: "schedule malaysia trip planning tomorrow",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+  it("persists a clarification only when structured interpretation still has a real missing slot", () => {
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["time"],
+        committedSlots: {},
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingSlots: ["time"],
+      },
+      reply: "What time should I schedule the Malaysia trip planning?",
+      userTurnText: "schedule malaysia trip planning tomorrow",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.entityRegistry).toHaveLength(1);
-		expect(result.entityRegistry[0]).toMatchObject({
-			kind: "clarification",
-			status: "active",
-			data: {
-				reason: "time",
-			},
-		});
-		expect(result.discourseState?.pending_clarifications).toEqual([
-			expect.objectContaining({
-				slot: "time",
-				status: "pending",
-			}),
-		]);
-		expect(result.discourseState?.mode).toBe("clarifying");
-	});
+    expect(result.entityRegistry).toHaveLength(1);
+    expect(result.entityRegistry[0]).toMatchObject({
+      kind: "clarification",
+      status: "active",
+      data: {
+        reason: "time",
+      },
+    });
+    expect(result.discourseState?.pending_clarifications).toEqual([
+      expect.objectContaining({
+        slot: "time",
+        status: "pending",
+      }),
+    ]);
+    expect(result.discourseState?.mode).toBe("clarifying");
+  });
 
-	it("does not persist clarification state for ask_clarification without a real blocking slot", () => {
-		const result = deriveConversationReplyState({
-			snapshot: buildSnapshot(),
-			policy: {
-				action: "ask_clarification",
-				clarificationSlots: ["proposal"],
-				committedSlots: {},
-			},
-			interpretation: {
-				turnType: "confirmation",
-				confidence: 0.32,
-				resolvedEntityIds: [],
-				ambiguity: "high",
-			},
-			reply: "Which proposal do you want me to apply?",
-			userTurnText: "ok",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+  it("does not persist clarification state for ask_clarification without a real blocking slot", () => {
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["proposal"],
+        committedSlots: {},
+      },
+      interpretation: {
+        turnType: "confirmation",
+        confidence: 0.32,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+      },
+      reply: "Which proposal do you want me to apply?",
+      userTurnText: "ok",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.entityRegistry).toHaveLength(0);
-		expect(result.discourseState?.pending_clarifications).toEqual([]);
-		expect(result.discourseState?.mode).toBe("planning");
-	});
+    expect(result.entityRegistry).toHaveLength(0);
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
+    expect(result.discourseState?.mode).toBe("planning");
+  });
 
-	it("rejects slot unknown as a persistable blocking clarification", () => {
-		const result = deriveConversationReplyState({
-			snapshot: buildSnapshot(),
-			policy: {
-				action: "ask_clarification",
-				committedSlots: {},
-			},
-			interpretation: {
-				turnType: "unknown",
-				confidence: 0.42,
-				resolvedEntityIds: [],
-				ambiguity: "high",
-				missingSlots: ["unknown"],
-			},
-			reply: "Can you clarify what you want me to change?",
-			userTurnText: "do it",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+  it("rejects slot unknown as a persistable blocking clarification", () => {
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        committedSlots: {},
+      },
+      interpretation: {
+        turnType: "unknown",
+        confidence: 0.42,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingSlots: ["unknown"],
+      },
+      reply: "Can you clarify what you want me to change?",
+      userTurnText: "do it",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.entityRegistry).toHaveLength(0);
-		expect(result.discourseState?.pending_clarifications).toEqual([]);
-		expect(result.discourseState?.mode).toBe("planning");
-	});
+    expect(result.entityRegistry).toHaveLength(0);
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
+    expect(result.discourseState?.mode).toBe("planning");
+  });
 
-	it("clears active clarification state when a proposal is presented", () => {
-		const snapshot = buildSnapshot();
-		snapshot.entityRegistry = [
-			{
-				id: "clar-1",
-				conversationId: "conversation-1",
-				kind: "clarification",
-				label: "Need a time",
-				status: "active",
-				createdAt: "2026-03-22T16:01:00.000Z",
-				updatedAt: "2026-03-22T16:01:00.000Z",
-				data: {
-					prompt: "What time should I schedule it?",
-					reason: "time",
-					open: true,
-				},
-			},
-		];
-		snapshot.discourseState = {
-			focus_entity_id: "clar-1",
-			currently_editable_entity_id: null,
-			last_user_mentioned_entity_ids: [],
-			last_presented_items: [],
-			pending_clarifications: [
-				{
-					id: "clar-1",
-					slot: "time",
-					question: "What time should I schedule it?",
-					status: "pending",
+  it("clears active clarification state when a proposal is presented", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "clar-1",
+        conversationId: "conversation-1",
+        kind: "clarification",
+        label: "Need a time",
+        status: "active",
+        createdAt: "2026-03-22T16:01:00.000Z",
+        updatedAt: "2026-03-22T16:01:00.000Z",
+        data: {
+          prompt: "What time should I schedule it?",
+          reason: "time",
+          open: true,
+        },
+      },
+    ];
+    snapshot.discourseState = {
+      focus_entity_id: "clar-1",
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [
+        {
+          id: "clar-1",
+          slot: "time",
+          question: "What time should I schedule it?",
+          status: "pending",
 
-					createdAt: "2026-03-22T16:01:00.000Z",
-					createdTurnId: "assistant:1",
-				},
-			],
-			mode: "clarifying",
-		};
+          createdAt: "2026-03-22T16:01:00.000Z",
+          createdTurnId: "assistant:1",
+        },
+      ],
+      mode: "clarifying",
+    };
 
-		const result = deriveConversationReplyState({
-			snapshot,
-			policy: {
-				action: "present_proposal",
-				committedSlots: {},
-			},
-			interpretation: {
-				turnType: "clarification_answer",
-				confidence: 0.93,
-				resolvedEntityIds: ["task-1"],
-				ambiguity: "none",
-			},
-			reply:
-				"I can schedule the Malaysia trip planning at 5 PM. Want me to do that now?",
-			userTurnText: "5pm",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "present_proposal",
+        committedSlots: {},
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.93,
+        resolvedEntityIds: ["task-1"],
+        ambiguity: "none",
+      },
+      reply:
+        "I can schedule the Malaysia trip planning at 5 PM. Want me to do that now?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.entityRegistry).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					id: "clar-1",
-					kind: "clarification",
-					status: "resolved",
-				}),
-				expect.objectContaining({
-					kind: "proposal_option",
-					status: "active",
-				}),
-			]),
-		);
-		expect(result.discourseState?.pending_clarifications).toEqual([]);
-		expect(result.discourseState?.mode).toBe("confirming");
-	});
+    expect(result.entityRegistry).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "clar-1",
+          kind: "clarification",
+          status: "resolved",
+        }),
+        expect.objectContaining({
+          kind: "proposal_option",
+          status: "active",
+        }),
+      ]),
+    );
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
+    expect(result.discourseState?.mode).toBe("confirming");
+  });
 
-	it("persists pending_write_contract when resolvedContract is provided", () => {
-		const contract = {
-			requiredSlots: ["day", "time"] as (
-				| "day"
-				| "time"
-				| "duration"
-				| "target"
-			)[],
-			intentKind: "plan" as const,
-		};
+  it("persists pending_write_contract when resolvedContract is provided", () => {
+    const contract = {
+      requiredSlots: ["day", "time"] as (
+        | "day"
+        | "time"
+        | "duration"
+        | "target"
+      )[],
+      intentKind: "plan" as const,
+    };
 
-		const result = deriveConversationReplyState({
-			snapshot: buildSnapshot(),
-			policy: {
-				action: "ask_clarification",
-				clarificationSlots: ["time"],
-				committedSlots: { day: "tomorrow" },
-				resolvedContract: contract,
-			},
-			interpretation: {
-				turnType: "planning_request",
-				confidence: 0.58,
-				resolvedEntityIds: [],
-				ambiguity: "high",
-				missingSlots: ["time"],
-			},
-			reply: "What time should I schedule it?",
-			userTurnText: "schedule gym tomorrow",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["time"],
+        committedSlots: { day: "tomorrow" },
+        resolvedContract: contract,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingSlots: ["time"],
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.discourseState?.pending_write_contract).toEqual(contract);
-	});
+    expect(result.discourseState?.pending_write_contract).toEqual(contract);
+  });
 
-	it("does not set pending_write_contract when resolvedContract is absent", () => {
-		const result = deriveConversationReplyState({
-			snapshot: buildSnapshot(),
-			policy: {
-				action: "reply_only",
-				committedSlots: {},
-			},
-			interpretation: {
-				turnType: "informational",
-				confidence: 0.93,
-				resolvedEntityIds: [],
-				ambiguity: "none",
-			},
-			reply: "Your schedule is empty.",
-			userTurnText: "what's on my schedule?",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+  it("does not set pending_write_contract when resolvedContract is absent", () => {
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "reply_only",
+        committedSlots: {},
+      },
+      interpretation: {
+        turnType: "informational",
+        confidence: 0.93,
+        resolvedEntityIds: [],
+        ambiguity: "none",
+      },
+      reply: "Your schedule is empty.",
+      userTurnText: "what's on my schedule?",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.discourseState?.pending_write_contract).toBeUndefined();
-	});
+    expect(result.discourseState?.pending_write_contract).toBeUndefined();
+  });
 
-	it("clears active clarifications when a clarification_answer resolves all slots", () => {
-		const snapshot = buildSnapshot();
-		snapshot.entityRegistry = [
-			{
-				id: "clar-1",
-				conversationId: "conversation-1",
-				kind: "clarification",
-				label: "Need a time",
-				status: "active",
-				createdAt: "2026-03-22T16:01:00.000Z",
-				updatedAt: "2026-03-22T16:01:00.000Z",
-				data: {
-					prompt: "What time should I schedule it?",
-					reason: "time",
-					open: true,
-				},
-			},
-		];
-		snapshot.discourseState = {
-			focus_entity_id: "clar-1",
-			currently_editable_entity_id: null,
-			last_user_mentioned_entity_ids: [],
-			last_presented_items: [],
-			pending_clarifications: [
-				{
-					id: "clar-1",
-					slot: "time",
-					question: "What time should I schedule it?",
-					status: "pending",
-					createdAt: "2026-03-22T16:01:00.000Z",
-					createdTurnId: "assistant:1",
-				},
-			],
-			mode: "clarifying",
-		};
+  it("clears active clarifications when a clarification_answer resolves all slots", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "clar-1",
+        conversationId: "conversation-1",
+        kind: "clarification",
+        label: "Need a time",
+        status: "active",
+        createdAt: "2026-03-22T16:01:00.000Z",
+        updatedAt: "2026-03-22T16:01:00.000Z",
+        data: {
+          prompt: "What time should I schedule it?",
+          reason: "time",
+          open: true,
+        },
+      },
+    ];
+    snapshot.discourseState = {
+      focus_entity_id: "clar-1",
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [
+        {
+          id: "clar-1",
+          slot: "time",
+          question: "What time should I schedule it?",
+          status: "pending",
+          createdAt: "2026-03-22T16:01:00.000Z",
+          createdTurnId: "assistant:1",
+        },
+      ],
+      mode: "clarifying",
+    };
 
-		const result = deriveConversationReplyState({
-			snapshot,
-			policy: {
-				action: "present_proposal",
-				committedSlots: { day: "tomorrow", time: t(17, 0) },
-			},
-			interpretation: {
-				turnType: "clarification_answer",
-				confidence: 0.93,
-				resolvedEntityIds: [],
-				ambiguity: "none",
-			},
-			reply: "I'll schedule gym at 5 PM tomorrow. Sound good?",
-			userTurnText: "5pm",
-			summaryText: null,
-			occurredAt: "2026-03-22T16:05:00.000Z",
-		});
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "present_proposal",
+        committedSlots: { day: "tomorrow", time: "17:00" },
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.93,
+        resolvedEntityIds: [],
+        ambiguity: "none",
+      },
+      reply: "I'll schedule gym at 5 PM tomorrow. Sound good?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
 
-		expect(result.discourseState?.pending_clarifications).toEqual([]);
-		expect(result.entityRegistry).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					id: "clar-1",
-					kind: "clarification",
-					status: "resolved",
-				}),
-			]),
-		);
-	});
+    expect(result.discourseState?.pending_clarifications).toEqual([]);
+    expect(result.entityRegistry).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "clar-1",
+          kind: "clarification",
+          status: "resolved",
+        }),
+      ]),
+    );
+  });
 });
 
 describe("deriveMutationState", () => {
-	it("clears pending clarifications after execution", () => {
-		const snapshot = buildSnapshot();
-		snapshot.entityRegistry = [
-			{
-				id: "clar-1",
-				conversationId: "conversation-1",
-				kind: "clarification",
-				label: "Need a time",
-				status: "active",
-				createdAt: "2026-03-22T16:01:00.000Z",
-				updatedAt: "2026-03-22T16:01:00.000Z",
-				data: {
-					prompt: "What time should I schedule it?",
-					reason: "time",
-					open: true,
-				},
-			},
-		];
-		snapshot.discourseState = {
-			focus_entity_id: "clar-1",
-			currently_editable_entity_id: null,
-			last_user_mentioned_entity_ids: [],
-			last_presented_items: [],
-			pending_clarifications: [
-				{
-					id: "clar-1",
-					slot: "time",
-					question: "What time should I schedule it?",
-					status: "pending",
+  it("clears pending clarifications after execution", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "clar-1",
+        conversationId: "conversation-1",
+        kind: "clarification",
+        label: "Need a time",
+        status: "active",
+        createdAt: "2026-03-22T16:01:00.000Z",
+        updatedAt: "2026-03-22T16:01:00.000Z",
+        data: {
+          prompt: "What time should I schedule it?",
+          reason: "time",
+          open: true,
+        },
+      },
+    ];
+    snapshot.discourseState = {
+      focus_entity_id: "clar-1",
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [
+        {
+          id: "clar-1",
+          slot: "time",
+          question: "What time should I schedule it?",
+          status: "pending",
 
-					createdAt: "2026-03-22T16:01:00.000Z",
-					createdTurnId: "assistant:1",
-				},
-			],
-			mode: "clarifying",
-		};
+          createdAt: "2026-03-22T16:01:00.000Z",
+          createdTurnId: "assistant:1",
+        },
+      ],
+      mode: "clarifying",
+    };
 
-		const processing: ProcessedInboxResult = {
-			outcome: "planned",
-			inboxItem: {
-				id: "inbox-1",
-				userId: "user-1",
-				rawText: "schedule malaysia trip planning",
-				normalizedText: "schedule malaysia trip planning",
-				processingStatus: "planned",
-				linkedTaskIds: ["task-1"],
-				createdAt: "2026-03-22T16:00:00.000Z",
-			},
-			plannerRun: {
-				id: "run-1",
-				userId: "user-1",
-				inboxItemId: "inbox-1",
-				version: "test",
-				modelInput: {},
-				modelOutput: {},
-				confidence: 0.92,
-			},
-			createdTasks: [
-				{
-					id: "task-1",
-					userId: "user-1",
-					sourceInboxItemId: "inbox-1",
-					lastInboxItemId: "inbox-1",
-					title: "Malaysia trip planning",
-					lifecycleState: "scheduled",
-					externalCalendarEventId: null,
-					externalCalendarId: null,
-					scheduledStartAt: "2026-03-23T00:00:00.000Z",
-					scheduledEndAt: "2026-03-23T00:30:00.000Z",
-					calendarSyncStatus: "in_sync",
-					calendarSyncUpdatedAt: null,
-					rescheduleCount: 0,
-					lastFollowupAt: null,
-					followupReminderSentAt: null,
-					completedAt: null,
-					archivedAt: null,
-					priority: "medium",
-					urgency: "medium",
-				},
-			],
-			scheduleBlocks: [
-				{
-					id: "block-1",
-					userId: "user-1",
-					taskId: "task-1",
-					startAt: "2026-03-23T00:00:00.000Z",
-					endAt: "2026-03-23T00:30:00.000Z",
-					confidence: 0.92,
-					reason: "User requested 5 PM.",
-					rescheduleCount: 0,
-					externalCalendarId: null,
-				},
-			],
-			followUpMessage: "Scheduled it for 5 PM.",
-		};
+    const processing: ProcessedInboxResult = {
+      outcome: "planned",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "user-1",
+        rawText: "schedule malaysia trip planning",
+        normalizedText: "schedule malaysia trip planning",
+        processingStatus: "planned",
+        linkedTaskIds: ["task-1"],
+        createdAt: "2026-03-22T16:00:00.000Z",
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "user-1",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.92,
+      },
+      createdTasks: [
+        {
+          id: "task-1",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Malaysia trip planning",
+          lifecycleState: "scheduled",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: "2026-03-23T00:00:00.000Z",
+          scheduledEndAt: "2026-03-23T00:30:00.000Z",
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium",
+        },
+      ],
+      scheduleBlocks: [
+        {
+          id: "block-1",
+          userId: "user-1",
+          taskId: "task-1",
+          startAt: "2026-03-23T00:00:00.000Z",
+          endAt: "2026-03-23T00:30:00.000Z",
+          confidence: 0.92,
+          reason: "User requested 5 PM.",
+          rescheduleCount: 0,
+          externalCalendarId: null,
+        },
+      ],
+      followUpMessage: "Scheduled it for 5 PM.",
+    };
 
-		const result = deriveMutationState({
-			snapshot,
-			processing,
-			occurredAt: "2026-03-22T16:10:00.000Z",
-		});
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-03-22T16:10:00.000Z",
+    });
 
-		expect(result.discourseState.pending_clarifications).toEqual([]);
-		expect(result.discourseState.mode).toBe("editing");
-	});
+    expect(result.discourseState.pending_clarifications).toEqual([]);
+    expect(result.discourseState.mode).toBe("editing");
+  });
 
-	it("clears resolved_slots and pending_write_contract on successful mutation", () => {
-		const snapshot = buildSnapshot();
-		snapshot.discourseState = {
-			...snapshot.discourseState!,
-			resolved_slots: { day: "tomorrow", time: t(17, 0) },
-			pending_write_contract: {
-				requiredSlots: ["day", "time"],
-				intentKind: "plan",
-			},
-		};
+  it("clears resolved_slots and pending_write_contract on successful mutation", () => {
+    const snapshot = buildSnapshot();
+    snapshot.discourseState = {
+      ...snapshot.discourseState!,
+      resolved_slots: { day: "tomorrow", time: "17:00" },
+      pending_write_contract: {
+        requiredSlots: ["day", "time"],
+        intentKind: "plan",
+      },
+    };
 
-		const processing: ProcessedInboxResult = {
-			outcome: "planned",
-			inboxItem: {
-				id: "inbox-1",
-				userId: "user-1",
-				rawText: "schedule gym",
-				normalizedText: "schedule gym",
-				processingStatus: "planned",
-				linkedTaskIds: ["task-1"],
-				createdAt: "2026-03-22T16:00:00.000Z",
-			},
-			plannerRun: {
-				id: "run-1",
-				userId: "user-1",
-				inboxItemId: "inbox-1",
-				version: "test",
-				modelInput: {},
-				modelOutput: {},
-				confidence: 0.92,
-			},
-			createdTasks: [
-				{
-					id: "task-1",
-					userId: "user-1",
-					sourceInboxItemId: "inbox-1",
-					lastInboxItemId: "inbox-1",
-					title: "Gym",
-					lifecycleState: "scheduled",
-					externalCalendarEventId: null,
-					externalCalendarId: null,
-					scheduledStartAt: "2026-03-23T17:00:00.000Z",
-					scheduledEndAt: "2026-03-23T18:00:00.000Z",
-					calendarSyncStatus: "in_sync",
-					calendarSyncUpdatedAt: null,
-					rescheduleCount: 0,
-					lastFollowupAt: null,
-					followupReminderSentAt: null,
-					completedAt: null,
-					archivedAt: null,
-					priority: "medium",
-					urgency: "medium",
-				},
-			],
-			scheduleBlocks: [
-				{
-					id: "block-1",
-					userId: "user-1",
-					taskId: "task-1",
-					startAt: "2026-03-23T17:00:00.000Z",
-					endAt: "2026-03-23T18:00:00.000Z",
-					confidence: 0.92,
-					reason: "User requested 5 PM.",
-					rescheduleCount: 0,
-					externalCalendarId: null,
-				},
-			],
-			followUpMessage: "Scheduled gym for 5 PM.",
-		};
+    const processing: ProcessedInboxResult = {
+      outcome: "planned",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "user-1",
+        rawText: "schedule gym",
+        normalizedText: "schedule gym",
+        processingStatus: "planned",
+        linkedTaskIds: ["task-1"],
+        createdAt: "2026-03-22T16:00:00.000Z",
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "user-1",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.92,
+      },
+      createdTasks: [
+        {
+          id: "task-1",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Gym",
+          lifecycleState: "scheduled",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: "2026-03-23T17:00:00.000Z",
+          scheduledEndAt: "2026-03-23T18:00:00.000Z",
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium",
+        },
+      ],
+      scheduleBlocks: [
+        {
+          id: "block-1",
+          userId: "user-1",
+          taskId: "task-1",
+          startAt: "2026-03-23T17:00:00.000Z",
+          endAt: "2026-03-23T18:00:00.000Z",
+          confidence: 0.92,
+          reason: "User requested 5 PM.",
+          rescheduleCount: 0,
+          externalCalendarId: null,
+        },
+      ],
+      followUpMessage: "Scheduled gym for 5 PM.",
+    };
 
-		const result = deriveMutationState({
-			snapshot,
-			processing,
-			occurredAt: "2026-03-22T16:10:00.000Z",
-		});
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-03-22T16:10:00.000Z",
+    });
 
-		expect(result.discourseState.resolved_slots).toEqual({});
-		expect(result.discourseState.pending_write_contract).toBeUndefined();
-	});
+    expect(result.discourseState.resolved_slots).toEqual({});
+    expect(result.discourseState.pending_write_contract).toBeUndefined();
+  });
 
-	it("preserves resolved_slots and pending_write_contract on needs_clarification", () => {
-		const snapshot = buildSnapshot();
-		snapshot.discourseState = {
-			...snapshot.discourseState!,
-			resolved_slots: { day: "tomorrow" },
-			pending_write_contract: {
-				requiredSlots: ["day", "time"],
-				intentKind: "plan",
-			},
-		};
+  it("preserves resolved_slots and pending_write_contract on needs_clarification", () => {
+    const snapshot = buildSnapshot();
+    snapshot.discourseState = {
+      ...snapshot.discourseState!,
+      resolved_slots: { day: "tomorrow" },
+      pending_write_contract: {
+        requiredSlots: ["day", "time"],
+        intentKind: "plan",
+      },
+    };
 
-		const processing: ProcessedInboxResult = {
-			outcome: "needs_clarification",
-			inboxItem: {
-				id: "inbox-1",
-				userId: "user-1",
-				rawText: "schedule gym tomorrow",
-				normalizedText: "schedule gym tomorrow",
-				processingStatus: "needs_clarification",
-				linkedTaskIds: [],
-				createdAt: "2026-03-22T16:00:00.000Z",
-			},
-			plannerRun: {
-				id: "run-1",
-				userId: "user-1",
-				inboxItemId: "inbox-1",
-				version: "test",
-				modelInput: {},
-				modelOutput: {},
-				confidence: 0.5,
-			},
-			reason: "time",
-			followUpMessage: "What time should I schedule the gym?",
-		};
+    const processing: ProcessedInboxResult = {
+      outcome: "needs_clarification",
+      inboxItem: {
+        id: "inbox-1",
+        userId: "user-1",
+        rawText: "schedule gym tomorrow",
+        normalizedText: "schedule gym tomorrow",
+        processingStatus: "needs_clarification",
+        linkedTaskIds: [],
+        createdAt: "2026-03-22T16:00:00.000Z",
+      },
+      plannerRun: {
+        id: "run-1",
+        userId: "user-1",
+        inboxItemId: "inbox-1",
+        version: "test",
+        modelInput: {},
+        modelOutput: {},
+        confidence: 0.5,
+      },
+      reason: "time",
+      followUpMessage: "What time should I schedule the gym?",
+    };
 
-		const result = deriveMutationState({
-			snapshot,
-			processing,
-			occurredAt: "2026-03-22T16:10:00.000Z",
-		});
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-03-22T16:10:00.000Z",
+    });
 
-		expect(result.discourseState.resolved_slots).toEqual({ day: "tomorrow" });
-		expect(result.discourseState.pending_write_contract).toEqual({
-			requiredSlots: ["day", "time"],
-			intentKind: "plan",
-		});
-	});
+    expect(result.discourseState.resolved_slots).toEqual({ day: "tomorrow" });
+    expect(result.discourseState.pending_write_contract).toEqual({
+      requiredSlots: ["day", "time"],
+      intentKind: "plan",
+    });
+  });
 });

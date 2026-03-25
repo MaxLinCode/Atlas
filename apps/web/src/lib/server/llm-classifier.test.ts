@@ -1,22 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
-
 import type { TurnClassifierResponse } from "@atlas/core";
+import { describe, expect, it, vi } from "vitest";
 
 import { classifyTurn } from "./llm-classifier";
 
 function mockClient(output: TurnClassifierResponse) {
   return {
     responses: {
-      parse: vi.fn().mockResolvedValue({ output_parsed: output })
-    }
+      parse: vi.fn().mockResolvedValue({ output_parsed: output }),
+    },
   };
 }
 
 function failingClient() {
   return {
     responses: {
-      parse: vi.fn().mockRejectedValue(new Error("LLM unavailable"))
-    }
+      parse: vi.fn().mockRejectedValue(new Error("LLM unavailable")),
+    },
   };
 }
 
@@ -40,17 +39,17 @@ describe("classifyTurn", () => {
               replyText: "Would you like me to schedule it at 3pm?",
               confirmationRequired: true,
               targetEntityId: "task-1",
-              slotSnapshot: {}
-            }
-          }
-        ]
+              slotSnapshot: {},
+            },
+          },
+        ],
       });
 
       expect(result).toMatchObject({
         turnType: "confirmation",
         confidence: 0.97,
         resolvedEntityIds: ["task-1"],
-        resolvedProposalId: "proposal-1"
+        resolvedProposalId: "proposal-1",
       });
     });
 
@@ -71,15 +70,15 @@ describe("classifyTurn", () => {
               route: "conversation_then_mutation",
               replyText: "Move it to 3pm?",
               confirmationRequired: true,
-              slotSnapshot: {}
-            }
-          }
-        ]
+              slotSnapshot: {},
+            },
+          },
+        ],
       });
 
       expect(result).toMatchObject({
         turnType: "confirmation",
-        resolvedProposalId: "proposal-1"
+        resolvedProposalId: "proposal-1",
       });
     });
 
@@ -87,7 +86,7 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "unknown",
         confidence: 0.4,
-        reasoning: "Multiple proposals"
+        reasoning: "Multiple proposals",
       });
 
       const result = await classifyTurn(
@@ -103,7 +102,12 @@ describe("classifyTurn", () => {
               status: "active",
               createdAt: "2026-03-20T16:00:00.000Z",
               updatedAt: "2026-03-20T16:00:00.000Z",
-              data: { route: "conversation_then_mutation", replyText: "A?", confirmationRequired: true, slotSnapshot: {} }
+              data: {
+                route: "conversation_then_mutation",
+                replyText: "A?",
+                confirmationRequired: true,
+                slotSnapshot: {},
+              },
             },
             {
               id: "p-2",
@@ -113,11 +117,16 @@ describe("classifyTurn", () => {
               status: "active",
               createdAt: "2026-03-20T16:00:00.000Z",
               updatedAt: "2026-03-20T16:00:00.000Z",
-              data: { route: "conversation_then_mutation", replyText: "B?", confirmationRequired: true, slotSnapshot: {} }
-            }
-          ]
+              data: {
+                route: "conversation_then_mutation",
+                replyText: "B?",
+                confirmationRequired: true,
+                slotSnapshot: {},
+              },
+            },
+          ],
         },
-        client
+        client,
       );
 
       expect(result.turnType).toBe("unknown");
@@ -128,21 +137,21 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "informational",
         confidence: 0.91,
-        reasoning: "User is asking about their schedule"
+        reasoning: "User is asking about their schedule",
       });
 
       const result = await classifyTurn(
         {
           normalizedText: "What do I have tomorrow?",
           discourseState: null,
-          entityRegistry: []
+          entityRegistry: [],
         },
-        client
+        client,
       );
 
       expect(result).toMatchObject({
         turnType: "informational",
-        confidence: 0.91
+        confidence: 0.91,
       });
       expect(client.responses.parse).toHaveBeenCalledOnce();
     });
@@ -151,7 +160,7 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "clarification_answer",
         confidence: 0.85,
-        reasoning: "Answering pending clarification"
+        reasoning: "Answering pending clarification",
       });
 
       const result = await classifyTurn(
@@ -169,14 +178,14 @@ describe("classifyTurn", () => {
                 question: "What time?",
                 status: "pending",
                 createdAt: "2026-03-20T16:00:00.000Z",
-                createdTurnId: "t-1"
-              }
+                createdTurnId: "t-1",
+              },
             ],
-            mode: "clarifying"
+            mode: "clarifying",
           },
-          entityRegistry: []
+          entityRegistry: [],
         },
-        client
+        client,
       );
 
       expect(client.responses.parse).toHaveBeenCalledOnce();
@@ -189,21 +198,21 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "planning_request",
         confidence: 0.92,
-        reasoning: "User wants to schedule something new"
+        reasoning: "User wants to schedule something new",
       });
 
       const result = await classifyTurn(
         {
           normalizedText: "Schedule gym tomorrow at 6pm",
           discourseState: null,
-          entityRegistry: []
+          entityRegistry: [],
         },
-        client
+        client,
       );
 
       expect(result).toMatchObject({
         turnType: "planning_request",
-        confidence: 0.92
+        confidence: 0.92,
       });
     });
 
@@ -211,7 +220,7 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "edit_request",
         confidence: 0.88,
-        reasoning: "User wants to move an existing entity"
+        reasoning: "User wants to move an existing entity",
       });
 
       const result = await classifyTurn(
@@ -223,17 +232,17 @@ describe("classifyTurn", () => {
             last_user_mentioned_entity_ids: [],
             last_presented_items: [],
             pending_clarifications: [],
-            mode: "editing"
+            mode: "editing",
           },
-          entityRegistry: []
+          entityRegistry: [],
         },
-        client
+        client,
       );
 
       expect(result).toMatchObject({
         turnType: "edit_request",
         confidence: 0.88,
-        resolvedEntityIds: ["task-1"]
+        resolvedEntityIds: ["task-1"],
       });
     });
 
@@ -241,7 +250,7 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "clarification_answer",
         confidence: 0.91,
-        reasoning: "Short reply providing time to pending clarification"
+        reasoning: "Short reply providing time to pending clarification",
       });
 
       const result = await classifyTurn(
@@ -259,19 +268,19 @@ describe("classifyTurn", () => {
                 question: "What time?",
                 status: "pending",
                 createdAt: "2026-03-20T16:00:00.000Z",
-                createdTurnId: "t-1"
-              }
+                createdTurnId: "t-1",
+              },
             ],
-            mode: "clarifying"
+            mode: "clarifying",
           },
-          entityRegistry: []
+          entityRegistry: [],
         },
-        client
+        client,
       );
 
       expect(result).toMatchObject({
         turnType: "clarification_answer",
-        confidence: 0.91
+        confidence: 0.91,
       });
     });
 
@@ -279,7 +288,7 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "clarification_answer",
         confidence: 0.88,
-        reasoning: "Answering clarification"
+        reasoning: "Answering clarification",
       });
 
       const result = await classifyTurn(
@@ -299,12 +308,12 @@ describe("classifyTurn", () => {
                 route: "conversation_then_mutation",
                 replyText: "Schedule at 3pm?",
                 confirmationRequired: true,
-                slotSnapshot: {}
-              }
-            }
-          ]
+                slotSnapshot: {},
+              },
+            },
+          ],
         },
-        client
+        client,
       );
 
       expect(result.resolvedProposalId).toBe("proposal-1");
@@ -314,12 +323,16 @@ describe("classifyTurn", () => {
       const client = mockClient({
         turnType: "planning_request",
         confidence: 1.5,
-        reasoning: "test"
+        reasoning: "test",
       });
 
       const result = await classifyTurn(
-        { normalizedText: "schedule gym", discourseState: null, entityRegistry: [] },
-        client
+        {
+          normalizedText: "schedule gym",
+          discourseState: null,
+          entityRegistry: [],
+        },
+        client,
       );
 
       expect(result.confidence).toBe(1);
@@ -331,13 +344,17 @@ describe("classifyTurn", () => {
       const client = failingClient();
 
       const result = await classifyTurn(
-        { normalizedText: "schedule something", discourseState: null, entityRegistry: [] },
-        client
+        {
+          normalizedText: "schedule something",
+          discourseState: null,
+          entityRegistry: [],
+        },
+        client,
       );
 
       expect(result).toMatchObject({
         turnType: "unknown",
-        confidence: 0.3
+        confidence: 0.3,
       });
     });
   });

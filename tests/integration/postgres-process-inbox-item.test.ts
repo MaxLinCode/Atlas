@@ -1,23 +1,24 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import postgres from "postgres";
-
 import {
   PostgresInboxProcessingStore,
   PostgresIncomingTelegramIngressStore,
-  recordIncomingTelegramMessageIfNew
+  recordIncomingTelegramMessageIfNew,
 } from "@atlas/db";
-import { getDefaultCalendarAdapter, resetCalendarAdapterForTests } from "@atlas/integrations";
+import {
+  getDefaultCalendarAdapter,
+  resetCalendarAdapterForTests,
+} from "@atlas/integrations";
+import postgres from "postgres";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { processInboxItem } from "../../apps/web/src/lib/server/process-inbox-item";
 
 const databaseUrl = process.env.DATABASE_URL;
 const migrationsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../packages/db/drizzle"
+  "../../packages/db/drizzle",
 );
 
 if (!databaseUrl) {
@@ -27,7 +28,7 @@ if (!databaseUrl) {
 } else {
   describe("postgres process inbox item", () => {
     const sql = postgres(databaseUrl, {
-      prepare: false
+      prepare: false,
     });
     const ingressStore = new PostgresIncomingTelegramIngressStore(databaseUrl);
     const processingStore = new PostgresInboxProcessingStore(databaseUrl);
@@ -52,12 +53,12 @@ if (!databaseUrl) {
           eventType: "telegram_message",
           idempotencyKey: "telegram:webhook:update:42",
           payload: {
-            update_id: 42
+            update_id: 42,
           },
           rawText: "Review launch checklist",
-          normalizedText: "Review launch checklist"
+          normalizedText: "Review launch checklist",
         },
-        ingressStore
+        ingressStore,
       );
 
       if (ingress.status !== "recorded") {
@@ -66,7 +67,7 @@ if (!databaseUrl) {
 
       const result = await processInboxItem(
         {
-          inboxItemId: ingress.inboxItem.id
+          inboxItemId: ingress.inboxItem.id,
         },
         {
           store: processingStore,
@@ -74,20 +75,21 @@ if (!databaseUrl) {
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
-            userReplyMessage: "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
+            userReplyMessage:
+              "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
             actions: [
               {
                 type: "create_task",
                 alias: "new_task_1",
                 title: "Review launch checklist",
                 priority: "medium",
-                urgency: "medium"
+                urgency: "medium",
               },
               {
                 type: "create_schedule_block",
                 taskRef: {
                   kind: "created_task",
-                  alias: "new_task_1"
+                  alias: "new_task_1",
                 },
                 scheduleConstraint: {
                   dayReference: null,
@@ -97,13 +99,13 @@ if (!databaseUrl) {
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
-                  sourceText: "default next slot"
+                  sourceText: "default next slot",
                 },
-                reason: "Schedule the new task in the next slot."
-              }
-            ]
-          })
-        }
+                reason: "Schedule the new task in the next slot.",
+              },
+            ],
+          }),
+        },
       );
 
       expect(result.outcome).toBe("planned");
@@ -112,14 +114,16 @@ if (!databaseUrl) {
         select title, lifecycle_state, external_calendar_event_id, external_calendar_id, scheduled_start_at, scheduled_end_at
         from tasks
       `;
-      const insertedPlannerRuns = await sql`select version, model_input->>'referenceTime' as reference_time from planner_runs`;
-      const updatedInbox = await sql`select processing_status from inbox_items where id = ${ingress.inboxItem.id}`;
+      const insertedPlannerRuns =
+        await sql`select version, model_input->>'referenceTime' as reference_time from planner_runs`;
+      const updatedInbox =
+        await sql`select processing_status from inbox_items where id = ${ingress.inboxItem.id}`;
 
       expect(insertedTasks).toHaveLength(1);
       expect(insertedTasks[0]).toMatchObject({
         title: "Review launch checklist",
         lifecycle_state: "scheduled",
-        external_calendar_id: "primary"
+        external_calendar_id: "primary",
       });
       expect(insertedTasks[0]?.external_calendar_event_id).toBeTruthy();
       expect(insertedTasks[0]?.scheduled_start_at).toBeTruthy();
@@ -136,13 +140,13 @@ if (!databaseUrl) {
           eventType: "telegram_message",
           idempotencyKey: "telegram:webhook:update:50",
           payload: {
-            update_id: 50
+            update_id: 50,
           },
           rawText: "Review launch checklist",
           normalizedText: "Review launch checklist",
-          createdAt: "2026-03-19T16:00:00.000Z"
+          createdAt: "2026-03-19T16:00:00.000Z",
         },
-        ingressStore
+        ingressStore,
       );
 
       if (firstIngress.status !== "recorded") {
@@ -151,7 +155,7 @@ if (!databaseUrl) {
 
       await processInboxItem(
         {
-          inboxItemId: firstIngress.inboxItem.id
+          inboxItemId: firstIngress.inboxItem.id,
         },
         {
           store: processingStore,
@@ -159,20 +163,21 @@ if (!databaseUrl) {
           planner: async () => ({
             confidence: 0.9,
             summary: "Captured and scheduled Review launch checklist.",
-            userReplyMessage: "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
+            userReplyMessage:
+              "Got it, I've added 'Review launch checklist' to your schedule for tomorrow at 9am.",
             actions: [
               {
                 type: "create_task",
                 alias: "new_task_1",
                 title: "Review launch checklist",
                 priority: "medium",
-                urgency: "medium"
+                urgency: "medium",
               },
               {
                 type: "create_schedule_block",
                 taskRef: {
                   kind: "created_task",
-                  alias: "new_task_1"
+                  alias: "new_task_1",
                 },
                 scheduleConstraint: {
                   dayReference: null,
@@ -182,13 +187,13 @@ if (!databaseUrl) {
                   explicitHour: 9,
                   minute: 0,
                   preferredWindow: null,
-                  sourceText: "default next slot"
+                  sourceText: "default next slot",
                 },
-                reason: "Schedule the new task in the next slot."
-              }
-            ]
-          })
-        }
+                reason: "Schedule the new task in the next slot.",
+              },
+            ],
+          }),
+        },
       );
 
       const moveIngress = await recordIncomingTelegramMessageIfNew(
@@ -197,13 +202,13 @@ if (!databaseUrl) {
           eventType: "telegram_message",
           idempotencyKey: "telegram:webhook:update:51",
           payload: {
-            update_id: 51
+            update_id: 51,
           },
           rawText: "move it to 3pm",
           normalizedText: "move it to 3pm",
-          createdAt: "2026-03-19T17:00:00.000Z"
+          createdAt: "2026-03-19T17:00:00.000Z",
         },
-        ingressStore
+        ingressStore,
       );
 
       if (moveIngress.status !== "recorded") {
@@ -212,7 +217,7 @@ if (!databaseUrl) {
 
       const result = await processInboxItem(
         {
-          inboxItemId: moveIngress.inboxItem.id
+          inboxItemId: moveIngress.inboxItem.id,
         },
         {
           store: processingStore,
@@ -225,7 +230,7 @@ if (!databaseUrl) {
               {
                 type: "move_schedule_block",
                 blockRef: {
-                  alias: "schedule_block_1"
+                  alias: "schedule_block_1",
                 },
                 scheduleConstraint: {
                   dayReference: null,
@@ -235,13 +240,13 @@ if (!databaseUrl) {
                   explicitHour: 15,
                   minute: 0,
                   preferredWindow: null,
-                  sourceText: "at 3pm"
+                  sourceText: "at 3pm",
                 },
-                reason: "The user asked to move it to 3pm."
-              }
-            ]
-          })
-        }
+                reason: "The user asked to move it to 3pm.",
+              },
+            ],
+          }),
+        },
       );
 
       expect(result.outcome).toBe("updated_schedule");
@@ -252,14 +257,16 @@ if (!databaseUrl) {
       `;
       expect(updatedTasks[0]?.reschedule_count).toBe(1);
       expect(updatedTasks[0]?.external_calendar_event_id).toBeTruthy();
-      expect(new Date(updatedTasks[0]?.scheduled_start_at as string | Date).toISOString()).toBe(
-        "2026-03-19T22:00:00.000Z"
-      );
+      expect(
+        new Date(
+          updatedTasks[0]?.scheduled_start_at as string | Date,
+        ).toISOString(),
+      ).toBe("2026-03-19T22:00:00.000Z");
     });
 
     it("backfills task-level current commitment fields during the 0006 migration", async () => {
       const legacySql = postgres(databaseUrl, {
-        prepare: false
+        prepare: false,
       });
 
       try {
@@ -323,7 +330,7 @@ if (!databaseUrl) {
 
         const migrationContents = await readFile(
           path.join(migrationsDir, "0006_external_calendar_task_fields.sql"),
-          "utf8"
+          "utf8",
         );
         const statements = migrationContents
           .split("--> statement-breakpoint")
@@ -342,7 +349,7 @@ if (!databaseUrl) {
 
         expect(migratedTasks[0]).toMatchObject({
           external_calendar_event_id: "00000000-0000-4000-8000-000000000099",
-          external_calendar_id: "primary"
+          external_calendar_id: "primary",
         });
         expect(migratedTasks[0]?.scheduled_start_at).toBeTruthy();
         expect(migratedTasks[0]?.scheduled_end_at).toBeTruthy();
@@ -353,7 +360,10 @@ if (!databaseUrl) {
   });
 }
 
-async function applyMigrations(sql: ReturnType<typeof postgres>, throughFile?: string) {
+async function applyMigrations(
+  sql: ReturnType<typeof postgres>,
+  throughFile?: string,
+) {
   const migrationFiles = (await readdir(migrationsDir))
     .filter((file) => file.endsWith(".sql"))
     .sort();

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
 
   if ("headers" in result && result.headers.location) {
     const response = NextResponse.redirect(result.headers.location, {
-      status: result.status
+      status: result.status,
     });
 
     if (result.headers["set-cookie"]) {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   }
 
   const response = NextResponse.json(result.body, {
-    status: result.status
+    status: result.status,
   });
 
   if ("headers" in result && result.headers["set-cookie"]) {

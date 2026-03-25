@@ -1,12 +1,10 @@
 import type { Task } from "@atlas/core";
+import { buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 import {
-  buildTelegramFollowUpIdempotencyKey
-} from "@atlas/core";
-import {
-  getDefaultFollowUpRuntimeStore,
   type FollowUpDueTask,
   type FollowUpRuntimeStore,
-  type OutgoingTelegramDeliveryStore
+  getDefaultFollowUpRuntimeStore,
+  type OutgoingTelegramDeliveryStore,
 } from "@atlas/db";
 import { sendTelegramMessage } from "@atlas/integrations";
 
@@ -20,7 +18,7 @@ type FollowUpRunnerDependencies = {
 
 export async function runBundledFollowUps(
   now = new Date().toISOString(),
-  dependencies: FollowUpRunnerDependencies = {}
+  dependencies: FollowUpRunnerDependencies = {},
 ) {
   const store = dependencies.store ?? getDefaultFollowUpRuntimeStore();
   const dueTasks = await store.listDueFollowUpTasks(now);
@@ -42,7 +40,9 @@ export async function runBundledFollowUps(
     }
 
     const initialTasks = userTasks.filter((task) => task.dueType === "initial");
-    const reminderTasks = userTasks.filter((task) => task.dueType === "reminder");
+    const reminderTasks = userTasks.filter(
+      (task) => task.dueType === "reminder",
+    );
 
     if (initialTasks.length === 0 && reminderTasks.length === 0) {
       continue;
@@ -51,13 +51,20 @@ export async function runBundledFollowUps(
     const outstanding = await store.listOutstandingFollowUpTasks(userId);
     const initialTaskIds = new Set(initialTasks.map((task) => task.id));
     const reminderTaskIds = new Set(reminderTasks.map((task) => task.id));
-    const bundleTasks = mergeFollowUpBundleTasks(outstanding, initialTasks, reminderTasks);
+    const bundleTasks = mergeFollowUpBundleTasks(
+      outstanding,
+      initialTasks,
+      reminderTasks,
+    );
 
     if (bundleTasks.length === 0) {
       continue;
     }
 
-    const bundle = buildFollowUpBundle(bundleTasks, initialTasks.length > 0 ? "initial" : "reminder");
+    const bundle = buildFollowUpBundle(
+      bundleTasks,
+      initialTasks.length > 0 ? "initial" : "reminder",
+    );
     const delivery = await sendFollowUpBundle(userId, bundle, dependencies);
 
     if (delivery.status === "failed") {
@@ -78,16 +85,19 @@ export async function runBundledFollowUps(
   return {
     accepted: true,
     sentBundles,
-    skippedActiveTurns
+    skippedActiveTurns,
   };
 }
 
 function mergeFollowUpBundleTasks(
   outstanding: Task[],
   initialTasks: FollowUpDueTask[],
-  reminderTasks: FollowUpDueTask[]
+  reminderTasks: FollowUpDueTask[],
 ) {
-  const tasksById = new Map<string, Pick<Task, "id" | "title" | "scheduledEndAt">>();
+  const tasksById = new Map<
+    string,
+    Pick<Task, "id" | "title" | "scheduledEndAt">
+  >();
 
   for (const task of outstanding) {
     tasksById.set(task.id, task);
@@ -119,16 +129,19 @@ export type RenderedFollowUpBundle = {
   text: string;
 };
 
-export function buildFollowUpBundle(tasks: Pick<Task, "id" | "title" | "scheduledEndAt">[], kind: "initial" | "reminder"): RenderedFollowUpBundle {
+export function buildFollowUpBundle(
+  tasks: Pick<Task, "id" | "title" | "scheduledEndAt">[],
+  kind: "initial" | "reminder",
+): RenderedFollowUpBundle {
   const ordered = [...tasks].sort(
     (left, right) =>
       Date.parse(left.scheduledEndAt ?? new Date().toISOString()) -
-      Date.parse(right.scheduledEndAt ?? new Date().toISOString())
+      Date.parse(right.scheduledEndAt ?? new Date().toISOString()),
   );
   const items = ordered.map((task, index) => ({
     number: index + 1,
     taskId: task.id,
-    title: task.title
+    title: task.title,
   }));
 
   return {
@@ -138,14 +151,14 @@ export function buildFollowUpBundle(tasks: Pick<Task, "id" | "title" | "schedule
     text:
       kind === "initial"
         ? `Checking in on these:\n${items.map((item) => `${item.number}. ${item.title}`).join("\n")}`
-        : `Still open:\n${items.map((item) => `${item.number}. ${item.title}`).join("\n")}`
+        : `Still open:\n${items.map((item) => `${item.number}. ${item.title}`).join("\n")}`,
   };
 }
 
 async function sendFollowUpBundle(
   userId: string,
   bundle: RenderedFollowUpBundle,
-  dependencies: FollowUpRunnerDependencies
+  dependencies: FollowUpRunnerDependencies,
 ) {
   const chatId = userId;
 
@@ -154,12 +167,16 @@ async function sendFollowUpBundle(
       userId,
       chatId,
       text: bundle.text,
-      idempotencyKey: buildTelegramFollowUpIdempotencyKey(`${bundle.kind}:${bundle.taskIds.join(",")}`),
-      bundle
+      idempotencyKey: buildTelegramFollowUpIdempotencyKey(
+        `${bundle.kind}:${bundle.taskIds.join(",")}`,
+      ),
+      bundle,
     },
     {
       sender: dependencies.sender ?? sendTelegramMessage,
-      ...(dependencies.deliveryStore ? { deliveryStore: dependencies.deliveryStore } : {})
-    }
+      ...(dependencies.deliveryStore
+        ? { deliveryStore: dependencies.deliveryStore }
+        : {}),
+    },
   );
 }

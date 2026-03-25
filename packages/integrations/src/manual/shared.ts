@@ -42,8 +42,8 @@ const SUITE_PROMPTS: Record<string, string> = {
     conversationResponseSystemPrompt,
     "",
     "Conversation Memory Summary Prompt:",
-    conversationMemorySummarySystemPrompt
-  ].join("\n")
+    conversationMemorySummarySystemPrompt,
+  ].join("\n"),
 };
 
 export function ensureManualEvalEnv() {
@@ -51,7 +51,8 @@ export function ensureManualEvalEnv() {
     throw new Error("OPENAI_API_KEY is required to run the manual evals.");
   }
 
-  process.env.DATABASE_URL ??= "postgresql://manual:manual@localhost:5432/manual_eval";
+  process.env.DATABASE_URL ??=
+    "postgresql://manual:manual@localhost:5432/manual_eval";
   process.env.APP_BASE_URL ??= "http://localhost:3000";
   process.env.TELEGRAM_BOT_TOKEN ??= "manual-telegram-token";
   process.env.TELEGRAM_WEBHOOK_SECRET ??= "manual-telegram-webhook-secret";
@@ -65,7 +66,7 @@ export function buildEvalReport(suites: EvalSuiteResult[]): EvalReport {
     totalCases: suites.reduce((sum, suite) => sum + suite.total, 0),
     passedCases: suites.reduce((sum, suite) => sum + suite.passed, 0),
     failedCases: suites.reduce((sum, suite) => sum + suite.failed, 0),
-    suites
+    suites,
   };
 }
 
@@ -75,7 +76,7 @@ export async function writeEvalReport(report: EvalReport) {
     path.resolve(process.cwd(), "manual-eval-report.json");
 
   await mkdir(path.dirname(reportPath), {
-    recursive: true
+    recursive: true,
   });
   await writeFile(reportPath, JSON.stringify(report, null, 2), "utf8");
 
@@ -88,12 +89,12 @@ export async function writeSuiteEvalReport(suite: EvalSuiteResult) {
     path.resolve(process.cwd(), `${suite.suiteName}.manual-eval-report.json`);
 
   await mkdir(path.dirname(reportPath), {
-    recursive: true
+    recursive: true,
   });
   await writeFile(
     reportPath,
     JSON.stringify(buildEvalReport([suite]), null, 2),
-    "utf8"
+    "utf8",
   );
 
   return reportPath;
@@ -115,16 +116,15 @@ function buildPromptImprovementPrompt(suite: EvalSuiteResult) {
     failedCases.length === 0
       ? "No failing cases."
       : failedCases
-          .map(
-            (testCase) =>
-              [
-                `Case: ${testCase.name}`,
-                `Details:`,
-                formatCaseDetails(testCase.details),
-                testCase.error ? `Error: ${testCase.error}` : null
-              ]
-                .filter(Boolean)
-                .join("\n")
+          .map((testCase) =>
+            [
+              `Case: ${testCase.name}`,
+              `Details:`,
+              formatCaseDetails(testCase.details),
+              testCase.error ? `Error: ${testCase.error}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
           )
           .join("\n\n---\n\n");
 
@@ -152,9 +152,9 @@ function buildPromptImprovementPrompt(suite: EvalSuiteResult) {
     "Output exactly in this format:",
     "",
     "Improved prompt:",
-    "\"\"\"",
+    '"""',
     "<full revised prompt>",
-    "\"\"\"",
+    '"""',
     "",
     "Explanation:",
     "- <short bullet explaining the main failure pattern>",
@@ -162,14 +162,14 @@ function buildPromptImprovementPrompt(suite: EvalSuiteResult) {
     "- <short bullet explaining why the revision should generalize better>",
     "",
     "Original prompt:",
-    "\"\"\"",
+    '"""',
     originalPrompt,
-    "\"\"\"",
+    '"""',
     "",
     "Test results:",
-    "\"\"\"",
+    '"""',
     testResults,
-    "\"\"\""
+    '"""',
   ].join("\n");
 }
 
@@ -179,7 +179,7 @@ export async function writePromptImprovementBrief(suite: EvalSuiteResult) {
     path.resolve(process.cwd(), `${suite.suiteName}.prompt-improvement.md`);
 
   await mkdir(path.dirname(briefPath), {
-    recursive: true
+    recursive: true,
   });
   await writeFile(briefPath, buildPromptImprovementPrompt(suite), "utf8");
 
@@ -187,12 +187,12 @@ export async function writePromptImprovementBrief(suite: EvalSuiteResult) {
 }
 
 export async function writePromptImprovementBriefsForFailures(
-  suites: EvalSuiteResult[]
+  suites: EvalSuiteResult[],
 ) {
   const failedSuites = suites.filter((suite) => suite.failed > 0);
 
   const briefPaths = await Promise.all(
-    failedSuites.map((suite) => writePromptImprovementBrief(suite))
+    failedSuites.map((suite) => writePromptImprovementBrief(suite)),
   );
 
   return briefPaths;

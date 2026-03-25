@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 
 import {
-  buildCapturedTask,
   buildBusyScheduleBlocks,
+  buildCapturedTask,
   buildDefaultUserProfile,
   buildGoogleCalendarLinkToken,
   buildInboxPlanningContext,
@@ -14,25 +14,25 @@ import {
   buildTelegramWebhookIdempotencyKey,
   confirmedMutationRecoveryOutputSchema,
   conversationStateSnapshotSchema,
+  createEmptyDiscourseState,
   detectTaskCalendarDrift,
   getConfig,
   getGoogleCalendarOAuthConfig,
   getTelegramAllowedUserIds,
-  verifyGoogleCalendarLinkToken,
   inboxPlanningOutputSchema,
-  isTelegramUserAllowed,
   isTaskFollowupDue,
   isTaskFollowupReminderDue,
+  isTelegramUserAllowed,
   normalizeTelegramText,
   normalizeTelegramUpdate,
   processInboxItem,
-  createEmptyDiscourseState,
   resolveScheduleBlockReference,
   resolveTaskReference,
   scheduleBlockSchema,
   taskSchema,
   turnRoutingOutputSchema,
-  userProfileSchema
+  userProfileSchema,
+  verifyGoogleCalendarLinkToken,
 } from "./index";
 
 describe("core package", () => {
@@ -46,7 +46,7 @@ describe("core package", () => {
       blackoutWindows: [],
       focusBlockMinutes: 50,
       reminderStyle: "gentle",
-      breakdownLevel: 5
+      breakdownLevel: 5,
     });
 
     expect(result.success).toBe(true);
@@ -66,10 +66,13 @@ describe("core package", () => {
       TELEGRAM_ALLOWED_USER_IDS: "123",
       GOOGLE_CLIENT_ID: "google-client-id",
       GOOGLE_CLIENT_SECRET: "google-client-secret",
-      GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback",
+      GOOGLE_OAUTH_REDIRECT_URI:
+        "https://example.com/api/google-calendar/oauth/callback",
       GOOGLE_LINK_TOKEN_SECRET: "google-link-secret",
-      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
-      CRON_SECRET: "cron-secret"
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString(
+        "base64",
+      ),
+      CRON_SECRET: "cron-secret",
     });
 
     expect(config).toMatchObject({
@@ -81,10 +84,13 @@ describe("core package", () => {
       TELEGRAM_ALLOWED_USER_IDS: "123",
       GOOGLE_CLIENT_ID: "google-client-id",
       GOOGLE_CLIENT_SECRET: "google-client-secret",
-      GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback",
+      GOOGLE_OAUTH_REDIRECT_URI:
+        "https://example.com/api/google-calendar/oauth/callback",
       GOOGLE_LINK_TOKEN_SECRET: "google-link-secret",
-      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
-      CRON_SECRET: "cron-secret"
+      GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString(
+        "base64",
+      ),
+      CRON_SECRET: "cron-secret",
     });
   });
 
@@ -96,16 +102,16 @@ describe("core package", () => {
         OPENAI_API_KEY: "test-openai-key",
         TELEGRAM_BOT_TOKEN: "test-telegram-token",
         TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
-        TELEGRAM_ALLOWED_USER_IDS: ""
-      })
+        TELEGRAM_ALLOWED_USER_IDS: "",
+      }),
     ).toThrow(/TELEGRAM_ALLOWED_USER_IDS is required/);
   });
 
   it("parses Telegram allowlisted user ids from config", () => {
     expect(
       getTelegramAllowedUserIds({
-        TELEGRAM_ALLOWED_USER_IDS: "123, 456 ,789"
-      })
+        TELEGRAM_ALLOWED_USER_IDS: "123, 456 ,789",
+      }),
     ).toEqual(new Set(["123", "456", "789"]));
   });
 
@@ -114,8 +120,9 @@ describe("core package", () => {
       getGoogleCalendarOAuthConfig({
         GOOGLE_CLIENT_ID: "",
         GOOGLE_CLIENT_SECRET: "google-client-secret",
-        GOOGLE_OAUTH_REDIRECT_URI: "https://example.com/api/google-calendar/oauth/callback"
-      })
+        GOOGLE_OAUTH_REDIRECT_URI:
+          "https://example.com/api/google-calendar/oauth/callback",
+      }),
     ).toThrow();
   });
 
@@ -127,9 +134,11 @@ describe("core package", () => {
 
   it("builds stable Telegram idempotency keys", () => {
     expect(buildTelegramFollowUpIdempotencyKey("inbox-1")).toBe(
-      "telegram:followup:inbox-item:inbox-1"
+      "telegram:followup:inbox-item:inbox-1",
     );
-    expect(buildTelegramWebhookIdempotencyKey(42)).toBe("telegram:webhook:update:42");
+    expect(buildTelegramWebhookIdempotencyKey(42)).toBe(
+      "telegram:webhook:update:42",
+    );
   });
 
   it("builds and verifies signed Google Calendar link tokens", () => {
@@ -137,25 +146,25 @@ describe("core package", () => {
       userId: "123",
       handoffId: "8c92af58-5f9a-4da3-9244-dd018395afb6",
       expiresAt: "2026-03-20T17:00:00.000Z",
-      secret: "webhook-secret"
+      secret: "webhook-secret",
     });
 
     expect(
       verifyGoogleCalendarLinkToken({
         token,
         secret: "webhook-secret",
-        now: "2026-03-20T16:00:00.000Z"
-      })
+        now: "2026-03-20T16:00:00.000Z",
+      }),
     ).toMatchObject({
       userId: "123",
-      handoffId: "8c92af58-5f9a-4da3-9244-dd018395afb6"
+      handoffId: "8c92af58-5f9a-4da3-9244-dd018395afb6",
     });
     expect(
       verifyGoogleCalendarLinkToken({
         token,
         secret: "wrong-secret",
-        now: "2026-03-20T16:00:00.000Z"
-      })
+        now: "2026-03-20T16:00:00.000Z",
+      }),
     ).toBeNull();
   });
 
@@ -166,8 +175,8 @@ describe("core package", () => {
         inboxItemId: "inbox-1",
         title: "Review launch checklist",
         priority: "medium",
-        urgency: "high"
-      })
+        urgency: "high",
+      }),
     ).toEqual({
       userId: "123",
       sourceInboxItemId: "inbox-1",
@@ -186,7 +195,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "high"
+      urgency: "high",
     });
   });
 
@@ -209,7 +218,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "high"
+      urgency: "high",
     });
 
     expect(result.success).toBe(true);
@@ -234,7 +243,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "high"
+      urgency: "high",
     });
 
     expect(result.success).toBe(false);
@@ -259,7 +268,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "medium"
+      urgency: "medium",
     });
     const context = buildInboxPlanningContext({
       inboxItem: {
@@ -269,17 +278,24 @@ describe("core package", () => {
         rawText: "move it to 3pm",
         normalizedText: "move it to 3pm",
         processingStatus: "received",
-        linkedTaskIds: []
+        linkedTaskIds: [],
       },
       userProfile: buildDefaultUserProfile("123"),
       tasks: [task],
-      referenceTime: "2026-03-14T16:00:00.000Z"
+      referenceTime: "2026-03-14T16:00:00.000Z",
     });
 
     expect(context.tasks[0]?.alias).toBe("existing_task_1");
     expect(context.scheduleBlocks[0]?.alias).toBe("schedule_block_1");
-    expect(resolveTaskReference(context, { kind: "existing_task", alias: "existing_task_1" })?.id).toBe("task-1");
-    expect(resolveScheduleBlockReference(context, { alias: "schedule_block_1" })?.id).toBe("event-1");
+    expect(
+      resolveTaskReference(context, {
+        kind: "existing_task",
+        alias: "existing_task_1",
+      })?.id,
+    ).toBe("task-1");
+    expect(
+      resolveScheduleBlockReference(context, { alias: "schedule_block_1" })?.id,
+    ).toBe("event-1");
     expect(buildScheduleBlocksFromTasks([task])).toHaveLength(1);
   });
 
@@ -291,17 +307,17 @@ describe("core package", () => {
           {
             startAt: "2026-03-13T19:00:00.000Z",
             endAt: "2026-03-13T20:00:00.000Z",
-            externalCalendarId: "primary"
-          }
-        ]
-      })
+            externalCalendarId: "primary",
+          },
+        ],
+      }),
     ).toMatchObject([
       {
         userId: "123",
         startAt: "2026-03-13T19:00:00.000Z",
         endAt: "2026-03-13T20:00:00.000Z",
-        externalCalendarId: "primary"
-      }
+        externalCalendarId: "primary",
+      },
     ]);
   });
 
@@ -324,7 +340,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "medium"
+      urgency: "medium",
     });
 
     expect(
@@ -334,12 +350,12 @@ describe("core package", () => {
           externalCalendarEventId: "event-1",
           externalCalendarId: "primary",
           scheduledStartAt: "2026-03-13T18:00:00.000Z",
-          scheduledEndAt: "2026-03-13T19:00:00.000Z"
-        }
-      })
+          scheduledEndAt: "2026-03-13T19:00:00.000Z",
+        },
+      }),
     ).toMatchObject({
       taskId: "task-1",
-      reason: "calendar_changed"
+      reason: "calendar_changed",
     });
   });
 
@@ -362,7 +378,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "medium"
+      urgency: "medium",
     });
 
     expect(buildScheduleBlocksFromTasks([task])).toEqual([]);
@@ -378,13 +394,13 @@ describe("core package", () => {
           alias: "new_task_1",
           title: "Submit taxes",
           priority: "medium",
-          urgency: "high"
+          urgency: "high",
         },
         {
           type: "create_schedule_block",
           taskRef: {
             kind: "created_task",
-            alias: "new_task_1"
+            alias: "new_task_1",
           },
           scheduleConstraint: {
             dayReference: "tomorrow",
@@ -393,11 +409,11 @@ describe("core package", () => {
             explicitHour: 15,
             minute: 0,
             preferredWindow: null,
-            sourceText: "tomorrow at 3pm"
+            sourceText: "tomorrow at 3pm",
           },
-          reason: "The user requested tomorrow at 3pm."
-        }
-      ]
+          reason: "The user requested tomorrow at 3pm.",
+        },
+      ],
     });
 
     expect(result.actions).toHaveLength(2);
@@ -412,16 +428,16 @@ describe("core package", () => {
           type: "complete_task",
           taskRef: {
             kind: "existing_task",
-            alias: "existing_task_1"
+            alias: "existing_task_1",
           },
-          reason: "The user said the journaling session is done."
-        }
-      ]
+          reason: "The user said the journaling session is done.",
+        },
+      ],
     });
 
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toMatchObject({
-      type: "complete_task"
+      type: "complete_task",
     });
   });
 
@@ -429,7 +445,7 @@ describe("core package", () => {
     const result = inboxPlanningOutputSchema.safeParse({
       confidence: 1.5,
       summary: "Bad result",
-      actions: []
+      actions: [],
     });
 
     expect(result.success).toBe(false);
@@ -438,13 +454,14 @@ describe("core package", () => {
   it("accepts confirmed_mutation as a valid turn route and parses recovery outputs", () => {
     const routeResult = turnRoutingOutputSchema.safeParse({
       route: "confirmed_mutation",
-      reason: "The user confirmed one recent concrete proposal."
+      reason: "The user confirmed one recent concrete proposal.",
     });
     const recoveryResult = confirmedMutationRecoveryOutputSchema.safeParse({
       outcome: "recovered",
       recoveredText: "Schedule the dentist reminder at 3pm.",
       reason: "The user confirmed the recent concrete proposal.",
-      userReplyMessage: "Got it - I've added the dentist reminder to your schedule for today at 3pm."
+      userReplyMessage:
+        "Got it - I've added the dentist reminder to your schedule for today at 3pm.",
     });
 
     expect(routeResult.success).toBe(true);
@@ -460,24 +477,28 @@ describe("core package", () => {
           type: "create_schedule_block",
           taskRef: {
             kind: "existing_task",
-            alias: "existing_task_1"
+            alias: "existing_task_1",
           },
           scheduleConstraint: null,
-          reason: "The user asked Atlas to choose the time."
-        }
-      ]
+          reason: "The user asked Atlas to choose the time.",
+        },
+      ],
     });
 
     expect(result.success).toBe(true);
   });
 
   it("accepts needs_clarification recovery outputs", () => {
-    const clarificationResult = confirmedMutationRecoveryOutputSchema.safeParse({
-      outcome: "needs_clarification",
-      recoveredText: null,
-      reason: "I found two recent proposals for the user. User request is ambiguous.",
-      userReplyMessage: "I found two recent proposals. Which one do you want me to apply?"
-    });
+    const clarificationResult = confirmedMutationRecoveryOutputSchema.safeParse(
+      {
+        outcome: "needs_clarification",
+        recoveredText: null,
+        reason:
+          "I found two recent proposals for the user. User request is ambiguous.",
+        userReplyMessage:
+          "I found two recent proposals. Which one do you want me to apply?",
+      },
+    );
 
     expect(clarificationResult.success).toBe(true);
   });
@@ -504,8 +525,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: buildDefaultUserProfile("user_1"),
       existingBlocks: [],
@@ -518,8 +539,8 @@ describe("core package", () => {
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
-        sourceText: "tomorrow at 3pm"
-      }
+        sourceText: "tomorrow at 3pm",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-14T22:00:00.000Z");
@@ -534,7 +555,7 @@ describe("core package", () => {
           type: "create_schedule_block",
           taskRef: {
             kind: "existing_task",
-            alias: "existing_task_1"
+            alias: "existing_task_1",
           },
           scheduleConstraint: {
             dayReference: null,
@@ -544,11 +565,11 @@ describe("core package", () => {
             explicitHour: null,
             minute: null,
             preferredWindow: null,
-            sourceText: "in like 15 min"
+            sourceText: "in like 15 min",
           },
-          reason: "The user asked for a relative start time."
-        }
-      ]
+          reason: "The user asked for a relative start time.",
+        },
+      ],
     });
 
     expect(result.success).toBe(true);
@@ -579,8 +600,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -593,8 +614,8 @@ describe("core package", () => {
         explicitHour: null,
         minute: null,
         preferredWindow: null,
-        sourceText: "in like 15 min"
-      }
+        sourceText: "in like 15 min",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T01:17:00.000Z");
@@ -625,8 +646,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -641,8 +662,8 @@ describe("core package", () => {
         endExplicitHour: 11,
         endMinute: 9,
         preferredWindow: null,
-        sourceText: "today from 11:05 to 11:09"
-      }
+        sourceText: "today from 11:05 to 11:09",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T18:05:00.000Z");
@@ -674,8 +695,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [
@@ -688,7 +709,7 @@ describe("core package", () => {
           confidence: 0.8,
           reason: "Existing block",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
+          externalCalendarId: "primary",
         }),
         scheduleBlockSchema.parse({
           id: "block-2",
@@ -699,8 +720,8 @@ describe("core package", () => {
           confidence: 0.8,
           reason: "Existing block",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        })
+          externalCalendarId: "primary",
+        }),
       ],
       referenceTime: "2026-03-20T16:00:00.000Z",
       scheduleConstraint: {
@@ -713,8 +734,8 @@ describe("core package", () => {
         endExplicitHour: 11,
         endMinute: 9,
         preferredWindow: null,
-        sourceText: "today from 11:05 to 11:09"
-      }
+        sourceText: "today from 11:05 to 11:09",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T18:05:00.000Z");
@@ -732,7 +753,7 @@ describe("core package", () => {
         confidence: 0.8,
         reason: "Existing slot",
         rescheduleCount: 0,
-        externalCalendarId: "primary"
+        externalCalendarId: "primary",
       }),
       userProfile: buildDefaultUserProfile("user-1"),
       scheduleConstraint: {
@@ -743,10 +764,10 @@ describe("core package", () => {
         explicitHour: 15,
         minute: 0,
         preferredWindow: null,
-        sourceText: "at 3pm"
+        sourceText: "at 3pm",
       },
       existingBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     });
 
     expect(result.newStartAt).toBe("2026-03-13T22:00:00.000Z");
@@ -763,7 +784,7 @@ describe("core package", () => {
         confidence: 0.8,
         reason: "Existing slot",
         rescheduleCount: 0,
-        externalCalendarId: "primary"
+        externalCalendarId: "primary",
       }),
       userProfile: buildDefaultUserProfile("user-1"),
       scheduleConstraint: {
@@ -774,10 +795,10 @@ describe("core package", () => {
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "10am"
+        sourceText: "10am",
       },
       existingBlocks: [],
-      referenceTime: "2026-03-19T16:00:00.000Z"
+      referenceTime: "2026-03-19T16:00:00.000Z",
     });
 
     expect(result.newStartAt).toBe("2026-03-20T17:00:00.000Z");
@@ -794,7 +815,7 @@ describe("core package", () => {
         confidence: 0.8,
         reason: "Existing slot",
         rescheduleCount: 0,
-        externalCalendarId: "primary"
+        externalCalendarId: "primary",
       }),
       userProfile: buildDefaultUserProfile("user-1"),
       scheduleConstraint: {
@@ -807,10 +828,10 @@ describe("core package", () => {
         endExplicitHour: 11,
         endMinute: 9,
         preferredWindow: null,
-        sourceText: "11:05 to 11:09"
+        sourceText: "11:05 to 11:09",
       },
       existingBlocks: [],
-      referenceTime: "2026-03-20T16:00:00.000Z"
+      referenceTime: "2026-03-20T16:00:00.000Z",
     });
 
     expect(result.newStartAt).toBe("2026-03-20T18:05:00.000Z");
@@ -842,8 +863,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -856,8 +877,8 @@ describe("core package", () => {
         explicitHour: null,
         minute: null,
         preferredWindow: "morning",
-        sourceText: "Friday morning"
-      }
+        sourceText: "Friday morning",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T16:00:00.000Z");
@@ -888,8 +909,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -902,8 +923,8 @@ describe("core package", () => {
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "Friday at 10am"
-      }
+        sourceText: "Friday at 10am",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T17:00:00.000Z");
@@ -918,7 +939,7 @@ describe("core package", () => {
           type: "create_schedule_block",
           taskRef: {
             kind: "existing_task",
-            alias: "existing_task_1"
+            alias: "existing_task_1",
           },
           scheduleConstraint: {
             dayReference: "weekday",
@@ -928,11 +949,11 @@ describe("core package", () => {
             explicitHour: 10,
             minute: 0,
             preferredWindow: null,
-            sourceText: "Friday at 10am"
+            sourceText: "Friday at 10am",
           },
-          reason: "Invalid weekday constraint."
-        }
-      ]
+          reason: "Invalid weekday constraint.",
+        },
+      ],
     });
 
     expect(result.success).toBe(false);
@@ -963,8 +984,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -977,8 +998,8 @@ describe("core package", () => {
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "next Friday at 10am"
-      }
+        sourceText: "next Friday at 10am",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-27T17:00:00.000Z");
@@ -1009,8 +1030,8 @@ describe("core package", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        })
+          urgency: "medium",
+        }),
       ],
       userProfile: profile,
       existingBlocks: [],
@@ -1023,8 +1044,8 @@ describe("core package", () => {
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "next next Friday at 10am"
-      }
+        sourceText: "next next Friday at 10am",
+      },
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-04-03T17:00:00.000Z");
@@ -1050,7 +1071,7 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "medium"
+      urgency: "medium",
     });
 
     expect(isTaskFollowupDue(task, "2026-03-15T16:59:00.000Z")).toBe(false);
@@ -1077,13 +1098,20 @@ describe("core package", () => {
       completedAt: null,
       archivedAt: null,
       priority: "medium",
-      urgency: "medium"
+      urgency: "medium",
     });
 
-    expect(isTaskFollowupReminderDue(task, "2026-03-15T18:59:00.000Z")).toBe(false);
-    expect(isTaskFollowupReminderDue(task, "2026-03-15T19:00:00.000Z")).toBe(true);
+    expect(isTaskFollowupReminderDue(task, "2026-03-15T18:59:00.000Z")).toBe(
+      false,
+    );
+    expect(isTaskFollowupReminderDue(task, "2026-03-15T19:00:00.000Z")).toBe(
+      true,
+    );
     expect(
-      isTaskFollowupReminderDue({ ...task, followupReminderSentAt: "2026-03-15T19:00:00.000Z" }, "2026-03-15T21:00:00.000Z")
+      isTaskFollowupReminderDue(
+        { ...task, followupReminderSentAt: "2026-03-15T19:00:00.000Z" },
+        "2026-03-15T21:00:00.000Z",
+      ),
     ).toBe(false);
   });
 
@@ -1096,14 +1124,14 @@ describe("core package", () => {
         summaryText: "The user is discussing a move for the dentist reminder.",
         mode: "conversation_then_mutation",
         createdAt: "2026-03-20T16:00:00.000Z",
-        updatedAt: "2026-03-20T16:05:00.000Z"
+        updatedAt: "2026-03-20T16:05:00.000Z",
       },
       transcript: [
         {
           role: "user",
           text: "Could we move it after lunch?",
-          createdAt: "2026-03-20T16:05:00.000Z"
-        }
+          createdAt: "2026-03-20T16:05:00.000Z",
+        },
       ],
       entityRegistry: [
         {
@@ -1116,12 +1144,13 @@ describe("core package", () => {
           updatedAt: "2026-03-20T16:04:00.000Z",
           data: {
             route: "conversation_then_mutation",
-            replyText: "It sounds like you want to move the dentist reminder after lunch.",
-            slotSnapshot: {}
-          }
-        }
+            replyText:
+              "It sounds like you want to move the dentist reminder after lunch.",
+            slotSnapshot: {},
+          },
+        },
       ],
-      discourseState: createEmptyDiscourseState()
+      discourseState: createEmptyDiscourseState(),
     });
 
     expect(parsed.entityRegistry[0]?.kind).toBe("proposal_option");
@@ -1130,7 +1159,9 @@ describe("core package", () => {
   });
 
   it("normalizes Telegram text and webhook metadata", () => {
-    expect(normalizeTelegramText("  Call   the doctor \n tomorrow  ")).toBe("Call the doctor tomorrow");
+    expect(normalizeTelegramText("  Call   the doctor \n tomorrow  ")).toBe(
+      "Call the doctor tomorrow",
+    );
 
     const normalized = normalizeTelegramUpdate({
       update_id: 42,
@@ -1140,7 +1171,7 @@ describe("core package", () => {
         text: " Review   launch checklist ",
         chat: {
           id: 999,
-          type: "private"
+          type: "private",
         },
         from: {
           id: 123,
@@ -1148,9 +1179,9 @@ describe("core package", () => {
           first_name: "Max",
           last_name: "Lin",
           username: "maxl",
-          language_code: "en"
-        }
-      }
+          language_code: "en",
+        },
+      },
     });
 
     expect(normalized).toMatchObject({
@@ -1164,8 +1195,8 @@ describe("core package", () => {
         displayName: "Max Lin",
         username: "maxl",
         languageCode: "en",
-        chatType: "private"
-      }
+        chatType: "private",
+      },
     });
   });
 });

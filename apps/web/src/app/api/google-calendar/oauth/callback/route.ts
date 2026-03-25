@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       const response = buildHtmlResponse({
         status: 200,
         title: result.completion.title,
-        message: result.completion.message
+        message: result.completion.message,
       });
 
       if ("headers" in result && result.headers["set-cookie"]) {
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
     const response = buildHtmlResponse({
       status: result.status,
-      ...buildFailureContent(result)
+      ...buildFailureContent(result),
     });
 
     if ("headers" in result && result.headers["set-cookie"]) {
@@ -37,7 +37,8 @@ export async function GET(request: Request) {
     return buildHtmlResponse({
       status: 500,
       title: "Google Calendar connection failed",
-      message: "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again."
+      message:
+        "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again.",
     });
   }
 }
@@ -47,18 +48,18 @@ function buildHtmlResponse(input: {
   title: string;
   message: string;
 }) {
-  return new NextResponse(buildGoogleCalendarConnectedHtml(input.title, input.message), {
-    status: input.status,
-    headers: {
-      "content-type": "text/html; charset=utf-8"
-    }
-  });
+  return new NextResponse(
+    buildGoogleCalendarConnectedHtml(input.title, input.message),
+    {
+      status: input.status,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+      },
+    },
+  );
 }
 
-function buildFailureContent(result: {
-  status: number;
-  body?: unknown;
-}) {
+function buildFailureContent(result: { status: number; body?: unknown }) {
   const error =
     typeof result.body === "object" &&
     result.body !== null &&
@@ -70,13 +71,15 @@ function buildFailureContent(result: {
   if (error === "invalid_oauth_state" || error === "missing_oauth_params") {
     return {
       title: "Google Calendar link expired",
-      message: "This Google Calendar link is no longer valid. Go back to Telegram and request a fresh connect link."
+      message:
+        "This Google Calendar link is no longer valid. Go back to Telegram and request a fresh connect link.",
     };
   }
 
   return {
     title: "Google Calendar connection failed",
-    message: "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again."
+    message:
+      "Atlas could not finish connecting Google Calendar. Please go back to Telegram and try the link again.",
   };
 }
 

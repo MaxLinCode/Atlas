@@ -13,7 +13,7 @@ describe("mutation reply renderer", () => {
         rawText: "Schedule both",
         normalizedText: "Schedule both",
         processingStatus: "planned",
-        linkedTaskIds: ["task-1", "task-2"]
+        linkedTaskIds: ["task-1", "task-2"],
       },
       plannerRun: {
         id: "run-1",
@@ -22,7 +22,7 @@ describe("mutation reply renderer", () => {
         version: "test",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       createdTasks: [
         {
@@ -44,7 +44,7 @@ describe("mutation reply renderer", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
+          urgency: "medium",
         },
         {
           id: "task-2",
@@ -65,8 +65,8 @@ describe("mutation reply renderer", () => {
           completedAt: null,
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        }
+          urgency: "medium",
+        },
       ],
       scheduleBlocks: [
         {
@@ -78,7 +78,7 @@ describe("mutation reply renderer", () => {
           confidence: 0.9,
           reason: "First task",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
+          externalCalendarId: "primary",
         },
         {
           id: "event-b",
@@ -89,10 +89,10 @@ describe("mutation reply renderer", () => {
           confidence: 0.9,
           reason: "Second task",
           rescheduleCount: 0,
-          externalCalendarId: "primary"
-        }
+          externalCalendarId: "primary",
+        },
       ],
-      followUpMessage: ""
+      followUpMessage: "",
     });
 
     expect(reply).toContain("Scheduled:");
@@ -111,7 +111,7 @@ describe("mutation reply renderer", () => {
           rawText: "Move it",
           normalizedText: "Move it",
           processingStatus: "planned",
-          linkedTaskIds: ["task-1"]
+          linkedTaskIds: ["task-1"],
         },
         plannerRun: {
           id: "run-1",
@@ -120,7 +120,7 @@ describe("mutation reply renderer", () => {
           version: "test",
           modelInput: {},
           modelOutput: {},
-          confidence: 0.9
+          confidence: 0.9,
         },
         updatedBlock: {
           id: "event-a",
@@ -131,13 +131,13 @@ describe("mutation reply renderer", () => {
           confidence: 0.9,
           reason: "Moved",
           rescheduleCount: 1,
-          externalCalendarId: "primary"
+          externalCalendarId: "primary",
         },
-        followUpMessage: ""
+        followUpMessage: "",
       },
       {
-        timeZone: "America/Los_Angeles"
-      }
+        timeZone: "America/Los_Angeles",
+      },
     );
 
     expect(reply).toContain("Mar 20");
@@ -154,7 +154,7 @@ describe("mutation reply renderer", () => {
         rawText: "journal is done",
         normalizedText: "journal is done",
         processingStatus: "planned",
-        linkedTaskIds: ["task-1"]
+        linkedTaskIds: ["task-1"],
       },
       plannerRun: {
         id: "run-1",
@@ -163,7 +163,7 @@ describe("mutation reply renderer", () => {
         version: "test",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
       completedTasks: [
         {
@@ -185,10 +185,10 @@ describe("mutation reply renderer", () => {
           completedAt: "2026-03-18T12:00:00.000Z",
           archivedAt: null,
           priority: "medium",
-          urgency: "medium"
-        }
+          urgency: "medium",
+        },
       ],
-      followUpMessage: ""
+      followUpMessage: "",
     });
 
     expect(reply).toBe("Marked 'Journaling session' as done.");
@@ -204,7 +204,7 @@ describe("mutation reply renderer", () => {
         rawText: "do it",
         normalizedText: "do it",
         processingStatus: "needs_clarification",
-        linkedTaskIds: []
+        linkedTaskIds: [],
       },
       plannerRun: {
         id: "run-1",
@@ -213,14 +213,16 @@ describe("mutation reply renderer", () => {
         version: "test",
         modelInput: {},
         modelOutput: {},
-        confidence: 0.9
+        confidence: 0.9,
       },
-      reason: "Model returned invalid or mixed schedule references for newly created tasks.",
-      followUpMessage: "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+      reason:
+        "Model returned invalid or mixed schedule references for newly created tasks.",
+      followUpMessage:
+        "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
     });
 
     expect(reply).toBe(
-      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change."
+      "I couldn't safely apply that update. Tell me the exact task and what you'd like me to change.",
     );
   });
 
@@ -234,7 +236,7 @@ describe("mutation reply renderer", () => {
         rawText: "archive it",
         normalizedText: "archive it",
         processingStatus: "planned",
-        linkedTaskIds: ["task-1"]
+        linkedTaskIds: ["task-1"],
       },
       plannerRun: {
         id: "run-1",
@@ -243,7 +245,7 @@ describe("mutation reply renderer", () => {
         version: "test",
         modelInput: {},
         modelOutput: {},
-        confidence: 1
+        confidence: 1,
       },
       archivedTasks: [
         {
@@ -265,10 +267,10 @@ describe("mutation reply renderer", () => {
           completedAt: null,
           archivedAt: "2026-03-18T12:00:00.000Z",
           priority: "medium",
-          urgency: "medium"
-        }
+          urgency: "medium",
+        },
       ],
-      followUpMessage: ""
+      followUpMessage: "",
     });
 
     expect(reply).toBe("Archived 'Journaling session'.");

@@ -166,12 +166,8 @@
           "name": "inbox_items_source_event_id_bot_events_id_fk",
           "tableFrom": "inbox_items",
           "tableTo": "bot_events",
-          "columnsFrom": [
-            "source_event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_event_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -316,12 +312,8 @@
           "name": "schedule_blocks_task_id_tasks_id_fk",
           "tableFrom": "schedule_blocks",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

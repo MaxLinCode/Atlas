@@ -1,10 +1,13 @@
 import { buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 import {
+  type OutgoingTelegramDeliveryStore,
   recordOutgoingTelegramMessageIfNew,
   updateOutgoingTelegramMessage,
-  type OutgoingTelegramDeliveryStore
 } from "@atlas/db";
-import { sendTelegramMessage, type TelegramSendMessageResponse } from "@atlas/integrations";
+import type {
+  sendTelegramMessage,
+  TelegramSendMessageResponse,
+} from "@atlas/integrations";
 
 type BundlePayload = {
   kind: "initial" | "reminder";
@@ -35,14 +38,18 @@ type SendPersistedTelegramMessageDependencies = {
 
 export async function sendTelegramMessageWithPersistence(
   input: SendPersistedTelegramMessageInput,
-  dependencies: SendPersistedTelegramMessageDependencies
+  dependencies: SendPersistedTelegramMessageDependencies,
 ) {
   const idempotencyKey =
     input.idempotencyKey ??
-    (input.inboxItemId ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId) : null);
+    (input.inboxItemId
+      ? buildTelegramFollowUpIdempotencyKey(input.inboxItemId)
+      : null);
 
   if (!idempotencyKey) {
-    throw new Error("Follow-up delivery requires an inboxItemId or explicit idempotencyKey.");
+    throw new Error(
+      "Follow-up delivery requires an inboxItemId or explicit idempotencyKey.",
+    );
   }
 
   const reservation = await recordOutgoingTelegramMessageIfNew(
@@ -54,18 +61,18 @@ export async function sendTelegramMessageWithPersistence(
         chatId: input.chatId,
         text: input.persistedText ?? input.text,
         attempts: 0,
-        ...(input.bundle ?? {})
+        ...(input.bundle ?? {}),
       },
-      retryState: "sending"
+      retryState: "sending",
     },
-    dependencies.deliveryStore
+    dependencies.deliveryStore,
   );
 
   if (reservation.status === "duplicate") {
     return {
       status: "duplicate",
       attempts: 0,
-      idempotencyKey
+      idempotencyKey,
     };
   }
 
@@ -78,26 +85,29 @@ export async function sendTelegramMessageWithPersistence(
     try {
       const sentMessage = await dependencies.sender({
         chatId: input.chatId,
-        text: input.text
+        text: input.text,
       });
 
       await updateOutgoingTelegramMessage(
         {
           idempotencyKey,
           payload: buildOutgoingEventPayload(input, sentMessage, attempts),
-          retryState: "sent"
+          retryState: "sent",
         },
-        dependencies.deliveryStore
+        dependencies.deliveryStore,
       );
 
       return {
         status: "sent",
         attempts,
         idempotencyKey,
-        message: sentMessage.result
+        message: sentMessage.result,
       };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Failed to send Telegram follow-up message.");
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error("Failed to send Telegram follow-up message.");
     }
   }
 
@@ -109,18 +119,18 @@ export async function sendTelegramMessageWithPersistence(
         text: input.text,
         attempts,
         error: lastError?.message ?? "Unknown Telegram delivery error.",
-        ...(input.bundle ?? {})
+        ...(input.bundle ?? {}),
       },
-      retryState: "failed"
+      retryState: "failed",
     },
-    dependencies.deliveryStore
+    dependencies.deliveryStore,
   );
 
   return {
     status: "failed",
     attempts,
     idempotencyKey,
-    error: lastError?.message ?? "Unknown Telegram delivery error."
+    error: lastError?.message ?? "Unknown Telegram delivery error.",
   };
 }
 
@@ -128,7 +138,7 @@ function buildOutgoingEventPayload(
   input: SendPersistedTelegramMessageInput,
   sentMessage: TelegramSendMessageResponse,
   attempts: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
   return {
     chatId: input.chatId,
@@ -136,6 +146,6 @@ function buildOutgoingEventPayload(
     attempts,
     telegram: sentMessage,
     ...(input.bundle ?? {}),
-    ...(metadata ?? {})
+    ...(metadata ?? {}),
   };
 }

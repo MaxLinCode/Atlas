@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type FollowUpRuntimeStore,
   getDefaultFollowUpRuntimeStore,
   getDefaultInboxProcessingStore,
   listOutgoingBotEventsForTests,
@@ -7,12 +7,16 @@ import {
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
   seedInboxItemForProcessingTests,
-  type FollowUpRuntimeStore
 } from "@atlas/db";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runBundledFollowUps } from "./follow-up";
 
-async function seedScheduledTasks(titles: string[], inboxItemId: string, scheduledEndAt: string) {
+async function seedScheduledTasks(
+  titles: string[],
+  inboxItemId: string,
+  scheduledEndAt: string,
+) {
   const store = getDefaultInboxProcessingStore();
 
   seedInboxItemForProcessingTests({
@@ -23,7 +27,7 @@ async function seedScheduledTasks(titles: string[], inboxItemId: string, schedul
     normalizedText: "schedule it",
     processingStatus: "received",
     linkedTaskIds: [],
-    createdAt: "2026-03-20T16:00:00.000Z"
+    createdAt: "2026-03-20T16:00:00.000Z",
   });
 
   await store.saveTaskCaptureResult({
@@ -36,7 +40,7 @@ async function seedScheduledTasks(titles: string[], inboxItemId: string, schedul
       version: "test",
       modelInput: {},
       modelOutput: {},
-      confidence: 1
+      confidence: 1,
     } as never,
     tasks: titles.map((title, index) => ({
       alias: `${inboxItemId}_task_${index + 1}`,
@@ -58,8 +62,8 @@ async function seedScheduledTasks(titles: string[], inboxItemId: string, schedul
         completedAt: null,
         archivedAt: null,
         priority: "medium",
-        urgency: "medium"
-      }
+        urgency: "medium",
+      },
     })),
     scheduleBlocks: titles.map((_, index) => ({
       id: `${inboxItemId}-event-${index + 1}`,
@@ -70,9 +74,9 @@ async function seedScheduledTasks(titles: string[], inboxItemId: string, schedul
       confidence: 1,
       reason: "test",
       rescheduleCount: 0,
-      externalCalendarId: "primary"
+      externalCalendarId: "primary",
     })),
-    followUpMessage: "Scheduled it."
+    followUpMessage: "Scheduled it.",
   });
 
   return listTasksForTests()
@@ -95,53 +99,66 @@ describe("runBundledFollowUps", () => {
         date: 1_700_000_000,
         chat: {
           id: "123",
-          type: "private"
+          type: "private",
         },
-        text: "sent"
-      }
+        text: "sent",
+      },
     });
 
     const firstTaskIds = await seedScheduledTasks(
-      ["Review launch checklist", "Send investor update", "Prep customer summary"],
+      [
+        "Review launch checklist",
+        "Send investor update",
+        "Prep customer summary",
+      ],
       "inbox-a",
-      "2026-03-20T17:00:00.000Z"
+      "2026-03-20T17:00:00.000Z",
     );
 
-    await followUpStore.markFollowUpSent(firstTaskIds.slice(0, 2), "2026-03-20T17:00:00.000Z");
+    await followUpStore.markFollowUpSent(
+      firstTaskIds.slice(0, 2),
+      "2026-03-20T17:00:00.000Z",
+    );
 
     const result = await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
       store: followUpStore,
-      sender
+      sender,
     });
 
     expect(result).toMatchObject({
       accepted: true,
       sentBundles: 1,
-      skippedActiveTurns: 0
+      skippedActiveTurns: 0,
     });
     expect(sender).toHaveBeenCalledTimes(1);
     expect(sender).toHaveBeenCalledWith({
       chatId: "123",
-      text: "Checking in on these:\n1. Review launch checklist\n2. Send investor update\n3. Prep customer summary"
+      text: "Checking in on these:\n1. Review launch checklist\n2. Send investor update\n3. Prep customer summary",
     });
 
-    expect(listTasksForTests().find((task) => task.id === firstTaskIds[0])).toMatchObject({
+    expect(
+      listTasksForTests().find((task) => task.id === firstTaskIds[0]),
+    ).toMatchObject({
       lifecycleState: "awaiting_followup",
-      followupReminderSentAt: "2026-03-20T19:00:00.000Z"
+      followupReminderSentAt: "2026-03-20T19:00:00.000Z",
     });
-    expect(listTasksForTests().find((task) => task.id === firstTaskIds[1])).toMatchObject({
+    expect(
+      listTasksForTests().find((task) => task.id === firstTaskIds[1]),
+    ).toMatchObject({
       lifecycleState: "awaiting_followup",
-      followupReminderSentAt: "2026-03-20T19:00:00.000Z"
+      followupReminderSentAt: "2026-03-20T19:00:00.000Z",
     });
-    expect(listTasksForTests().find((task) => task.id === firstTaskIds[2])).toMatchObject({
+    expect(
+      listTasksForTests().find((task) => task.id === firstTaskIds[2]),
+    ).toMatchObject({
       lifecycleState: "awaiting_followup",
       lastFollowupAt: "2026-03-20T19:00:00.000Z",
-      followupReminderSentAt: null
+      followupReminderSentAt: null,
     });
 
     expect(listOutgoingBotEventsForTests()[0]?.payload).toMatchObject({
       kind: "initial",
-      taskIds: firstTaskIds
+      taskIds: firstTaskIds,
     });
   });
 
@@ -154,38 +171,45 @@ describe("runBundledFollowUps", () => {
         date: 1_700_000_000,
         chat: {
           id: "123",
-          type: "private"
+          type: "private",
         },
-        text: "sent"
-      }
+        text: "sent",
+      },
     });
 
     const initialTaskIds = await seedScheduledTasks(
       ["Task 1", "Task 2"],
       "inbox-a",
-      "2026-03-20T17:00:00.000Z"
+      "2026-03-20T17:00:00.000Z",
     );
-    await followUpStore.markFollowUpSent(initialTaskIds, "2026-03-20T17:00:00.000Z");
+    await followUpStore.markFollowUpSent(
+      initialTaskIds,
+      "2026-03-20T17:00:00.000Z",
+    );
 
     await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
       store: followUpStore,
-      sender
+      sender,
     });
 
-    const laterTaskIds = await seedScheduledTasks(["Task 3"], "inbox-b", "2026-03-20T20:00:00.000Z");
+    const laterTaskIds = await seedScheduledTasks(
+      ["Task 3"],
+      "inbox-b",
+      "2026-03-20T20:00:00.000Z",
+    );
 
     await runBundledFollowUps("2026-03-20T21:00:00.000Z", {
       store: followUpStore,
-      sender
+      sender,
     });
 
     expect(sender).toHaveBeenNthCalledWith(2, {
       chatId: "123",
-      text: "Checking in on these:\n1. Task 1\n2. Task 2\n3. Task 3"
+      text: "Checking in on these:\n1. Task 1\n2. Task 2\n3. Task 3",
     });
     expect(listOutgoingBotEventsForTests()[1]?.payload).toMatchObject({
       kind: "initial",
-      taskIds: [...initialTaskIds, ...laterTaskIds]
+      taskIds: [...initialTaskIds, ...laterTaskIds],
     });
   });
 
@@ -200,7 +224,7 @@ describe("runBundledFollowUps", () => {
         reservedKeys.add(event.idempotencyKey);
         return { status: "reserved" as const, eventId: "event-1" };
       }),
-      updateOutgoing: vi.fn(async () => undefined)
+      updateOutgoing: vi.fn(async () => undefined),
     };
     const sender = vi.fn().mockResolvedValue({
       ok: true,
@@ -209,10 +233,10 @@ describe("runBundledFollowUps", () => {
         date: 1_700_000_000,
         chat: {
           id: "123",
-          type: "private"
+          type: "private",
         },
-        text: "sent"
-      }
+        text: "sent",
+      },
     });
     const dueTask = {
       id: "task-1",
@@ -235,25 +259,25 @@ describe("runBundledFollowUps", () => {
       priority: "medium" as const,
       urgency: "medium" as const,
       createdAt: "2026-03-20T16:00:00.000Z",
-      dueType: "initial" as const
+      dueType: "initial" as const,
     };
     const store: FollowUpRuntimeStore = {
       listDueFollowUpTasks: vi.fn(async () => [dueTask]),
       listOutstandingFollowUpTasks: vi.fn(async () => []),
       hasInFlightInboxItem: vi.fn(async () => false),
       markFollowUpSent: vi.fn(async () => undefined),
-      markFollowUpReminderSent: vi.fn(async () => undefined)
+      markFollowUpReminderSent: vi.fn(async () => undefined),
     };
 
     await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
       store,
       deliveryStore,
-      sender
+      sender,
     });
     await runBundledFollowUps("2026-03-20T19:00:00.000Z", {
       store,
       deliveryStore,
-      sender
+      sender,
     });
 
     expect(sender).toHaveBeenCalledTimes(1);
@@ -261,14 +285,14 @@ describe("runBundledFollowUps", () => {
     expect(deliveryStore.reserveOutgoingIfAbsent).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        idempotencyKey: "telegram:followup:inbox-item:initial:task-1"
-      })
+        idempotencyKey: "telegram:followup:inbox-item:initial:task-1",
+      }),
     );
     expect(deliveryStore.reserveOutgoingIfAbsent).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        idempotencyKey: "telegram:followup:inbox-item:initial:task-1"
-      })
+        idempotencyKey: "telegram:followup:inbox-item:initial:task-1",
+      }),
     );
   });
 });

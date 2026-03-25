@@ -1,4 +1,9 @@
-import type { InboxPlanningContext, InboxPlanningOutput, PlanningAction, ScheduleConstraint } from "@atlas/core";
+import type {
+  InboxPlanningContext,
+  InboxPlanningOutput,
+  PlanningAction,
+  ScheduleConstraint,
+} from "@atlas/core";
 import { buildDefaultUserProfile } from "@atlas/core";
 import { expect } from "vitest";
 
@@ -23,20 +28,26 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "Schedule car maintenance for Friday at 10am.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" | "move_schedule_block" }> =>
-          action.type === "create_schedule_block" || action.type === "move_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" | "move_schedule_block" }
+        > =>
+          action.type === "create_schedule_block" ||
+          action.type === "move_schedule_block",
       );
 
       expect(scheduleAction?.type).toBe("create_schedule_block");
@@ -48,9 +59,9 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "Friday at 10am"
+        sourceText: "Friday at 10am",
       } satisfies ScheduleConstraint);
-    }
+    },
   },
   {
     name: "weekday scheduling resolves next friday",
@@ -63,20 +74,26 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "Schedule car maintenance for next Friday at 10am.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" | "move_schedule_block" }> =>
-          action.type === "create_schedule_block" || action.type === "move_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" | "move_schedule_block" }
+        > =>
+          action.type === "create_schedule_block" ||
+          action.type === "move_schedule_block",
       );
 
       expect(scheduleAction?.type).toBe("create_schedule_block");
@@ -88,9 +105,9 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         explicitHour: 10,
         minute: 0,
         preferredWindow: null,
-        sourceText: "next Friday at 10am"
+        sourceText: "next Friday at 10am",
       } satisfies ScheduleConstraint);
-    }
+    },
   },
   {
     name: "conditional scheduling request clarifies instead of mutating",
@@ -103,11 +120,11 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "If tomorrow is slammed, push the workout to Friday.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [
         {
@@ -132,17 +149,17 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
             archivedAt: null,
             priority: "medium",
             urgency: "medium",
-            createdAt: "2026-03-18T15:00:00.000Z"
-          }
-        }
+            createdAt: "2026-03-18T15:00:00.000Z",
+          },
+        },
       ],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       expect(result.actions).toHaveLength(1);
       expect(result.actions[0]?.type).toBe("clarify");
-    }
+    },
   },
   {
     name: "clear completion uses the existing task alias",
@@ -155,11 +172,11 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "Journal is done.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [
         {
@@ -184,12 +201,12 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
             archivedAt: null,
             priority: "medium",
             urgency: "medium",
-            createdAt: "2026-03-18T15:00:00.000Z"
-          }
-        }
+            createdAt: "2026-03-18T15:00:00.000Z",
+          },
+        },
       ],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       expect(result.actions).toHaveLength(1);
@@ -197,10 +214,10 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         type: "complete_task",
         taskRef: {
           kind: "existing_task",
-          alias: "existing_task_1"
-        }
+          alias: "existing_task_1",
+        },
       });
-    }
+    },
   },
   {
     name: "ambiguous mixed new and existing work clarifies",
@@ -213,11 +230,11 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "Move that to Friday and add a grocery task.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [
         {
@@ -242,17 +259,17 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
             archivedAt: null,
             priority: "medium",
             urgency: "medium",
-            createdAt: "2026-03-18T15:00:00.000Z"
-          }
-        }
+            createdAt: "2026-03-18T15:00:00.000Z",
+          },
+        },
       ],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       expect(result.actions).toHaveLength(1);
       expect(result.actions[0]?.type).toBe("clarify");
-    }
+    },
   },
   {
     name: "delegated slot choice uses a null schedule constraint",
@@ -262,27 +279,32 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         userId: "123",
         sourceEventId: "event-6",
         rawText: "Schedule the oil change for me and just pick an opening.",
-        normalizedText: "Schedule the oil change for me and just pick an opening.",
+        normalizedText:
+          "Schedule the oil change for me and just pick an opening.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" }> =>
-          action.type === "create_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" }
+        > => action.type === "create_schedule_block",
       );
 
       expect(scheduleAction?.scheduleConstraint).toBeNull();
-    }
+    },
   },
   {
     name: "bare scheduling request defaults to next best opening",
@@ -295,28 +317,33 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         normalizedText: "Schedule an oil change.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       const createTaskAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_task" }> => action.type === "create_task"
+        (action): action is Extract<PlanningAction, { type: "create_task" }> =>
+          action.type === "create_task",
       );
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" }> =>
-          action.type === "create_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" }
+        > => action.type === "create_schedule_block",
       );
 
       expect(createTaskAction?.title).toMatch(/oil change/i);
       expect(scheduleAction?.scheduleConstraint).toBeNull();
-    }
+    },
   },
   {
     name: "soft late-morning preference infers a concrete time",
@@ -326,32 +353,37 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         userId: "123",
         sourceEventId: "event-7",
         rawText: "Schedule the dentist tomorrow morning but not too early.",
-        normalizedText: "Schedule the dentist tomorrow morning but not too early.",
+        normalizedText:
+          "Schedule the dentist tomorrow morning but not too early.",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-18T16:00:00.000Z"
+        createdAt: "2026-03-18T16:00:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-18T16:00:00.000Z"
+      referenceTime: "2026-03-18T16:00:00.000Z",
     },
     assert: (result) => {
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" }> =>
-          action.type === "create_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" }
+        > => action.type === "create_schedule_block",
       );
 
       expect(scheduleAction?.scheduleConstraint).toMatchObject({
         dayReference: "tomorrow",
         relativeMinutes: null,
         explicitHour: 10,
-        minute: 30
+        minute: 30,
       });
-    }
+    },
   },
   {
     name: "relative-minute scheduling uses relativeMinutes instead of inventing a clock time",
@@ -361,23 +393,28 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         userId: "123",
         sourceEventId: "event-8",
         rawText: "add schedule my car maintenance to my cal in like 15 min",
-        normalizedText: "add schedule my car maintenance to my cal in like 15 min",
+        normalizedText:
+          "add schedule my car maintenance to my cal in like 15 min",
         processingStatus: "received",
         linkedTaskIds: [],
-        createdAt: "2026-03-20T01:02:00.000Z"
+        createdAt: "2026-03-20T01:02:00.000Z",
       },
       userProfile: {
         ...buildDefaultUserProfile("123"),
-        timezone: "America/Los_Angeles"
+        timezone: "America/Los_Angeles",
       },
       tasks: [],
       scheduleBlocks: [],
-      referenceTime: "2026-03-20T01:02:00.000Z"
+      referenceTime: "2026-03-20T01:02:00.000Z",
     },
     assert: (result) => {
       const scheduleAction = result.actions.find(
-        (action): action is Extract<PlanningAction, { type: "create_schedule_block" }> =>
-          action.type === "create_schedule_block"
+        (
+          action,
+        ): action is Extract<
+          PlanningAction,
+          { type: "create_schedule_block" }
+        > => action.type === "create_schedule_block",
       );
 
       expect(scheduleAction?.scheduleConstraint).toMatchObject({
@@ -387,10 +424,10 @@ export const PLANNER_EVAL_CASES: PlannerEvalCase[] = [
         relativeMinutes: 15,
         explicitHour: null,
         minute: null,
-        preferredWindow: null
+        preferredWindow: null,
       } satisfies Partial<ScheduleConstraint>);
-    }
-  }
+    },
+  },
 ];
 
 export async function runPlannerEvalSuite(): Promise<EvalSuiteResult> {
@@ -407,8 +444,8 @@ export async function runPlannerEvalSuite(): Promise<EvalSuiteResult> {
         pass: true,
         details: {
           actionTypes: result.actions.map((action) => action.type),
-          summary: result.summary
-        }
+          summary: result.summary,
+        },
       });
     } catch (error) {
       cases.push({
@@ -416,9 +453,9 @@ export async function runPlannerEvalSuite(): Promise<EvalSuiteResult> {
         pass: false,
         details: {
           actionTypes: result.actions.map((action) => action.type),
-          summary: result.summary
+          summary: result.summary,
         },
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -431,6 +468,6 @@ export async function runPlannerEvalSuite(): Promise<EvalSuiteResult> {
     passed,
     failed: cases.length - passed,
     durationMs: Date.now() - startedAt,
-    cases
+    cases,
   };
 }

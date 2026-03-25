@@ -1,33 +1,32 @@
+import {
+  type ConfirmedMutationRecoveryInput,
+  type ConfirmedMutationRecoveryOutput,
+  confirmedMutationRecoveryInputSchema,
+  confirmedMutationRecoveryOutputSchema,
+  confirmedMutationRecoveryResponseFormatSchema,
+  conversationDiscourseStateSchema,
+  conversationEntitySchema,
+  conversationTurnSchema,
+  getConfig,
+  inboxPlanningContextSchema,
+  inboxPlanningOutputSchema,
+  inboxPlanningResponseFormatSchema,
+  type RawSlotExtraction,
+  rawSlotExtractionSchema,
+  type SlotExtractorInput,
+  slotExtractorInputSchema,
+  type TurnClassifierInput,
+  type TurnClassifierResponse,
+  type TurnRoutingInput,
+  type TurnRoutingOutput,
+  turnClassifierInputSchema,
+  turnClassifierResponseSchema,
+  turnRoutingInputSchema,
+  turnRoutingOutputSchema,
+} from "@atlas/core";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
-
-import {
-  conversationDiscourseStateSchema,
-  conversationEntitySchema,
-  getConfig,
-  inboxPlanningContextSchema,
-  inboxPlanningResponseFormatSchema,
-  inboxPlanningOutputSchema,
-  turnRoutingInputSchema,
-  turnRoutingOutputSchema,
-  conversationTurnSchema,
-  confirmedMutationRecoveryInputSchema,
-  confirmedMutationRecoveryResponseFormatSchema,
-  confirmedMutationRecoveryOutputSchema,
-  rawSlotExtractionSchema,
-  slotExtractorInputSchema,
-  turnClassifierInputSchema,
-  turnClassifierResponseSchema,
-  type TurnRoutingInput,
-  type TurnRoutingOutput,
-  type ConfirmedMutationRecoveryInput,
-  type ConfirmedMutationRecoveryOutput,
-  type SlotExtractorInput,
-  type RawSlotExtraction,
-  type TurnClassifierInput,
-  type TurnClassifierResponse
-} from "@atlas/core";
 import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
@@ -45,11 +44,11 @@ export const DEFAULT_SLOT_EXTRACTOR_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_CLASSIFIER_MODEL = "gpt-4o-mini";
 
 export const conversationMemorySummaryInputSchema = z.object({
-  recentTurns: z.array(conversationTurnSchema)
+  recentTurns: z.array(conversationTurnSchema),
 });
 
 export const conversationMemorySummaryOutputSchema = z.object({
-  summary: z.string()
+  summary: z.string(),
 });
 
 export const conversationResponseInputSchema = z.object({
@@ -59,17 +58,25 @@ export const conversationResponseInputSchema = z.object({
   recentTurns: z.array(conversationTurnSchema),
   memorySummary: z.string().nullable(),
   entityRegistry: z.array(conversationEntitySchema).optional().default([]),
-  discourseState: conversationDiscourseStateSchema.nullable().optional()
+  discourseState: conversationDiscourseStateSchema.nullable().optional(),
 });
 
 export const conversationResponseOutputSchema = z.object({
-  reply: z.string().min(1)
+  reply: z.string().min(1),
 });
 
-export type ConversationMemorySummaryInput = z.input<typeof conversationMemorySummaryInputSchema>;
-export type ConversationMemorySummaryOutput = z.infer<typeof conversationMemorySummaryOutputSchema>;
-export type ConversationResponseInput = z.input<typeof conversationResponseInputSchema>;
-export type ConversationResponseOutput = z.infer<typeof conversationResponseOutputSchema>;
+export type ConversationMemorySummaryInput = z.input<
+  typeof conversationMemorySummaryInputSchema
+>;
+export type ConversationMemorySummaryOutput = z.infer<
+  typeof conversationMemorySummaryOutputSchema
+>;
+export type ConversationResponseInput = z.input<
+  typeof conversationResponseInputSchema
+>;
+export type ConversationResponseOutput = z.infer<
+  typeof conversationResponseOutputSchema
+>;
 
 export type OpenAIResponsesClient = {
   responses: {
@@ -86,7 +93,7 @@ export function createOpenAIClient() {
 
 export async function planInboxItemWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ) {
   const context = inboxPlanningContextSchema.parse(input);
 
@@ -98,33 +105,38 @@ export async function planInboxItemWithResponses(
         content: [
           {
             type: "input_text",
-            text: inboxPlannerSystemPrompt
-          }
-        ]
+            text: inboxPlannerSystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(context)
-          }
-        ]
-      }
+            text: JSON.stringify(context),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(inboxPlanningResponseFormatSchema, "atlas_inbox_planning_output")
-    }
+      format: zodTextFormat(
+        inboxPlanningResponseFormatSchema,
+        "atlas_inbox_planning_output",
+      ),
+    },
   });
 
   return inboxPlanningOutputSchema.parse(
-    normalizePlanningOutput(inboxPlanningResponseFormatSchema.parse(response.output_parsed))
+    normalizePlanningOutput(
+      inboxPlanningResponseFormatSchema.parse(response.output_parsed),
+    ),
   );
 }
 
 export async function routeTurnWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ) {
   const context = turnRoutingInputSchema.parse(input);
 
@@ -136,23 +148,26 @@ export async function routeTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: turnRouterSystemPrompt
-          }
-        ]
+            text: turnRouterSystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildTurnRoutingPromptContext(context))
-          }
-        ]
-      }
+            text: JSON.stringify(buildTurnRoutingPromptContext(context)),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(turnRoutingOutputSchema, "atlas_turn_routing_output")
-    }
+      format: zodTextFormat(
+        turnRoutingOutputSchema,
+        "atlas_turn_routing_output",
+      ),
+    },
   });
 
   return turnRoutingOutputSchema.parse(response.output_parsed);
@@ -160,7 +175,7 @@ export async function routeTurnWithResponses(
 
 export async function recoverConfirmedMutationWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ) {
   const context = confirmedMutationRecoveryInputSchema.parse(input);
 
@@ -172,38 +187,42 @@ export async function recoverConfirmedMutationWithResponses(
         content: [
           {
             type: "input_text",
-            text: confirmedMutationRecoverySystemPrompt
-          }
-        ]
+            text: confirmedMutationRecoverySystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildConfirmedMutationRecoveryPromptContext(context))
-          }
-        ]
-      }
+            text: JSON.stringify(
+              buildConfirmedMutationRecoveryPromptContext(context),
+            ),
+          },
+        ],
+      },
     ],
     text: {
       format: zodTextFormat(
         confirmedMutationRecoveryResponseFormatSchema,
-        "atlas_confirmed_mutation_recovery_output"
-      )
-    }
+        "atlas_confirmed_mutation_recovery_output",
+      ),
+    },
   });
 
   return confirmedMutationRecoveryOutputSchema.parse(
     normalizeConfirmedMutationRecoveryOutput(
-      confirmedMutationRecoveryResponseFormatSchema.parse(response.output_parsed)
-    )
+      confirmedMutationRecoveryResponseFormatSchema.parse(
+        response.output_parsed,
+      ),
+    ),
   );
 }
 
 export async function respondToConversationTurnWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ) {
   const context = conversationResponseInputSchema.parse(input);
 
@@ -215,23 +234,28 @@ export async function respondToConversationTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: conversationResponseSystemPrompt
-          }
-        ]
+            text: conversationResponseSystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildConversationResponsePromptContext(context))
-          }
-        ]
-      }
+            text: JSON.stringify(
+              buildConversationResponsePromptContext(context),
+            ),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(conversationResponseOutputSchema, "atlas_conversation_response_output")
-    }
+      format: zodTextFormat(
+        conversationResponseOutputSchema,
+        "atlas_conversation_response_output",
+      ),
+    },
   });
 
   return conversationResponseOutputSchema.parse(response.output_parsed);
@@ -239,7 +263,7 @@ export async function respondToConversationTurnWithResponses(
 
 export async function extractSlotsWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ): Promise<RawSlotExtraction> {
   const context = slotExtractorInputSchema.parse(input);
 
@@ -251,23 +275,26 @@ export async function extractSlotsWithResponses(
         content: [
           {
             type: "input_text",
-            text: slotExtractorSystemPrompt
-          }
-        ]
+            text: slotExtractorSystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildSlotExtractorPromptContext(context))
-          }
-        ]
-      }
+            text: JSON.stringify(buildSlotExtractorPromptContext(context)),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(rawSlotExtractionSchema, "atlas_slot_extraction_output")
-    }
+      format: zodTextFormat(
+        rawSlotExtractionSchema,
+        "atlas_slot_extraction_output",
+      ),
+    },
   });
 
   return rawSlotExtractionSchema.parse(response.output_parsed);
@@ -275,7 +302,7 @@ export async function extractSlotsWithResponses(
 
 export async function classifyTurnWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ): Promise<TurnClassifierResponse> {
   const context = turnClassifierInputSchema.parse(input);
 
@@ -287,23 +314,26 @@ export async function classifyTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: turnClassifierSystemPrompt
-          }
-        ]
+            text: turnClassifierSystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildTurnClassifierPromptContext(context))
-          }
-        ]
-      }
+            text: JSON.stringify(buildTurnClassifierPromptContext(context)),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(turnClassifierResponseSchema, "atlas_turn_classifier_output")
-    }
+      format: zodTextFormat(
+        turnClassifierResponseSchema,
+        "atlas_turn_classifier_output",
+      ),
+    },
   });
 
   return turnClassifierResponseSchema.parse(response.output_parsed);
@@ -317,11 +347,11 @@ function buildTurnClassifierPromptContext(context: TurnClassifierInput) {
       ? {
           ...discourseState,
           pending_clarifications: discourseState.pending_clarifications.filter(
-            (c) => c.status === "pending"
-          )
+            (c) => c.status === "pending",
+          ),
         }
       : null,
-    entityRegistry: context.entityRegistry ?? []
+    entityRegistry: context.entityRegistry ?? [],
   };
 }
 
@@ -330,7 +360,7 @@ function buildSlotExtractorPromptContext(context: SlotExtractorInput) {
     currentTurnText: context.currentTurnText,
     pendingSlots: context.pendingSlots,
     priorResolvedSlots: context.priorResolvedSlots,
-    conversationContext: context.conversationContext ?? null
+    conversationContext: context.conversationContext ?? null,
   };
 }
 
@@ -340,34 +370,38 @@ function buildTurnRoutingPromptContext(context: TurnRoutingInput) {
     recentTurns: context.recentTurns,
     summaryText: context.summaryText ?? null,
     entityRegistry: context.entityRegistry ?? [],
-    discourseState: context.discourseState ?? null
+    discourseState: context.discourseState ?? null,
   };
 }
 
-function buildConfirmedMutationRecoveryPromptContext(context: ConfirmedMutationRecoveryInput) {
+function buildConfirmedMutationRecoveryPromptContext(
+  context: ConfirmedMutationRecoveryInput,
+) {
   return {
     rawText: context.rawText,
     recentTurns: context.recentTurns,
     memorySummary: context.memorySummary,
     entityRegistry: context.entityRegistry ?? [],
-    discourseState: context.discourseState ?? null
+    discourseState: context.discourseState ?? null,
   };
 }
 
-function buildConversationResponsePromptContext(context: ConversationResponseInput) {
+function buildConversationResponsePromptContext(
+  context: ConversationResponseInput,
+) {
   return {
     route: context.route,
     rawText: context.rawText,
     recentTurns: context.recentTurns,
     memorySummary: context.memorySummary,
     entityRegistry: context.entityRegistry ?? [],
-    discourseState: context.discourseState ?? null
+    discourseState: context.discourseState ?? null,
   };
 }
 
 export async function summarizeConversationMemoryWithResponses(
   input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient()
+  client: OpenAIResponsesClient = createOpenAIClient(),
 ) {
   const context = conversationMemorySummaryInputSchema.parse(input);
 
@@ -379,35 +413,38 @@ export async function summarizeConversationMemoryWithResponses(
         content: [
           {
             type: "input_text",
-            text: conversationMemorySummarySystemPrompt
-          }
-        ]
+            text: conversationMemorySummarySystemPrompt,
+          },
+        ],
       },
       {
         role: "user",
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(context)
-          }
-        ]
-      }
+            text: JSON.stringify(context),
+          },
+        ],
+      },
     ],
     text: {
-      format: zodTextFormat(conversationMemorySummaryOutputSchema, "atlas_conversation_memory_summary_output")
-    }
+      format: zodTextFormat(
+        conversationMemorySummaryOutputSchema,
+        "atlas_conversation_memory_summary_output",
+      ),
+    },
   });
 
   return conversationMemorySummaryOutputSchema.parse(response.output_parsed);
 }
 
 function normalizeConfirmedMutationRecoveryOutput(
-  output: z.infer<typeof confirmedMutationRecoveryResponseFormatSchema>
+  output: z.infer<typeof confirmedMutationRecoveryResponseFormatSchema>,
 ) {
   if (output.outcome === "needs_clarification") {
     return {
       ...output,
-      recoveredText: null
+      recoveredText: null,
     };
   }
 
@@ -416,7 +453,7 @@ function normalizeConfirmedMutationRecoveryOutput(
       outcome: "needs_clarification" as const,
       recoveredText: null,
       reason: output.reason,
-      userReplyMessage: output.userReplyMessage
+      userReplyMessage: output.userReplyMessage,
     };
   }
 
@@ -424,7 +461,7 @@ function normalizeConfirmedMutationRecoveryOutput(
 }
 
 function normalizePlanningOutput(
-  output: z.infer<typeof inboxPlanningResponseFormatSchema>
+  output: z.infer<typeof inboxPlanningResponseFormatSchema>,
 ) {
   return {
     confidence: output.confidence,
@@ -435,7 +472,7 @@ function normalizePlanningOutput(
           if (!action.alias || !action.title) {
             return {
               type: "clarify" as const,
-              reason: "Model returned an incomplete create_task action."
+              reason: "Model returned an incomplete create_task action.",
             };
           }
 
@@ -444,34 +481,36 @@ function normalizePlanningOutput(
             alias: action.alias,
             title: action.title,
             priority: action.priority ?? "medium",
-            urgency: action.urgency ?? "medium"
+            urgency: action.urgency ?? "medium",
           };
         case "create_schedule_block":
           return {
             type: action.type,
             taskRef: action.taskRef,
             scheduleConstraint: action.scheduleConstraint ?? null,
-            reason: action.reason
+            reason: action.reason,
           };
         case "move_schedule_block":
           return {
             type: action.type,
             blockRef: action.blockRef,
             scheduleConstraint: action.scheduleConstraint ?? null,
-            reason: action.reason
+            reason: action.reason,
           };
         case "complete_task":
           return {
             type: action.type,
             taskRef: action.taskRef,
-            reason: action.reason
+            reason: action.reason,
           };
         case "clarify":
           return {
             type: action.type,
-            reason: action.reason
+            reason: action.reason,
           };
+        default:
+          throw new Error(`Unhandled action type`);
       }
-    })
+    }),
   };
 }

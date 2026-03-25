@@ -1,0 +1,33 @@
+# .dippy
+
+# Let normal read / inspect commands flow
+allow git status
+allow git diff
+allow git log
+allow ls
+allow pwd
+allow cat
+allow sed
+allow grep
+allow rg
+allow find
+allow jq
+
+# Let normal monorepo validation commands flow
+allow pnpm --filter * typecheck
+allow pnpm --filter * test
+allow pnpm --filter * lint
+allow pnpm biome *
+allow pnpm exec biome *
+allow pnpm tsc *
+allow pnpm vitest *
+allow pnpm jest *
+
+# Keep obviously risky things gated
+deny rm -rf "Use trash or ask first before deleting recursively"
+deny git push --force "Force push requires review"
+deny git reset --hard "Hard reset requires review"
+deny pnpm publish "Publishing should always be confirmed"
+deny npm publish "Publishing should always be confirmed"
+deny-redirect **/.env* "Never write secrets into env files automatically"
+deny-redirect **/.env.local* "Never write secrets into env files automatically"

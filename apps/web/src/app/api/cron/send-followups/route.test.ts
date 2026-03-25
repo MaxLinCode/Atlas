@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "./route";
 
 const { runBundledFollowUpsMock } = vi.hoisted(() => ({
-  runBundledFollowUpsMock: vi.fn()
+  runBundledFollowUpsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/server/follow-up", () => ({
-  runBundledFollowUps: runBundledFollowUpsMock
+  runBundledFollowUps: runBundledFollowUpsMock,
 }));
 
 describe("send followups cron route", () => {
@@ -17,29 +17,33 @@ describe("send followups cron route", () => {
     runBundledFollowUpsMock.mockResolvedValue({
       accepted: true,
       sentBundles: 0,
-      skippedActiveTurns: 0
+      skippedActiveTurns: 0,
     });
   });
 
   it("rejects unauthenticated cron requests", async () => {
     process.env.CRON_SECRET = "cron-secret";
 
-    const response = await GET(new Request("http://localhost/api/cron/send-followups"));
+    const response = await GET(
+      new Request("http://localhost/api/cron/send-followups"),
+    );
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       accepted: false,
-      error: "invalid_cron_secret"
+      error: "invalid_cron_secret",
     });
   });
 
   it("fails closed when the cron secret is not configured", async () => {
-    const response = await GET(new Request("http://localhost/api/cron/send-followups"));
+    const response = await GET(
+      new Request("http://localhost/api/cron/send-followups"),
+    );
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       accepted: false,
-      error: "cron_secret_not_configured"
+      error: "cron_secret_not_configured",
     });
   });
 
@@ -48,14 +52,14 @@ describe("send followups cron route", () => {
 
     const response = await GET(
       new Request("http://localhost/api/cron/send-followups", {
-        headers: { authorization: "Bearer cron-secret" }
-      })
+        headers: { authorization: "Bearer cron-secret" },
+      }),
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       accepted: true,
-      sentBundles: 0
+      sentBundles: 0,
     });
     expect(runBundledFollowUpsMock).toHaveBeenCalledTimes(1);
   });
@@ -66,14 +70,14 @@ describe("send followups cron route", () => {
     const response = await POST(
       new Request("http://localhost/api/cron/send-followups", {
         method: "POST",
-        headers: { authorization: "Bearer cron-secret" }
-      })
+        headers: { authorization: "Bearer cron-secret" },
+      }),
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       accepted: true,
-      sentBundles: 0
+      sentBundles: 0,
     });
     expect(runBundledFollowUpsMock).toHaveBeenCalledTimes(1);
   });

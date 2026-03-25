@@ -1,26 +1,36 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  createEmptyDiscourseState,
-  getActivePendingClarifications,
-  updateDiscourseStateFromAssistantTurn,
   type ConversationEntity,
   type ConversationRecordMode,
   type ConversationStateSnapshot,
+  createEmptyDiscourseState,
+  getActivePendingClarifications,
   type PendingClarification,
   type PresentedItem,
   type ScheduleBlock,
   type Task,
   type TurnInterpretation,
   type TurnPolicyAction,
-  type TurnPolicyDecision
+  type TurnPolicyDecision,
+  updateDiscourseStateFromAssistantTurn,
 } from "@atlas/core";
-import { type ProcessedInboxResult } from "@atlas/db";
+import type { ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
-  policy: Pick<TurnPolicyDecision, "action" | "clarificationSlots" | "targetProposalId" | "committedSlots" | "resolvedContract"> & {
-    action: Extract<TurnPolicyAction, "reply_only" | "ask_clarification" | "present_proposal">;
+  policy: Pick<
+    TurnPolicyDecision,
+    | "action"
+    | "clarificationSlots"
+    | "targetProposalId"
+    | "committedSlots"
+    | "resolvedContract"
+  > & {
+    action: Extract<
+      TurnPolicyAction,
+      "reply_only" | "ask_clarification" | "present_proposal"
+    >;
   };
   interpretation: TurnInterpretation;
   reply: string;
@@ -35,26 +45,36 @@ type DeriveMutationStateInput = {
   occurredAt?: string;
 };
 
-export function deriveConversationReplyState(input: DeriveConversationReplyStateInput) {
+export function deriveConversationReplyState(
+  input: DeriveConversationReplyStateInput,
+) {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   const entityRegistry = [...input.snapshot.entityRegistry];
-  const discourseState = input.snapshot.discourseState ?? createEmptyDiscourseState();
+  const discourseState =
+    input.snapshot.discourseState ?? createEmptyDiscourseState();
   const presentedItems: PresentedItem[] = [];
   const newClarifications: PendingClarification[] = [];
   const resolvedClarificationIds: string[] = [];
-  const activePendingClarifications = getActivePendingClarifications(discourseState);
-  const persistableClarificationSlots = derivePersistableClarificationSlots(input.policy.clarificationSlots);
+  const activePendingClarifications =
+    getActivePendingClarifications(discourseState);
+  const persistableClarificationSlots = derivePersistableClarificationSlots(
+    input.policy.clarificationSlots,
+  );
   const shouldPersistClarification =
-    input.policy.action === "ask_clarification" && persistableClarificationSlots.length > 0;
+    input.policy.action === "ask_clarification" &&
+    persistableClarificationSlots.length > 0;
   const shouldClearActiveClarifications =
     shouldPersistClarification ||
     input.policy.action === "present_proposal" ||
     input.interpretation.turnType === "confirmation" ||
-    (input.interpretation.turnType === "clarification_answer" && !shouldPersistClarification);
+    (input.interpretation.turnType === "clarification_answer" &&
+      !shouldPersistClarification);
   let nextFocusEntityId: string | null | undefined;
 
   if (shouldClearActiveClarifications) {
-    resolvedClarificationIds.push(...activePendingClarifications.map((clarification) => clarification.id));
+    resolvedClarificationIds.push(
+      ...activePendingClarifications.map((clarification) => clarification.id),
+    );
 
     for (let index = 0; index < entityRegistry.length; index += 1) {
       const entity = entityRegistry[index];
@@ -63,7 +83,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
         entityRegistry[index] = {
           ...entity,
           status: "resolved",
-          updatedAt: occurredAt
+          updatedAt: occurredAt,
         };
       }
     }
@@ -89,9 +109,9 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
           missingSlots: input.policy.clarificationSlots,
-          slotSnapshot: input.policy.committedSlots ?? {}
-        }
-      })
+          slotSnapshot: input.policy.committedSlots ?? {},
+        },
+      }),
     );
 
     presentedItems.push({
@@ -99,7 +119,7 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       type: "entity",
       entityId: proposalEntity.id,
       label: proposalEntity.label,
-      ordinal: 1
+      ordinal: 1,
     });
     nextFocusEntityId = proposalEntity.id;
   }
@@ -108,21 +128,26 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
     const [clarificationSlot] = persistableClarificationSlots;
 
     if (!clarificationSlot) {
-      throw new Error("Expected a persistable clarification slot when persisting clarification state.");
+      throw new Error(
+        "Expected a persistable clarification slot when persisting clarification state.",
+      );
     }
 
-    const clarificationEntity = buildConversationEntity(input.snapshot.conversation.id, {
-      kind: "clarification",
-      label: summarizeLabel(input.reply),
-      status: "active",
-      createdAt: occurredAt,
-      updatedAt: occurredAt,
-      data: {
-        prompt: input.reply,
-        reason: clarificationSlot,
-        open: true
-      }
-    });
+    const clarificationEntity = buildConversationEntity(
+      input.snapshot.conversation.id,
+      {
+        kind: "clarification",
+        label: summarizeLabel(input.reply),
+        status: "active",
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+        data: {
+          prompt: input.reply,
+          reason: clarificationSlot,
+          open: true,
+        },
+      },
+    );
 
     entityRegistry.push(clarificationEntity);
     newClarifications.push({
@@ -131,18 +156,25 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       question: input.reply,
       status: "pending",
       createdAt: occurredAt,
-      createdTurnId: `assistant:${occurredAt}`
+      createdTurnId: `assistant:${occurredAt}`,
     });
     nextFocusEntityId ??= clarificationEntity.id;
   }
-  const updatedDiscourseState = updateDiscourseStateFromAssistantTurn(discourseState, {
-    ...(presentedItems.length > 0 ? { presentedItems } : {}),
-    ...(newClarifications.length > 0 ? { newClarifications } : {}),
-    ...(resolvedClarificationIds.length > 0 ? { resolvedClarificationIds } : {}),
-    ...(nextFocusEntityId !== undefined ? { focusEntityId: nextFocusEntityId } : {}),
-    pendingConfirmation: input.policy.action === "present_proposal",
-    validEntityIds: entityRegistry.map((entity) => entity.id)
-  }).state;
+  const updatedDiscourseState = updateDiscourseStateFromAssistantTurn(
+    discourseState,
+    {
+      ...(presentedItems.length > 0 ? { presentedItems } : {}),
+      ...(newClarifications.length > 0 ? { newClarifications } : {}),
+      ...(resolvedClarificationIds.length > 0
+        ? { resolvedClarificationIds }
+        : {}),
+      ...(nextFocusEntityId !== undefined
+        ? { focusEntityId: nextFocusEntityId }
+        : {}),
+      pendingConfirmation: input.policy.action === "present_proposal",
+      validEntityIds: entityRegistry.map((entity) => entity.id),
+    },
+  ).state;
 
   const committedSlots = input.policy.committedSlots;
   const nextDiscourseState = {
@@ -152,37 +184,42 @@ export function deriveConversationReplyState(input: DeriveConversationReplyState
       : {}),
     ...(input.policy.resolvedContract
       ? { pending_write_contract: input.policy.resolvedContract }
-      : {})
+      : {}),
   };
 
   return {
     summaryText: input.summaryText,
     mode: getConversationModeForPolicy(input.policy.action),
     entityRegistry: trimEntityRegistry(entityRegistry),
-    discourseState: nextDiscourseState
+    discourseState: nextDiscourseState,
   };
 }
 
 export function deriveMutationState(input: DeriveMutationStateInput) {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   const existingByKey = new Map<string, ConversationEntity>(
-    input.snapshot.entityRegistry.map((entity) => [entityKey(entity), entity])
+    input.snapshot.entityRegistry.map((entity) => [entityKey(entity), entity]),
   );
-  const currentDiscourseState = input.snapshot.discourseState ?? createEmptyDiscourseState();
-  const resolvedClarificationIds = getActivePendingClarifications(currentDiscourseState).map(
-    (clarification) => clarification.id
-  );
-  const entityRegistry: ConversationEntity[] = input.snapshot.entityRegistry.map((entity) => {
-    if (entity.kind === "proposal_option" || entity.kind === "clarification") {
-      return {
-        ...entity,
-        status: "resolved",
-        updatedAt: occurredAt
-      };
-    }
+  const currentDiscourseState =
+    input.snapshot.discourseState ?? createEmptyDiscourseState();
+  const resolvedClarificationIds = getActivePendingClarifications(
+    currentDiscourseState,
+  ).map((clarification) => clarification.id);
+  const entityRegistry: ConversationEntity[] =
+    input.snapshot.entityRegistry.map((entity) => {
+      if (
+        entity.kind === "proposal_option" ||
+        entity.kind === "clarification"
+      ) {
+        return {
+          ...entity,
+          status: "resolved",
+          updatedAt: occurredAt,
+        };
+      }
 
-    return entity;
-  });
+      return entity;
+    });
   let lastConcreteEntityId: string | null = null;
 
   for (const task of selectTasks(input.processing)) {
@@ -200,8 +237,8 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
         title: task.title,
         lifecycleState: task.lifecycleState,
         scheduledStartAt: task.scheduledStartAt,
-        scheduledEndAt: task.scheduledEndAt
-      }
+        scheduledEndAt: task.scheduledEndAt,
+      },
     });
 
     replaceEntity(entityRegistry, nextEntity, key);
@@ -225,8 +262,8 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
         title: taskTitle,
         startAt: block.startAt,
         endAt: block.endAt,
-        externalCalendarId: block.externalCalendarId ?? null
-      }
+        externalCalendarId: block.externalCalendarId ?? null,
+      },
     });
 
     replaceEntity(entityRegistry, nextEntity, key);
@@ -236,18 +273,21 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
   const newClarifications: PendingClarification[] = [];
 
   if (input.processing.outcome === "needs_clarification") {
-    const clarificationEntity = buildConversationEntity(input.snapshot.conversation.id, {
-      kind: "clarification",
-      label: summarizeLabel(input.processing.followUpMessage),
-      status: "active",
-      createdAt: occurredAt,
-      updatedAt: occurredAt,
-      data: {
-        prompt: input.processing.followUpMessage,
-        reason: input.processing.reason,
-        open: true
-      }
-    });
+    const clarificationEntity = buildConversationEntity(
+      input.snapshot.conversation.id,
+      {
+        kind: "clarification",
+        label: summarizeLabel(input.processing.followUpMessage),
+        status: "active",
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+        data: {
+          prompt: input.processing.followUpMessage,
+          reason: input.processing.reason,
+          open: true,
+        },
+      },
+    );
 
     entityRegistry.push(clarificationEntity);
     newClarifications.push({
@@ -257,7 +297,7 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
       question: input.processing.followUpMessage,
       status: "pending",
       createdAt: occurredAt,
-      createdTurnId: `assistant:${occurredAt}`
+      createdTurnId: `assistant:${occurredAt}`,
     });
   }
 
@@ -265,24 +305,31 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
     currentDiscourseState,
     {
       ...(newClarifications.length > 0 ? { newClarifications } : {}),
-      ...(resolvedClarificationIds.length > 0 ? { resolvedClarificationIds } : {}),
+      ...(resolvedClarificationIds.length > 0
+        ? { resolvedClarificationIds }
+        : {}),
       focusEntityId: lastConcreteEntityId,
       editableEntityId: lastConcreteEntityId,
       pendingConfirmation: false,
-      validEntityIds: entityRegistry.map((entity) => entity.id)
-    }
+      validEntityIds: entityRegistry.map((entity) => entity.id),
+    },
   ).state;
 
   const isFlowComplete = input.processing.outcome !== "needs_clarification";
   const finalDiscourseState = isFlowComplete
-    ? { ...discourseState, resolved_slots: {}, pending_write_contract: undefined }
+    ? {
+        ...discourseState,
+        resolved_slots: {},
+        pending_write_contract: undefined,
+      }
     : discourseState;
 
   return {
-    mode: (input.processing.outcome === "needs_clarification" ? "conversation_then_mutation" : "mutation") as
-      ConversationRecordMode,
+    mode: (input.processing.outcome === "needs_clarification"
+      ? "conversation_then_mutation"
+      : "mutation") as ConversationRecordMode,
     entityRegistry: trimEntityRegistry(entityRegistry),
-    discourseState: finalDiscourseState
+    discourseState: finalDiscourseState,
   };
 }
 
@@ -301,7 +348,9 @@ function selectTasks(processing: ProcessedInboxResult): Task[] {
   }
 }
 
-function selectScheduleBlocks(processing: ProcessedInboxResult): ScheduleBlock[] {
+function selectScheduleBlocks(
+  processing: ProcessedInboxResult,
+): ScheduleBlock[] {
   switch (processing.outcome) {
     case "planned":
     case "scheduled_existing_tasks":
@@ -313,7 +362,10 @@ function selectScheduleBlocks(processing: ProcessedInboxResult): ScheduleBlock[]
   }
 }
 
-function findTaskTitleForBlock(block: ScheduleBlock, processing: ProcessedInboxResult) {
+function findTaskTitleForBlock(
+  block: ScheduleBlock,
+  processing: ProcessedInboxResult,
+) {
   return (
     selectTasks(processing).find((task) => task.id === block.taskId)?.title ??
     "Scheduled work"
@@ -329,9 +381,11 @@ function summarizeLabel(text: string) {
 }
 
 function getConversationModeForPolicy(
-  policyAction: DeriveConversationReplyStateInput["policy"]["action"]
+  policyAction: DeriveConversationReplyStateInput["policy"]["action"],
 ): ConversationRecordMode {
-  return policyAction === "reply_only" ? "conversation" : "conversation_then_mutation";
+  return policyAction === "reply_only"
+    ? "conversation"
+    : "conversation_then_mutation";
 }
 
 function buildConversationEntity(
@@ -344,12 +398,12 @@ function buildConversationEntity(
     createdAt: string;
     updatedAt: string;
     data: ConversationEntity["data"];
-  }
+  },
 ): ConversationEntity {
   return {
     ...input,
     id: input.id ?? randomUUID(),
-    conversationId
+    conversationId,
   } as ConversationEntity;
 }
 
@@ -364,9 +418,12 @@ function upsertActiveProposalEntity(
     createdAt: string;
     updatedAt: string;
     data: Extract<ConversationEntity, { kind: "proposal_option" }>["data"];
-  }
+  },
 ) {
-  let existingProposal: Extract<ConversationEntity, { kind: "proposal_option" }> | null = null;
+  let existingProposal: Extract<
+    ConversationEntity,
+    { kind: "proposal_option" }
+  > | null = null;
 
   for (let index = 0; index < entityRegistry.length; index += 1) {
     const entity = entityRegistry[index];
@@ -384,7 +441,7 @@ function upsertActiveProposalEntity(
       entityRegistry[index] = {
         ...entity,
         status: "superseded",
-        updatedAt: input.updatedAt
+        updatedAt: input.updatedAt,
       };
     }
   }
@@ -395,7 +452,7 @@ function upsertActiveProposalEntity(
     status: input.status,
     createdAt: existingProposal?.createdAt ?? input.createdAt,
     updatedAt: input.updatedAt,
-    data: input.data
+    data: input.data,
   }) as Extract<ConversationEntity, { kind: "proposal_option" }>;
 
   const proposalId = input.proposalId ?? existingProposal?.id;
@@ -404,7 +461,11 @@ function upsertActiveProposalEntity(
     nextProposal.id = proposalId;
   }
 
-  replaceEntity(entityRegistry, nextProposal, `proposal_option:${nextProposal.id}`);
+  replaceEntity(
+    entityRegistry,
+    nextProposal,
+    `proposal_option:${nextProposal.id}`,
+  );
 
   return nextProposal;
 }
@@ -418,16 +479,26 @@ function derivePersistableClarificationSlots(slots: string[] | undefined) {
 
   return Array.from(
     new Set(
-      slots.map((slot) => slot.trim()).filter((slot) => PERSISTABLE_SLOT_KEYS.has(slot))
-    )
+      slots
+        .map((slot) => slot.trim())
+        .filter((slot) => PERSISTABLE_SLOT_KEYS.has(slot)),
+    ),
   );
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T) {
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as {
-    [K in keyof T as undefined extends T[K] ? never : K]: Exclude<T[K], undefined>;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as {
+    [K in keyof T as undefined extends T[K] ? never : K]: Exclude<
+      T[K],
+      undefined
+    >;
   } & {
-    [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<T[K], undefined>;
+    [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<
+      T[K],
+      undefined
+    >;
   };
 }
 
@@ -444,7 +515,11 @@ function entityKey(entity: ConversationEntity) {
   }
 }
 
-function replaceEntity(entityRegistry: ConversationEntity[], nextEntity: ConversationEntity, key: string) {
+function replaceEntity(
+  entityRegistry: ConversationEntity[],
+  nextEntity: ConversationEntity,
+  key: string,
+) {
   const index = entityRegistry.findIndex((entity) => entityKey(entity) === key);
 
   if (index >= 0) {
@@ -457,6 +532,8 @@ function replaceEntity(entityRegistry: ConversationEntity[], nextEntity: Convers
 
 function trimEntityRegistry(entityRegistry: ConversationEntity[]) {
   return entityRegistry
-    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt))
+    .sort(
+      (left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt),
+    )
     .slice(-20);
 }

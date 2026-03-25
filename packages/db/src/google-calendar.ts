@@ -1,17 +1,15 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-
+import type { Task } from "@atlas/core";
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-
-import { type Task } from "@atlas/core";
 
 import {
   googleCalendarAccounts,
   googleCalendarLinkHandoffs,
   googleCalendarLinkSessions,
   googleCalendarOauthStates,
-  tasks
+  tasks,
 } from "./schema";
 
 const CREDENTIAL_CIPHERTEXT_VERSION = "v1";
@@ -66,8 +64,12 @@ export type GoogleCalendarLinkSession = {
 
 export interface GoogleCalendarConnectionStore {
   getConnection(userId: string): Promise<GoogleCalendarConnection | null>;
-  getConnectionCredentials(userId: string): Promise<GoogleCalendarConnectionCredentials | null>;
-  upsertConnection(input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">): Promise<GoogleCalendarConnection>;
+  getConnectionCredentials(
+    userId: string,
+  ): Promise<GoogleCalendarConnectionCredentials | null>;
+  upsertConnection(
+    input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">,
+  ): Promise<GoogleCalendarConnection>;
   updateConnectionTokens(input: {
     userId: string;
     accessToken: string;
@@ -83,7 +85,9 @@ export interface GoogleCalendarConnectionStore {
     codeVerifier?: string | null;
   }): Promise<GoogleCalendarOauthState>;
   getOauthState(state: string): Promise<GoogleCalendarOauthState | null>;
-  markOauthStateConsumed(state: string): Promise<GoogleCalendarOauthState | null>;
+  markOauthStateConsumed(
+    state: string,
+  ): Promise<GoogleCalendarOauthState | null>;
   createLinkHandoff(input: {
     id: string;
     userId: string;
@@ -120,15 +124,33 @@ type StoredTask = Omit<Task, "createdAt"> & {
   createdAt?: string | undefined;
 };
 
-class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionStore {
-  private readonly connectionsByUserId = new Map<string, GoogleCalendarConnectionCredentials>();
-  private readonly oauthStatesByState = new Map<string, GoogleCalendarOauthState>();
-  private readonly linkHandoffsById = new Map<string, GoogleCalendarLinkHandoff>();
-  private readonly linkSessionsById = new Map<string, GoogleCalendarLinkSession>();
+class InMemoryGoogleCalendarConnectionStore
+  implements GoogleCalendarConnectionStore
+{
+  private readonly connectionsByUserId = new Map<
+    string,
+    GoogleCalendarConnectionCredentials
+  >();
+  private readonly oauthStatesByState = new Map<
+    string,
+    GoogleCalendarOauthState
+  >();
+  private readonly linkHandoffsById = new Map<
+    string,
+    GoogleCalendarLinkHandoff
+  >();
+  private readonly linkSessionsById = new Map<
+    string,
+    GoogleCalendarLinkSession
+  >();
   private tasksById: (() => StoredTask[]) | null = null;
-  private replaceTaskById: ((taskId: string, task: StoredTask) => void) | null = null;
+  private replaceTaskById: ((taskId: string, task: StoredTask) => void) | null =
+    null;
 
-  attachTaskStore(getTasks: () => StoredTask[], replaceTask: (taskId: string, task: StoredTask) => void) {
+  attachTaskStore(
+    getTasks: () => StoredTask[],
+    replaceTask: (taskId: string, task: StoredTask) => void,
+  ) {
     this.tasksById = getTasks;
     this.replaceTaskById = replaceTask;
   }
@@ -142,7 +164,9 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
 
   async getConnection(userId: string) {
     const connection = this.connectionsByUserId.get(userId);
-    return connection && connection.revokedAt === null ? redactConnection(connection) : null;
+    return connection && connection.revokedAt === null
+      ? redactConnection(connection)
+      : null;
   }
 
   async getConnectionCredentials(userId: string) {
@@ -150,13 +174,15 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     return connection && connection.revokedAt === null ? connection : null;
   }
 
-  async upsertConnection(input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">) {
+  async upsertConnection(
+    input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">,
+  ) {
     const now = new Date().toISOString();
     const existing = this.connectionsByUserId.get(input.userId);
     const connection: GoogleCalendarConnectionCredentials = {
       ...input,
       createdAt: existing?.createdAt ?? now,
-      updatedAt: now
+      updatedAt: now,
     };
     this.connectionsByUserId.set(input.userId, connection);
     return redactConnection(connection);
@@ -171,7 +197,9 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     const existing = this.connectionsByUserId.get(input.userId);
 
     if (!existing) {
-      throw new Error(`Google Calendar connection for user ${input.userId} not found.`);
+      throw new Error(
+        `Google Calendar connection for user ${input.userId} not found.`,
+      );
     }
 
     const updated: GoogleCalendarConnectionCredentials = {
@@ -179,7 +207,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       accessToken: input.accessToken,
       refreshToken: input.refreshToken,
       tokenExpiresAt: input.tokenExpiresAt,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     this.connectionsByUserId.set(input.userId, updated);
     return updated;
@@ -205,7 +233,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       expiresAt: input.expiresAt,
       codeVerifier: input.codeVerifier ?? null,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     this.oauthStatesByState.set(stored.state, stored);
     return stored;
@@ -214,7 +242,11 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
   async getOauthState(state: string) {
     const existing = this.oauthStatesByState.get(state);
 
-    if (!existing || existing.consumedAt !== null || Date.parse(existing.expiresAt) < Date.now()) {
+    if (
+      !existing ||
+      existing.consumedAt !== null ||
+      Date.parse(existing.expiresAt) < Date.now()
+    ) {
       return null;
     }
 
@@ -230,7 +262,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
 
     const consumed = {
       ...existing,
-      consumedAt: new Date().toISOString()
+      consumedAt: new Date().toISOString(),
     };
     this.oauthStatesByState.set(state, consumed);
     return consumed;
@@ -245,7 +277,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     const handoff: GoogleCalendarLinkHandoff = {
       ...input,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     this.linkHandoffsById.set(input.id, handoff);
     return handoff;
@@ -254,13 +286,17 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
   async consumeLinkHandoff(id: string) {
     const existing = this.linkHandoffsById.get(id);
 
-    if (!existing || existing.consumedAt !== null || Date.parse(existing.expiresAt) < Date.now()) {
+    if (
+      !existing ||
+      existing.consumedAt !== null ||
+      Date.parse(existing.expiresAt) < Date.now()
+    ) {
       return null;
     }
 
     const consumed: GoogleCalendarLinkHandoff = {
       ...existing,
-      consumedAt: new Date().toISOString()
+      consumedAt: new Date().toISOString(),
     };
     this.linkHandoffsById.set(id, consumed);
     return consumed;
@@ -275,7 +311,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     const session: GoogleCalendarLinkSession = {
       ...input,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     this.linkSessionsById.set(input.id, session);
     return session;
@@ -284,7 +320,11 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
   async getLinkSession(id: string) {
     const session = this.linkSessionsById.get(id);
 
-    if (!session || session.consumedAt !== null || Date.parse(session.expiresAt) < Date.now()) {
+    if (
+      !session ||
+      session.consumedAt !== null ||
+      Date.parse(session.expiresAt) < Date.now()
+    ) {
       return null;
     }
 
@@ -300,7 +340,7 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
 
     const consumed: GoogleCalendarLinkSession = {
       ...existing,
-      consumedAt: new Date().toISOString()
+      consumedAt: new Date().toISOString(),
     };
     this.linkSessionsById.set(id, consumed);
     return consumed;
@@ -310,7 +350,10 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     let deleted = 0;
 
     for (const [key, value] of this.oauthStatesByState.entries()) {
-      if (value.consumedAt !== null || Date.parse(value.expiresAt) <= Date.parse(before)) {
+      if (
+        value.consumedAt !== null ||
+        Date.parse(value.expiresAt) <= Date.parse(before)
+      ) {
         this.oauthStatesByState.delete(key);
         deleted += 1;
       }
@@ -323,12 +366,15 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     let scrubbed = 0;
 
     for (const [key, value] of this.connectionsByUserId.entries()) {
-      if (value.revokedAt !== null && (value.accessToken || value.refreshToken !== null)) {
+      if (
+        value.revokedAt !== null &&
+        (value.accessToken || value.refreshToken !== null)
+      ) {
         this.connectionsByUserId.set(key, {
           ...value,
           accessToken: "",
           refreshToken: null,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         });
         scrubbed += 1;
       }
@@ -337,7 +383,10 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
     return scrubbed;
   }
 
-  async listTasksForReconciliation(input: { userId: string; scheduledThrough: string }) {
+  async listTasksForReconciliation(input: {
+    userId: string;
+    scheduledThrough: string;
+  }) {
     if (!this.tasksById) {
       return [];
     }
@@ -349,11 +398,12 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
           task.externalCalendarEventId !== null &&
           task.externalCalendarId !== null &&
           task.scheduledStartAt !== null &&
-          Date.parse(task.scheduledStartAt) <= Date.parse(input.scheduledThrough)
+          Date.parse(task.scheduledStartAt) <=
+            Date.parse(input.scheduledThrough),
       )
       .map((task) => ({
         ...task,
-        createdAt: task.createdAt ?? new Date().toISOString()
+        createdAt: task.createdAt ?? new Date().toISOString(),
       }));
   }
 
@@ -383,18 +433,20 @@ class InMemoryGoogleCalendarConnectionStore implements GoogleCalendarConnectionS
       scheduledStartAt: input.scheduledStartAt,
       scheduledEndAt: input.scheduledEndAt,
       calendarSyncStatus: input.calendarSyncStatus,
-      calendarSyncUpdatedAt: input.calendarSyncUpdatedAt
+      calendarSyncUpdatedAt: input.calendarSyncUpdatedAt,
     });
   }
 }
 
-export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConnectionStore {
+export class PostgresGoogleCalendarConnectionStore
+  implements GoogleCalendarConnectionStore
+{
   private readonly client;
   private readonly db;
 
   constructor(databaseUrl = getRequiredDatabaseUrl()) {
     this.client = postgres(databaseUrl, {
-      prepare: false
+      prepare: false,
     });
     this.db = drizzle(this.client);
   }
@@ -403,7 +455,12 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
     const [row] = await this.db
       .select()
       .from(googleCalendarAccounts)
-      .where(and(eq(googleCalendarAccounts.userId, userId), isNull(googleCalendarAccounts.revokedAt)))
+      .where(
+        and(
+          eq(googleCalendarAccounts.userId, userId),
+          isNull(googleCalendarAccounts.revokedAt),
+        ),
+      )
       .limit(1);
 
     return row ? parseConnectionRow(row) : null;
@@ -413,13 +470,20 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
     const [row] = await this.db
       .select()
       .from(googleCalendarAccounts)
-      .where(and(eq(googleCalendarAccounts.userId, userId), isNull(googleCalendarAccounts.revokedAt)))
+      .where(
+        and(
+          eq(googleCalendarAccounts.userId, userId),
+          isNull(googleCalendarAccounts.revokedAt),
+        ),
+      )
       .limit(1);
 
     return row ? parseConnectionCredentialsRow(row) : null;
   }
 
-  async upsertConnection(input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">) {
+  async upsertConnection(
+    input: Omit<GoogleCalendarConnectionCredentials, "createdAt" | "updatedAt">,
+  ) {
     const now = new Date();
 
     await this.db
@@ -431,13 +495,17 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
         selectedCalendarId: input.selectedCalendarId,
         selectedCalendarName: input.selectedCalendarName,
         accessToken: encryptCalendarCredential(input.accessToken),
-        refreshToken: input.refreshToken ? encryptCalendarCredential(input.refreshToken) : null,
-        tokenExpiresAt: input.tokenExpiresAt ? new Date(input.tokenExpiresAt) : null,
+        refreshToken: input.refreshToken
+          ? encryptCalendarCredential(input.refreshToken)
+          : null,
+        tokenExpiresAt: input.tokenExpiresAt
+          ? new Date(input.tokenExpiresAt)
+          : null,
         scopes: input.scopes,
         syncCursor: input.syncCursor,
         lastSyncedAt: input.lastSyncedAt ? new Date(input.lastSyncedAt) : null,
         revokedAt: input.revokedAt ? new Date(input.revokedAt) : null,
-        updatedAt: now
+        updatedAt: now,
       })
       .onConflictDoUpdate({
         target: googleCalendarAccounts.userId,
@@ -447,20 +515,28 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
           selectedCalendarId: input.selectedCalendarId,
           selectedCalendarName: input.selectedCalendarName,
           accessToken: encryptCalendarCredential(input.accessToken),
-          refreshToken: input.refreshToken ? encryptCalendarCredential(input.refreshToken) : null,
-          tokenExpiresAt: input.tokenExpiresAt ? new Date(input.tokenExpiresAt) : null,
+          refreshToken: input.refreshToken
+            ? encryptCalendarCredential(input.refreshToken)
+            : null,
+          tokenExpiresAt: input.tokenExpiresAt
+            ? new Date(input.tokenExpiresAt)
+            : null,
           scopes: input.scopes,
           syncCursor: input.syncCursor,
-          lastSyncedAt: input.lastSyncedAt ? new Date(input.lastSyncedAt) : null,
+          lastSyncedAt: input.lastSyncedAt
+            ? new Date(input.lastSyncedAt)
+            : null,
           revokedAt: input.revokedAt ? new Date(input.revokedAt) : null,
-          updatedAt: now
-        }
+          updatedAt: now,
+        },
       });
 
     const connection = await this.getConnection(input.userId);
 
     if (!connection) {
-      throw new Error(`Failed to persist Google Calendar connection for user ${input.userId}.`);
+      throw new Error(
+        `Failed to persist Google Calendar connection for user ${input.userId}.`,
+      );
     }
 
     return connection;
@@ -476,16 +552,22 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .update(googleCalendarAccounts)
       .set({
         accessToken: encryptCalendarCredential(input.accessToken),
-        refreshToken: input.refreshToken ? encryptCalendarCredential(input.refreshToken) : null,
-        tokenExpiresAt: input.tokenExpiresAt ? new Date(input.tokenExpiresAt) : null,
-        updatedAt: new Date()
+        refreshToken: input.refreshToken
+          ? encryptCalendarCredential(input.refreshToken)
+          : null,
+        tokenExpiresAt: input.tokenExpiresAt
+          ? new Date(input.tokenExpiresAt)
+          : null,
+        updatedAt: new Date(),
       })
       .where(eq(googleCalendarAccounts.userId, input.userId));
 
     const connection = await this.getConnectionCredentials(input.userId);
 
     if (!connection) {
-      throw new Error(`Google Calendar connection for user ${input.userId} not found.`);
+      throw new Error(
+        `Google Calendar connection for user ${input.userId} not found.`,
+      );
     }
 
     return connection;
@@ -512,7 +594,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       userId: input.userId,
       redirectPath: input.redirectPath,
       expiresAt: new Date(input.expiresAt),
-      codeVerifier: input.codeVerifier ?? null
+      codeVerifier: input.codeVerifier ?? null,
     });
 
     return {
@@ -522,7 +604,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       expiresAt: input.expiresAt,
       codeVerifier: input.codeVerifier ?? null,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
 
@@ -533,7 +615,11 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .where(eq(googleCalendarOauthStates.state, state))
       .limit(1);
 
-    if (!row || row.consumedAt !== null || row.expiresAt.getTime() < Date.now()) {
+    if (
+      !row ||
+      row.consumedAt !== null ||
+      row.expiresAt.getTime() < Date.now()
+    ) {
       return null;
     }
 
@@ -544,7 +630,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       expiresAt: row.expiresAt.toISOString(),
       codeVerifier: row.codeVerifier,
       consumedAt: null,
-      createdAt: row.createdAt.toISOString()
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
@@ -559,14 +645,14 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
     await this.db
       .update(googleCalendarOauthStates)
       .set({
-        consumedAt
+        consumedAt,
       })
       .where(eq(googleCalendarOauthStates.state, state));
 
     return {
       ...existing,
       consumedAt: consumedAt.toISOString(),
-      createdAt: existing.createdAt
+      createdAt: existing.createdAt,
     };
   }
 
@@ -580,13 +666,13 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       id: input.id,
       userId: input.userId,
       redirectPath: input.redirectPath,
-      expiresAt: new Date(input.expiresAt)
+      expiresAt: new Date(input.expiresAt),
     });
 
     return {
       ...input,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
 
@@ -597,7 +683,11 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .where(eq(googleCalendarLinkHandoffs.id, id))
       .limit(1);
 
-    if (!row || row.consumedAt !== null || row.expiresAt.getTime() < Date.now()) {
+    if (
+      !row ||
+      row.consumedAt !== null ||
+      row.expiresAt.getTime() < Date.now()
+    ) {
       return null;
     }
 
@@ -605,7 +695,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
     await this.db
       .update(googleCalendarLinkHandoffs)
       .set({
-        consumedAt
+        consumedAt,
       })
       .where(eq(googleCalendarLinkHandoffs.id, id));
 
@@ -615,7 +705,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       redirectPath: row.redirectPath,
       expiresAt: row.expiresAt.toISOString(),
       consumedAt: consumedAt.toISOString(),
-      createdAt: row.createdAt.toISOString()
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
@@ -629,13 +719,13 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       id: input.id,
       userId: input.userId,
       redirectPath: input.redirectPath,
-      expiresAt: new Date(input.expiresAt)
+      expiresAt: new Date(input.expiresAt),
     });
 
     return {
       ...input,
       consumedAt: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
 
@@ -646,7 +736,11 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .where(eq(googleCalendarLinkSessions.id, id))
       .limit(1);
 
-    if (!row || row.consumedAt !== null || row.expiresAt.getTime() < Date.now()) {
+    if (
+      !row ||
+      row.consumedAt !== null ||
+      row.expiresAt.getTime() < Date.now()
+    ) {
       return null;
     }
 
@@ -656,7 +750,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       redirectPath: row.redirectPath,
       expiresAt: row.expiresAt.toISOString(),
       consumedAt: null,
-      createdAt: row.createdAt.toISOString()
+      createdAt: row.createdAt.toISOString(),
     };
   }
 
@@ -671,20 +765,25 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
     await this.db
       .update(googleCalendarLinkSessions)
       .set({
-        consumedAt
+        consumedAt,
       })
       .where(eq(googleCalendarLinkSessions.id, id));
 
     return {
       ...existing,
-      consumedAt: consumedAt.toISOString()
+      consumedAt: consumedAt.toISOString(),
     };
   }
 
   async purgeExpiredOauthStates(before: string) {
     const deleted = await this.db
       .delete(googleCalendarOauthStates)
-      .where(or(isNotNull(googleCalendarOauthStates.consumedAt), lte(googleCalendarOauthStates.expiresAt, new Date(before))))
+      .where(
+        or(
+          isNotNull(googleCalendarOauthStates.consumedAt),
+          lte(googleCalendarOauthStates.expiresAt, new Date(before)),
+        ),
+      )
       .returning({ state: googleCalendarOauthStates.state });
 
     return deleted.length;
@@ -696,15 +795,26 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .set({
         accessToken: "",
         refreshToken: null,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
-      .where(and(isNotNull(googleCalendarAccounts.revokedAt), or(isNotNull(googleCalendarAccounts.refreshToken), isNotNull(googleCalendarAccounts.accessToken))))
+      .where(
+        and(
+          isNotNull(googleCalendarAccounts.revokedAt),
+          or(
+            isNotNull(googleCalendarAccounts.refreshToken),
+            isNotNull(googleCalendarAccounts.accessToken),
+          ),
+        ),
+      )
       .returning({ userId: googleCalendarAccounts.userId });
 
     return scrubbed.length;
   }
 
-  async listTasksForReconciliation(input: { userId: string; scheduledThrough: string }) {
+  async listTasksForReconciliation(input: {
+    userId: string;
+    scheduledThrough: string;
+  }) {
     const rows = await this.db
       .select()
       .from(tasks)
@@ -712,8 +822,11 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
         and(
           eq(tasks.userId, input.userId),
           lte(tasks.scheduledStartAt, new Date(input.scheduledThrough)),
-          or(eq(tasks.lifecycleState, "scheduled"), eq(tasks.lifecycleState, "awaiting_followup"))
-        )
+          or(
+            eq(tasks.lifecycleState, "scheduled"),
+            eq(tasks.lifecycleState, "awaiting_followup"),
+          ),
+        ),
       );
 
     return rows
@@ -722,7 +835,7 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
           row.externalCalendarEventId !== null &&
           row.externalCalendarId !== null &&
           row.scheduledStartAt !== null &&
-          row.scheduledEndAt !== null
+          row.scheduledEndAt !== null,
       )
       .map((row) => ({
         id: row.id,
@@ -735,16 +848,18 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
         externalCalendarId: row.externalCalendarId,
         scheduledStartAt: row.scheduledStartAt?.toISOString() ?? null,
         scheduledEndAt: row.scheduledEndAt?.toISOString() ?? null,
-        calendarSyncStatus: row.calendarSyncStatus as Task["calendarSyncStatus"],
+        calendarSyncStatus:
+          row.calendarSyncStatus as Task["calendarSyncStatus"],
         calendarSyncUpdatedAt: row.calendarSyncUpdatedAt?.toISOString() ?? null,
         rescheduleCount: row.rescheduleCount,
         lastFollowupAt: row.lastFollowupAt?.toISOString() ?? null,
-        followupReminderSentAt: row.followupReminderSentAt?.toISOString() ?? null,
+        followupReminderSentAt:
+          row.followupReminderSentAt?.toISOString() ?? null,
         completedAt: row.completedAt?.toISOString() ?? null,
         archivedAt: row.archivedAt?.toISOString() ?? null,
         priority: row.priority as Task["priority"],
         urgency: row.urgency as Task["urgency"],
-        createdAt: row.createdAt.toISOString()
+        createdAt: row.createdAt.toISOString(),
       }));
   }
 
@@ -762,10 +877,14 @@ export class PostgresGoogleCalendarConnectionStore implements GoogleCalendarConn
       .set({
         externalCalendarEventId: input.externalCalendarEventId,
         externalCalendarId: input.externalCalendarId,
-        scheduledStartAt: input.scheduledStartAt ? new Date(input.scheduledStartAt) : null,
-        scheduledEndAt: input.scheduledEndAt ? new Date(input.scheduledEndAt) : null,
+        scheduledStartAt: input.scheduledStartAt
+          ? new Date(input.scheduledStartAt)
+          : null,
+        scheduledEndAt: input.scheduledEndAt
+          ? new Date(input.scheduledEndAt)
+          : null,
         calendarSyncStatus: input.calendarSyncStatus,
-        calendarSyncUpdatedAt: new Date(input.calendarSyncUpdatedAt)
+        calendarSyncUpdatedAt: new Date(input.calendarSyncUpdatedAt),
       })
       .where(eq(tasks.id, input.taskId));
   }
@@ -797,38 +916,58 @@ export function resetGoogleCalendarConnectionStoreForTests() {
   defaultInMemoryStore.reset();
 }
 
-export function encryptCalendarCredential(value: string, key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY) {
+export function encryptCalendarCredential(
+  value: string,
+  key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY,
+) {
   const encryptionKey = readEncryptionKey(key);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
 
   return `${CREDENTIAL_CIPHERTEXT_VERSION}:${iv.toString("base64url")}:${tag.toString("base64url")}:${ciphertext.toString("base64url")}`;
 }
 
-export function decryptCalendarCredential(value: string, key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY) {
+export function decryptCalendarCredential(
+  value: string,
+  key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY,
+) {
   if (!value) {
     return "";
   }
 
   const [version, ivValue, tagValue, ciphertextValue] = value.split(":");
 
-  if (version !== CREDENTIAL_CIPHERTEXT_VERSION || !ivValue || !tagValue || !ciphertextValue) {
+  if (
+    version !== CREDENTIAL_CIPHERTEXT_VERSION ||
+    !ivValue ||
+    !tagValue ||
+    !ciphertextValue
+  ) {
     throw new Error("Invalid encrypted Google Calendar credential format.");
   }
 
-  const decipher = createDecipheriv("aes-256-gcm", readEncryptionKey(key), Buffer.from(ivValue, "base64url"));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    readEncryptionKey(key),
+    Buffer.from(ivValue, "base64url"),
+  );
   decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
   const plaintext = Buffer.concat([
     decipher.update(Buffer.from(ciphertextValue, "base64url")),
-    decipher.final()
+    decipher.final(),
   ]);
 
   return plaintext.toString("utf8");
 }
 
-function redactConnection(connection: GoogleCalendarConnectionCredentials): GoogleCalendarConnection {
+function redactConnection(
+  connection: GoogleCalendarConnectionCredentials,
+): GoogleCalendarConnection {
   return {
     userId: connection.userId,
     providerAccountId: connection.providerAccountId,
@@ -841,11 +980,13 @@ function redactConnection(connection: GoogleCalendarConnectionCredentials): Goog
     lastSyncedAt: connection.lastSyncedAt,
     revokedAt: connection.revokedAt,
     createdAt: connection.createdAt,
-    updatedAt: connection.updatedAt
+    updatedAt: connection.updatedAt,
   };
 }
 
-function parseConnectionRow(row: typeof googleCalendarAccounts.$inferSelect): GoogleCalendarConnection {
+function parseConnectionRow(
+  row: typeof googleCalendarAccounts.$inferSelect,
+): GoogleCalendarConnection {
   return {
     userId: row.userId,
     providerAccountId: row.providerAccountId,
@@ -858,21 +999,25 @@ function parseConnectionRow(row: typeof googleCalendarAccounts.$inferSelect): Go
     lastSyncedAt: row.lastSyncedAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString()
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 function parseConnectionCredentialsRow(
-  row: typeof googleCalendarAccounts.$inferSelect
+  row: typeof googleCalendarAccounts.$inferSelect,
 ): GoogleCalendarConnectionCredentials {
   return {
     ...parseConnectionRow(row),
     accessToken: decryptCalendarCredential(row.accessToken),
-    refreshToken: row.refreshToken ? decryptCalendarCredential(row.refreshToken) : null
+    refreshToken: row.refreshToken
+      ? decryptCalendarCredential(row.refreshToken)
+      : null,
   };
 }
 
-function readEncryptionKey(key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY) {
+function readEncryptionKey(
+  key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY,
+) {
   if (!key) {
     throw new Error("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY must be configured.");
   }
@@ -880,7 +1025,9 @@ function readEncryptionKey(key = process.env.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KE
   const buffer = Buffer.from(key, "base64");
 
   if (buffer.length !== 32) {
-    throw new Error("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+    throw new Error(
+      "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.",
+    );
   }
 
   return buffer;

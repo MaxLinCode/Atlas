@@ -2,13 +2,16 @@ import {
   normalizeRawExtraction,
   rawSlotExtractionSchema,
   type SlotExtractorInput,
-  type SlotExtractorOutput
+  type SlotExtractorOutput,
 } from "@atlas/core";
-import { extractSlotsWithResponses, type OpenAIResponsesClient } from "@atlas/integrations";
+import {
+  extractSlotsWithResponses,
+  type OpenAIResponsesClient,
+} from "@atlas/integrations";
 
 export async function extractSlots(
   input: SlotExtractorInput,
-  client?: OpenAIResponsesClient
+  client?: OpenAIResponsesClient,
 ): Promise<SlotExtractorOutput> {
   try {
     const raw = await extractSlotsWithResponses(input, client);
@@ -18,20 +21,20 @@ export async function extractSlots(
       return {
         extractedValues: {},
         confidence: {},
-        unresolvable: [...input.pendingSlots]
+        unresolvable: [...input.pendingSlots],
       };
     }
 
     return {
       extractedValues: normalizeRawExtraction(parsed.data),
       confidence: parsed.data.confidence,
-      unresolvable: parsed.data.unresolvable
+      unresolvable: parsed.data.unresolvable,
     };
   } catch {
     return {
       extractedValues: {},
       confidence: {},
-      unresolvable: [...input.pendingSlots]
+      unresolvable: [...input.pendingSlots],
     };
   }
 }

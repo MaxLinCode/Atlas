@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -7,27 +9,32 @@ import {
   text,
   timestamp,
   uniqueIndex,
-  type AnyPgColumn,
   uuid,
-  varchar
+  varchar,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
-export const inboxItems = pgTable("inbox_items", {
-  id: uuid("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  sourceEventId: uuid("source_event_id").references(() => botEvents.id),
-  rawText: text("raw_text").notNull(),
-  normalizedText: text("normalized_text").notNull(),
-  processingStatus: varchar("processing_status", { length: 32 }).notNull(),
-  linkedTaskIds: jsonb("linked_task_ids").$type<string[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-},
+export const inboxItems = pgTable(
+  "inbox_items",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    sourceEventId: uuid("source_event_id").references(() => botEvents.id),
+    rawText: text("raw_text").notNull(),
+    normalizedText: text("normalized_text").notNull(),
+    processingStatus: varchar("processing_status", { length: 32 }).notNull(),
+    linkedTaskIds: jsonb("linked_task_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
   (table) => ({
     sourceEventIdIndex: uniqueIndex("inbox_items_source_event_id_idx")
       .on(table.sourceEventId)
-      .where(sql`${table.sourceEventId} is not null`)
-  })
+      .where(sql`${table.sourceEventId} is not null`),
+  }),
 );
 
 export const conversations = pgTable(
@@ -38,110 +45,133 @@ export const conversations = pgTable(
     title: text("title"),
     summaryText: text("summary_text"),
     mode: varchar("mode", { length: 32 }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
     userIdIndex: index("conversations_user_id_idx").on(table.userId),
-    updatedAtIndex: index("conversations_updated_at_idx").on(table.updatedAt)
-  })
+    updatedAtIndex: index("conversations_updated_at_idx").on(table.updatedAt),
+  }),
 );
 
 export const conversationTurns = pgTable(
   "conversation_turns",
   {
     id: uuid("id").primaryKey(),
-    conversationId: uuid("conversation_id").notNull().references(() => conversations.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
     userId: text("user_id").notNull(),
     role: varchar("role", { length: 16 }).notNull(),
     text: text("text").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    conversationCreatedAtIndex: index("conversation_turns_conversation_id_created_at_idx").on(
-      table.conversationId,
-      table.createdAt
+    conversationCreatedAtIndex: index(
+      "conversation_turns_conversation_id_created_at_idx",
+    ).on(table.conversationId, table.createdAt),
+    userCreatedAtIndex: index("conversation_turns_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt,
     ),
-    userCreatedAtIndex: index("conversation_turns_user_id_created_at_idx").on(table.userId, table.createdAt)
-  })
+  }),
 );
 
 export const conversationEntities = pgTable(
   "conversation_entities",
   {
     id: uuid("id").primaryKey(),
-    conversationId: uuid("conversation_id").notNull().references(() => conversations.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
     userId: text("user_id").notNull(),
     kind: varchar("kind", { length: 32 }).notNull(),
     label: text("label").notNull(),
     status: varchar("status", { length: 32 }).notNull(),
     payload: jsonb("payload").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull()
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    conversationUpdatedAtIndex: index("conversation_entities_conversation_id_updated_at_idx").on(
-      table.conversationId,
-      table.updatedAt
-    ),
-    userUpdatedAtIndex: index("conversation_entities_user_id_updated_at_idx").on(table.userId, table.updatedAt)
-  })
+    conversationUpdatedAtIndex: index(
+      "conversation_entities_conversation_id_updated_at_idx",
+    ).on(table.conversationId, table.updatedAt),
+    userUpdatedAtIndex: index(
+      "conversation_entities_user_id_updated_at_idx",
+    ).on(table.userId, table.updatedAt),
+  }),
 );
 
 export const conversationDiscourseStates = pgTable(
   "conversation_discourse_states",
   {
-    conversationId: uuid("conversation_id").primaryKey().references(() => conversations.id),
+    conversationId: uuid("conversation_id")
+      .primaryKey()
+      .references(() => conversations.id),
     userId: text("user_id").notNull(),
     payload: jsonb("payload").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    userUpdatedAtIndex: index("conversation_discourse_states_user_id_updated_at_idx").on(
-      table.userId,
-      table.updatedAt
-    )
-  })
+    userUpdatedAtIndex: index(
+      "conversation_discourse_states_user_id_updated_at_idx",
+    ).on(table.userId, table.updatedAt),
+  }),
 );
 
 export const scheduleBlocks = pgTable("schedule_blocks", {
   id: uuid("id").primaryKey(),
   userId: text("user_id").notNull(),
-  taskId: uuid("task_id").notNull().references((): AnyPgColumn => tasks.id),
+  taskId: uuid("task_id")
+    .notNull()
+    .references((): AnyPgColumn => tasks.id),
   actionId: uuid("action_id"),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }).notNull(),
   confidence: real("confidence").notNull(),
   reason: text("reason").notNull(),
   rescheduleCount: integer("reschedule_count").notNull().default(0),
-  externalCalendarId: text("external_calendar_id")
+  externalCalendarId: text("external_calendar_id"),
 });
 
-export const tasks = pgTable(
-  "tasks",
-  {
-    id: uuid("id").primaryKey(),
-    userId: text("user_id").notNull(),
-    sourceInboxItemId: uuid("source_inbox_item_id").notNull(),
-    lastInboxItemId: uuid("last_inbox_item_id").notNull(),
-    title: text("title").notNull(),
-    lifecycleState: varchar("lifecycle_state", { length: 32 }).notNull(),
-    externalCalendarEventId: text("external_calendar_event_id"),
-    externalCalendarId: text("external_calendar_id"),
-    scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
-    scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
-    calendarSyncStatus: varchar("calendar_sync_status", { length: 32 }).notNull().default("in_sync"),
-    calendarSyncUpdatedAt: timestamp("calendar_sync_updated_at", { withTimezone: true }),
-    rescheduleCount: integer("reschedule_count").notNull().default(0),
-    lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
-    followupReminderSentAt: timestamp("followup_reminder_sent_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    priority: varchar("priority", { length: 16 }).notNull(),
-    urgency: varchar("urgency", { length: 16 }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-  }
-);
+export const tasks = pgTable("tasks", {
+  id: uuid("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sourceInboxItemId: uuid("source_inbox_item_id").notNull(),
+  lastInboxItemId: uuid("last_inbox_item_id").notNull(),
+  title: text("title").notNull(),
+  lifecycleState: varchar("lifecycle_state", { length: 32 }).notNull(),
+  externalCalendarEventId: text("external_calendar_event_id"),
+  externalCalendarId: text("external_calendar_id"),
+  scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+  scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
+  calendarSyncStatus: varchar("calendar_sync_status", { length: 32 })
+    .notNull()
+    .default("in_sync"),
+  calendarSyncUpdatedAt: timestamp("calendar_sync_updated_at", {
+    withTimezone: true,
+  }),
+  rescheduleCount: integer("reschedule_count").notNull().default(0),
+  lastFollowupAt: timestamp("last_followup_at", { withTimezone: true }),
+  followupReminderSentAt: timestamp("followup_reminder_sent_at", {
+    withTimezone: true,
+  }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  priority: varchar("priority", { length: 16 }).notNull(),
+  urgency: varchar("urgency", { length: 16 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 export const googleCalendarAccounts = pgTable("google_calendar_accounts", {
   userId: text("user_id").primaryKey(),
@@ -156,37 +186,56 @@ export const googleCalendarAccounts = pgTable("google_calendar_accounts", {
   syncCursor: text("sync_cursor"),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
-export const googleCalendarOauthStates = pgTable("google_calendar_oauth_states", {
-  state: text("state").primaryKey(),
-  userId: text("user_id").notNull(),
-  redirectPath: text("redirect_path"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  codeVerifier: text("code_verifier"),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const googleCalendarOauthStates = pgTable(
+  "google_calendar_oauth_states",
+  {
+    state: text("state").primaryKey(),
+    userId: text("user_id").notNull(),
+    redirectPath: text("redirect_path"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    codeVerifier: text("code_verifier"),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
 
-export const googleCalendarLinkHandoffs = pgTable("google_calendar_link_handoffs", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  redirectPath: text("redirect_path"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const googleCalendarLinkHandoffs = pgTable(
+  "google_calendar_link_handoffs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    redirectPath: text("redirect_path"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
 
-export const googleCalendarLinkSessions = pgTable("google_calendar_link_sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  redirectPath: text("redirect_path"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const googleCalendarLinkSessions = pgTable(
+  "google_calendar_link_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    redirectPath: text("redirect_path"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
 
 export const taskActions = pgTable("task_actions", {
   id: uuid("id").primaryKey(),
@@ -195,7 +244,7 @@ export const taskActions = pgTable("task_actions", {
   actionOrder: integer("action_order").notNull(),
   estimatedMinutes: integer("estimated_minutes").notNull(),
   breakdownLevel: integer("breakdown_level").notNull(),
-  status: varchar("status", { length: 32 }).notNull()
+  status: varchar("status", { length: 32 }).notNull(),
 });
 
 export const userProfiles = pgTable("user_profiles", {
@@ -207,7 +256,7 @@ export const userProfiles = pgTable("user_profiles", {
   blackoutWindows: jsonb("blackout_windows").notNull().default([]),
   focusBlockMinutes: integer("focus_block_minutes").notNull(),
   reminderStyle: varchar("reminder_style", { length: 16 }).notNull(),
-  breakdownLevel: integer("breakdown_level").notNull()
+  breakdownLevel: integer("breakdown_level").notNull(),
 });
 
 export const botEvents = pgTable(
@@ -220,11 +269,15 @@ export const botEvents = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     payload: jsonb("payload").notNull(),
     retryState: varchar("retry_state", { length: 16 }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => ({
-    idempotencyKeyIndex: uniqueIndex("bot_events_idempotency_key_idx").on(table.idempotencyKey)
-  })
+    idempotencyKeyIndex: uniqueIndex("bot_events_idempotency_key_idx").on(
+      table.idempotencyKey,
+    ),
+  }),
 );
 
 export const plannerRuns = pgTable("planner_runs", {
@@ -235,5 +288,7 @@ export const plannerRuns = pgTable("planner_runs", {
   modelInput: jsonb("model_input").notNull(),
   modelOutput: jsonb("model_output"),
   confidence: real("confidence").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });

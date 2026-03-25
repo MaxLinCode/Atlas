@@ -7,14 +7,14 @@ const telegramUserSchema = z
     first_name: z.string().optional(),
     last_name: z.string().optional(),
     username: z.string().optional(),
-    language_code: z.string().optional()
+    language_code: z.string().optional(),
   })
   .passthrough();
 
 const telegramChatSchema = z
   .object({
     id: z.union([z.number().int(), z.string()]),
-    type: z.string()
+    type: z.string(),
   })
   .passthrough();
 
@@ -25,7 +25,7 @@ const telegramMessageSchema = z
     text: z.string().optional(),
     caption: z.string().optional(),
     from: telegramUserSchema.optional(),
-    chat: telegramChatSchema
+    chat: telegramChatSchema,
   })
   .passthrough();
 
@@ -33,7 +33,7 @@ export const telegramUpdateSchema = z
   .object({
     update_id: z.number().int(),
     message: telegramMessageSchema.optional(),
-    edited_message: telegramMessageSchema.optional()
+    edited_message: telegramMessageSchema.optional(),
   })
   .passthrough();
 
@@ -52,11 +52,13 @@ export const normalizedTelegramMessageSchema = z.object({
     username: z.string().nullable(),
     displayName: z.string(),
     languageCode: z.string().nullable(),
-    chatType: z.string()
-  })
+    chatType: z.string(),
+  }),
 });
 
-export type NormalizedTelegramMessage = z.infer<typeof normalizedTelegramMessageSchema>;
+export type NormalizedTelegramMessage = z.infer<
+  typeof normalizedTelegramMessageSchema
+>;
 export type TelegramUpdate = z.infer<typeof telegramUpdateSchema>;
 
 export function normalizeTelegramText(text: string) {
@@ -91,7 +93,10 @@ export function normalizeTelegramUpdate(update: TelegramUpdate) {
   }
 
   const user = message.from;
-  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+  const displayName = [user?.first_name, user?.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 
   return normalizedTelegramMessageSchema.parse({
     source: "telegram",
@@ -106,9 +111,12 @@ export function normalizeTelegramUpdate(update: TelegramUpdate) {
       telegramUserId: String(user?.id ?? message.chat.id),
       isBot: user?.is_bot ?? false,
       username: user?.username ?? null,
-      displayName: displayName || user?.username || `telegram:${user?.id ?? message.chat.id}`,
+      displayName:
+        displayName ||
+        user?.username ||
+        `telegram:${user?.id ?? message.chat.id}`,
       languageCode: user?.language_code ?? null,
-      chatType: message.chat.type
-    }
+      chatType: message.chat.type,
+    },
   });
 }

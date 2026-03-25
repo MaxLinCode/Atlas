@@ -2,7 +2,9 @@ export default function InboxPage() {
   return (
     <main style={{ padding: "2rem" }}>
       <h1>Inbox Items</h1>
-      <p>Inspect raw messaging payloads, normalized text, and processing status.</p>
+      <p>
+        Inspect raw messaging payloads, normalized text, and processing status.
+      </p>
     </main>
   );
 }

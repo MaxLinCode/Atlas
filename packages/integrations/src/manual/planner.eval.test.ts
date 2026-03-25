@@ -4,7 +4,7 @@ import { runPlannerEvalSuite } from "./planner.eval-suite";
 import {
   ensureManualEvalEnv,
   writePromptImprovementBrief,
-  writeSuiteEvalReport
+  writeSuiteEvalReport,
 } from "./shared";
 
 beforeAll(() => {
@@ -25,9 +25,12 @@ describe.sequential("manual planner eval", () => {
         actionTypes: Array.isArray(testCase.details.actionTypes)
           ? testCase.details.actionTypes.join(", ")
           : "",
-        summary: typeof testCase.details.summary === "string" ? testCase.details.summary : "",
-        error: testCase.error ?? ""
-      }))
+        summary:
+          typeof testCase.details.summary === "string"
+            ? testCase.details.summary
+            : "",
+        error: testCase.error ?? "",
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPath) {

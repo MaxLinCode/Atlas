@@ -5,10 +5,10 @@ import { runConversationContextEvalSuite } from "./conversation-context.eval-sui
 import { runPlannerEvalSuite } from "./planner.eval-suite";
 import { runRouterConfirmationEvalSuite } from "./router-confirmation.eval-suite";
 import {
-  ensureManualEvalEnv,
   buildEvalReport,
+  ensureManualEvalEnv,
   writeEvalReport,
-  writePromptImprovementBriefsForFailures
+  writePromptImprovementBriefsForFailures,
 } from "./shared";
 import { runTurnRouterEvalSuite } from "./turn-router.eval-suite";
 
@@ -23,7 +23,7 @@ describe.sequential("manual prompt eval loop", () => {
       await runTurnRouterEvalSuite(),
       await runRouterConfirmationEvalSuite(),
       await runConversationContextEvalSuite(),
-      await runConfirmedMutationRecoveryEvalSuite()
+      await runConfirmedMutationRecoveryEvalSuite(),
     ];
 
     const report = buildEvalReport(suites);
@@ -36,12 +36,14 @@ describe.sequential("manual prompt eval loop", () => {
         total: suite.total,
         passed: suite.passed,
         failed: suite.failed,
-        durationMs: suite.durationMs
-      }))
+        durationMs: suite.durationMs,
+      })),
     );
     console.log(`Manual eval report written to ${reportPath}`);
     if (briefPaths.length > 0) {
-      console.log(`Prompt improvement briefs written to ${briefPaths.join(", ")}`);
+      console.log(
+        `Prompt improvement briefs written to ${briefPaths.join(", ")}`,
+      );
     }
 
     expect(report.failedCases).toBe(0);
