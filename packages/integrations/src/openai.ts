@@ -59,6 +59,7 @@ export const conversationResponseInputSchema = z.object({
   memorySummary: z.string().nullable(),
   entityRegistry: z.array(conversationEntitySchema).optional().default([]),
   discourseState: conversationDiscourseStateSchema.nullable().optional(),
+  clarificationSlots: z.array(z.string().min(1)).optional(),
 });
 
 export const conversationResponseOutputSchema = z.object({
@@ -396,6 +397,7 @@ function buildConversationResponsePromptContext(
     memorySummary: context.memorySummary,
     entityRegistry: context.entityRegistry ?? [],
     discourseState: context.discourseState ?? null,
+    clarificationSlots: context.clarificationSlots ?? null,
   };
 }
 
