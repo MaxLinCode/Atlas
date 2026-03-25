@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-
+import type { ConversationEntity, ResolvedSlots, TimeSpec } from "./index";
 import { deriveProposalCompatibility } from "./proposal-rules";
 
-import type { ConversationEntity, ResolvedSlots } from "./index";
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 
@@ -30,12 +32,12 @@ describe("deriveProposalCompatibility", () => {
   describe("slot-based compatibility", () => {
     it("is compatible when committed slots match the snapshot", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: "15:00", day: "friday" },
+        slotSnapshot: { time: t(15, 0), day: "friday" },
       });
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: "15:00", day: "friday" },
+        { time: t(15, 0), day: "friday" },
         proposal,
       );
 
@@ -44,12 +46,12 @@ describe("deriveProposalCompatibility", () => {
 
     it("is incompatible when a committed slot differs from the snapshot", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: "15:00" },
+        slotSnapshot: { time: t(15, 0) },
       });
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: "17:00" },
+        { time: t(17, 0) },
         proposal,
       );
 
@@ -64,7 +66,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { day: "friday", time: "17:00" },
+        { day: "friday", time: t(17, 0) },
         proposal,
       );
 
@@ -73,7 +75,7 @@ describe("deriveProposalCompatibility", () => {
 
     it("is compatible when committed slots are empty", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: "15:00", day: "friday" },
+        slotSnapshot: { time: t(15, 0), day: "friday" },
       });
 
       const result = deriveProposalCompatibility(
@@ -105,12 +107,12 @@ describe("deriveProposalCompatibility", () => {
     it("is incompatible when action kind changes from plan to edit", () => {
       const proposal = makeProposal({
         originatingTurnText: "schedule a meeting",
-        slotSnapshot: { time: "15:00" },
+        slotSnapshot: { time: t(15, 0) },
       });
 
       const result = deriveProposalCompatibility(
         "edit_request",
-        { time: "15:00" },
+        { time: t(15, 0) },
         proposal,
       );
 
@@ -121,12 +123,12 @@ describe("deriveProposalCompatibility", () => {
     it("skips action kind check for clarification answers", () => {
       const proposal = makeProposal({
         originatingTurnText: "move the meeting",
-        slotSnapshot: { time: "15:00" },
+        slotSnapshot: { time: t(15, 0) },
       });
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: "15:00" },
+        { time: t(15, 0) },
         proposal,
       );
 

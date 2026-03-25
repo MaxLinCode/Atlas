@@ -4,19 +4,43 @@ import type { RawSlotExtraction } from "./index";
 import { normalizeRawExtraction } from "./slot-normalizer";
 
 describe("normalizeRawExtraction", () => {
-  it("normalizes time to zero-padded HH:MM", () => {
+  it("normalizes absolute time to TimeSpec", () => {
     expect(
-      normalizeRawExtraction(extraction({ time: { hour: 17, minute: 0 } })),
+      normalizeRawExtraction(
+        extraction({ time: { kind: "absolute", hour: 17, minute: 0 } }),
+      ),
     ).toMatchObject({
-      time: "17:00",
+      time: { kind: "absolute", hour: 17, minute: 0 },
     });
   });
 
-  it("pads single-digit hours and minutes", () => {
+  it("preserves hour and minute values", () => {
     expect(
-      normalizeRawExtraction(extraction({ time: { hour: 9, minute: 30 } })),
+      normalizeRawExtraction(
+        extraction({ time: { kind: "absolute", hour: 9, minute: 30 } }),
+      ),
     ).toMatchObject({
-      time: "09:30",
+      time: { kind: "absolute", hour: 9, minute: 30 },
+    });
+  });
+
+  it("normalizes relative time to TimeSpec", () => {
+    expect(
+      normalizeRawExtraction(
+        extraction({ time: { kind: "relative", minutes: 30 } }),
+      ),
+    ).toMatchObject({
+      time: { kind: "relative", minutes: 30 },
+    });
+  });
+
+  it("normalizes window time to TimeSpec", () => {
+    expect(
+      normalizeRawExtraction(
+        extraction({ time: { kind: "window", window: "morning" } }),
+      ),
+    ).toMatchObject({
+      time: { kind: "window", window: "morning" },
     });
   });
 
@@ -68,19 +92,25 @@ describe("normalizeRawExtraction", () => {
 
   it("drops time when hour is out of range", () => {
     expect(
-      normalizeRawExtraction(extraction({ time: { hour: 25, minute: 0 } })),
+      normalizeRawExtraction(
+        extraction({ time: { kind: "absolute", hour: 25, minute: 0 } }),
+      ),
     ).toEqual({});
   });
 
   it("drops time when minute is out of range", () => {
     expect(
-      normalizeRawExtraction(extraction({ time: { hour: 10, minute: 70 } })),
+      normalizeRawExtraction(
+        extraction({ time: { kind: "absolute", hour: 10, minute: 70 } }),
+      ),
     ).toEqual({});
   });
 
   it("drops time when hour is negative", () => {
     expect(
-      normalizeRawExtraction(extraction({ time: { hour: -1, minute: 0 } })),
+      normalizeRawExtraction(
+        extraction({ time: { kind: "absolute", hour: -1, minute: 0 } }),
+      ),
     ).toEqual({});
   });
 
@@ -97,7 +127,7 @@ describe("normalizeRawExtraction", () => {
   it("normalizes multiple slots at once", () => {
     const result = normalizeRawExtraction(
       extraction({
-        time: { hour: 14, minute: 15 },
+        time: { kind: "absolute", hour: 14, minute: 15 },
         day: { kind: "relative", value: "Tomorrow" },
         duration: { minutes: 45 },
         target: { entityId: "task-1" },
@@ -105,7 +135,7 @@ describe("normalizeRawExtraction", () => {
     );
 
     expect(result).toEqual({
-      time: "14:15",
+      time: { kind: "absolute", hour: 14, minute: 15 },
       day: "tomorrow",
       duration: 45,
       target: "task-1",

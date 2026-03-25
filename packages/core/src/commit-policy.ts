@@ -1,9 +1,11 @@
 import type {
   ResolvedSlots,
   SlotKey,
+  TimeSpec,
   TurnInterpretation,
   WriteContract,
 } from "./index";
+import { timeSpecsEqual } from "./time-spec";
 
 export type CommitPolicyInput = {
   turnType: TurnInterpretation["turnType"];
@@ -76,7 +78,8 @@ export function applyCommitPolicy(
     }
 
     const priorValue = priorSlots[slot];
-    const isCorrection = priorValue !== undefined && priorValue !== value;
+    const isCorrection =
+      priorValue !== undefined && !slotValuesEqual(slot, priorValue, value);
     if (isCorrection && slotConfidence < CORRECTION_THRESHOLD) {
       needsClarification.push(slot);
       continue;
@@ -86,7 +89,11 @@ export function applyCommitPolicy(
   }
 
   for (const slot of unresolvable) {
-    if (!slotKeys.includes(slot) && !needsClarification.includes(slot)) {
+    if (
+      !slotKeys.includes(slot) &&
+      !needsClarification.includes(slot) &&
+      committedSlots[slot] === undefined
+    ) {
       needsClarification.push(slot);
     }
   }
@@ -103,4 +110,11 @@ function deriveMissingSlots(
   committed: ResolvedSlots,
 ): SlotKey[] {
   return contract.requiredSlots.filter((slot) => committed[slot] === undefined);
+}
+
+function slotValuesEqual(slot: SlotKey, a: unknown, b: unknown): boolean {
+  if (slot === "time" && a && b) {
+    return timeSpecsEqual(a as TimeSpec, b as TimeSpec);
+  }
+  return a === b;
 }

@@ -1,10 +1,17 @@
+import type {
+  CommitPolicyOutput,
+  TimeSpec,
+  TurnClassifierOutput,
+} from "@atlas/core";
 import { describe, expect, it } from "vitest";
 
-import type { CommitPolicyOutput, TurnClassifierOutput } from "@atlas/core";
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
 import {
-  decideTurnPolicy,
   type DecideTurnPolicyInput,
+  decideTurnPolicy,
 } from "./decide-turn-policy";
 
 const emptyCommit: CommitPolicyOutput = {
@@ -89,7 +96,7 @@ describe("decideTurnPolicy", () => {
       decideTurnPolicy(
         input(
           { turnType: "planning_request", confidence: 0.68 },
-          { committedSlots: { day: "tomorrow", time: "18:00" } },
+          { committedSlots: { day: "tomorrow", time: t(18, 0) } },
           {
             rawText: "Schedule gym tomorrow at 6pm",
             normalizedText: "Schedule gym tomorrow at 6pm",
@@ -318,7 +325,7 @@ describe("decideTurnPolicy", () => {
           resolvedEntityIds: ["task-1"],
           resolvedProposalId: "proposal-1",
         },
-        { committedSlots: { time: "15:00", day: "tomorrow" } },
+        { committedSlots: { time: t(15, 0), day: "tomorrow" } },
         {
           rawText: "make it 3 instead",
           normalizedText: "make it 3 instead",
@@ -338,7 +345,7 @@ describe("decideTurnPolicy", () => {
                 confirmationRequired: true,
                 targetEntityId: "task-1",
                 originatingTurnText: "move it to tomorrow 2pm",
-                slotSnapshot: { time: "14:00", day: "tomorrow" },
+                slotSnapshot: { time: t(14, 0), day: "tomorrow" },
               },
             },
           ],
@@ -492,7 +499,7 @@ describe("decideTurnPolicy", () => {
           confidence: 0.9,
           resolvedEntityIds: ["task-1"],
         },
-        { committedSlots: { day: "tomorrow", time: "17:00" } },
+        { committedSlots: { day: "tomorrow", time: t(17, 0) } },
         {
           rawText: "ok but make it 5pm",
           normalizedText: "ok but make it 5pm",
@@ -511,7 +518,7 @@ describe("decideTurnPolicy", () => {
                 replyText: "Would you like me to schedule it tomorrow at 3pm?",
                 confirmationRequired: true,
                 targetEntityId: "task-1",
-                slotSnapshot: { day: "tomorrow", time: "15:00" },
+                slotSnapshot: { day: "tomorrow", time: t(15, 0) },
               },
             },
           ],
@@ -554,7 +561,7 @@ describe("decideTurnPolicy", () => {
                   route: "conversation_then_mutation",
                   replyText: "Would you like me to schedule it at 3pm?",
                   confirmationRequired: true,
-                  slotSnapshot: { time: "15:00" },
+                  slotSnapshot: { time: t(15, 0) },
                 },
               },
             ],
@@ -568,7 +575,7 @@ describe("decideTurnPolicy", () => {
   });
 
   it("returns committedSlots on every policy decision", () => {
-    const slots = { day: "tomorrow", time: "17:00" };
+    const slots = { day: "tomorrow", time: t(17, 0) };
     const result = decideTurnPolicy(
       input(
         { turnType: "planning_request", confidence: 0.95 },

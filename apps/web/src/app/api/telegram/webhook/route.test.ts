@@ -1,35 +1,41 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ConversationEntity,
   InboxPlanningOutput,
   RoutedTurn,
-  TurnPolicyAction,
+  TimeSpec,
   TurnInterpretationType,
-  ConversationEntity,
+  TurnPolicyAction,
 } from "@atlas/core";
+
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
+
 import {
-  getDefaultGoogleCalendarConnectionStore,
   getDefaultFollowUpRuntimeStore,
+  getDefaultGoogleCalendarConnectionStore,
   getDefaultInboxProcessingStore,
-  listPlannerRunsForTests,
-  listScheduleBlocksForTests,
-  listTasksForTests,
   listInboxItemsForTests,
   listIncomingBotEventsForTests,
   listOutgoingBotEventsForTests,
+  listPlannerRunsForTests,
+  listScheduleBlocksForTests,
+  listTasksForTests,
   recordIncomingTelegramMessageIfNew,
   recordOutgoingTelegramMessageIfNew,
   resetConversationStateStoreForTests,
   resetGoogleCalendarConnectionStoreForTests,
   resetInboxProcessingStoreForTests,
   resetIncomingTelegramIngressStoreForTests,
-  seedInboxItemForProcessingTests,
   saveConversationState,
+  seedInboxItemForProcessingTests,
   updateOutgoingTelegramMessage,
 } from "@atlas/db";
 import {
   getDefaultCalendarAdapter,
   resetCalendarAdapterForTests,
 } from "@atlas/integrations";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleTelegramWebhook } from "@/lib/server/telegram-webhook";
 
@@ -149,7 +155,7 @@ function buildRoutedTurn(input: {
   confidence?: number;
   ambiguity?: "none" | "low" | "high";
   resolvedProposalId?: string;
-  committedSlots?: Record<string, string | number>;
+  committedSlots?: Record<string, string | number | TimeSpec>;
 }): RoutedTurn {
   return {
     interpretation: {
@@ -361,7 +367,7 @@ beforeEach(async () => {
   recoverConfirmedMutationWithResponsesMock.mockReset();
   extractSlotsWithResponsesMock.mockReset();
   extractSlotsWithResponsesMock.mockResolvedValue({
-    time: { hour: 9, minute: 0 },
+    time: { kind: "absolute", hour: 9, minute: 0 },
     day: { kind: "relative", value: "tomorrow" },
     duration: null,
     target: null,
@@ -973,7 +979,7 @@ describe("telegram webhook route", () => {
   it("does not keep clear scheduling requests in discuss-first mode", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
     extractSlotsWithResponsesMock.mockResolvedValueOnce({
-      time: { hour: 18, minute: 0 },
+      time: { kind: "absolute", hour: 18, minute: 0 },
       day: { kind: "relative", value: "tomorrow" },
       duration: { minutes: 60 },
       target: null,
@@ -1104,7 +1110,7 @@ describe("telegram webhook route", () => {
             turnType: "confirmation",
             action: "recover_and_execute",
             resolvedProposalId: "proposal-1",
-            committedSlots: { time: "15:00" },
+            committedSlots: { time: t(15, 0) },
           }),
       },
     );

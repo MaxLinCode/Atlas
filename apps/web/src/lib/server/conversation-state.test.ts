@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
-import type { ConversationStateSnapshot } from "@atlas/core";
+import type { ConversationStateSnapshot, TimeSpec } from "@atlas/core";
 import type { ProcessedInboxResult } from "@atlas/db";
+import { describe, expect, it } from "vitest";
+
+function t(hour: number, minute: number): TimeSpec {
+  return { kind: "absolute", hour, minute };
+}
 
 import {
   deriveConversationReplyState,
@@ -290,7 +294,7 @@ describe("deriveConversationReplyState", () => {
       snapshot,
       policy: {
         action: "present_proposal",
-        committedSlots: { day: "tomorrow", time: "17:00" },
+        committedSlots: { day: "tomorrow", time: t(17, 0) },
       },
       interpretation: {
         turnType: "clarification_answer",
@@ -428,7 +432,7 @@ describe("deriveMutationState", () => {
     const snapshot = buildSnapshot();
     snapshot.discourseState = {
       ...snapshot.discourseState!,
-      resolved_slots: { day: "tomorrow", time: "17:00" },
+      resolved_slots: { day: "tomorrow", time: t(17, 0) },
       pending_write_contract: {
         requiredSlots: ["day", "time"],
         intentKind: "plan",
