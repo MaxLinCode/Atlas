@@ -118,6 +118,30 @@ Build Atlas as a production-quality, Telegram-first planning assistant. The code
 - Do not commit or push implementation work directly to `main`.
 - If work is accidentally committed on `main`, move it to a feature branch before pushing.
 
+- **Every workflow - no exceptions - must use a dedicated branch.**
+  - Create a branch before making changes:
+    git switch -c claude/<short-description>
+  - Do not perform implementation work directly on `main`.
+
+- **Use a git worktree when work may run in parallel or overlap.**
+  - Examples: concurrent tasks, long-running edits, formatting passes, refactors, or agent-driven work.
+  - Create the worktree before touching files:
+    git worktree add .worktrees/atlas-<short-description> -b claude/<short-description>
+  - All edits and commits for that workflow must happen inside that worktree, never in the main checkout.
+
+- **Direct commits or merges to `main` are not allowed by default.**
+  - All changes must land via a dedicated branch.
+  - Prefer PR-based merges, even for small changes.
+  - Fast-forward merges from a clean branch are acceptable after work is complete.
+
+- Follow `docs/workflows/feature-delivery.md` for product features, fixes, and behavior changes.
+
+- If work is accidentally committed on `main`, move it to a feature branch before pushing.
+
+- Remove temporary worktrees after merge:
+  - git worktree remove .worktrees/atlas-<short-description>
+  - git branch -d claude/<short-description> (if fully merged)
+
 ## Execution Rules
 
 - Before finishing, run the narrowest relevant checks for the touched code.
