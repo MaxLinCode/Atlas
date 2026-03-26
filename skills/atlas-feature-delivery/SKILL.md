@@ -8,7 +8,7 @@ description: Execute non-trivial Atlas features, bug fixes, and behavior changes
 Follow the Atlas workflow before editing:
 
 1. Confirm the current branch is not `main`. If it is, create a focused branch named `codex/<short-description>` before making changes.
-2. Read `AGENTS.md`, `docs/workflows/feature-delivery.md`, and the smallest set of architecture or product docs needed for the task.
+2. Read `CLAUDE.md`, `docs/workflows/feature-delivery.md`, and the smallest set of architecture or product docs needed for the task.
 3. Map the change to the correct layer before editing:
    - `apps/web` for delivery surfaces only
    - `packages/core` for product concepts, validation, planning, and scheduling rules
@@ -31,7 +31,7 @@ Before finishing:
    - `docs/architecture.md` for dependency direction or major flow changes
    - `docs/current-work.md` when the active implementation focus changes
    - `docs/decisions/` for meaningful architecture or infrastructure decisions
-3. Run the narrowest relevant checks required by `AGENTS.md`.
+3. Run the narrowest relevant checks required by `CLAUDE.md`.
 
 In the final response, summarize:
 
