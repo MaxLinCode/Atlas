@@ -26,7 +26,7 @@ Check these repo-specific failure modes:
 - Google Calendar changes that break task-owned runtime truth or security-domain separation
 - work performed directly on `main`
 
-Use `AGENTS.md`, `docs/architecture.md`, `docs/current-work.md`, and the most relevant subsystem docs to judge intent.
+Use `CLAUDE.md`, `docs/architecture.md`, `docs/current-work.md`, and the most relevant subsystem docs to judge intent.
 
 Output format:
 

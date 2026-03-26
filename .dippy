@@ -1,9 +1,6 @@
 # .dippy
 
 # Let normal read / inspect commands flow
-allow git status
-allow git diff
-allow git log
 allow ls
 allow pwd
 allow cat
@@ -13,12 +10,21 @@ allow rg
 allow find
 allow jq
 
+# allow git workflow
+allow git status
+allow git diff
+allow git log
+allow git add
+allow git add -p
+allow git commit
+allow git show
+allow git restore --staged
+
 # Let normal monorepo validation commands flow
 allow pnpm --filter * typecheck
 allow pnpm --filter * test
 allow pnpm --filter * lint
 allow pnpm biome *
-allow pnpm exec biome *
 allow pnpm tsc *
 allow pnpm vitest *
 allow pnpm jest *
