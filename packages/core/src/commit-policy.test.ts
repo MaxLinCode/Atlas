@@ -11,10 +11,11 @@ function t(hour: number, minute: number): TimeSpec {
 function priorOp(
   operationKind: PendingWriteOperation["operationKind"],
   scheduleFields: PendingWriteOperation["resolvedFields"]["scheduleFields"],
+  targetEntityId?: string,
 ): PendingWriteOperation {
   return {
     operationKind,
-    targetRef: null,
+    targetRef: targetEntityId ? { entityId: targetEntityId } : null,
     resolvedFields: { scheduleFields },
     missingFields: [],
     originatingText: "prior turn",
@@ -255,5 +256,63 @@ describe("applyCommitPolicy", () => {
 
     expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
     expect(result.needsClarification).toContain("scheduleFields.time");
+  });
+
+  it("sets resolvedTargetRef from currentTargetEntityId when no prior operation", () => {
+    const result = applyCommitPolicy(
+      buildInput({
+        turnType: "planning_request",
+        currentTargetEntityId: "task-abc",
+      }),
+    );
+
+    expect(result.resolvedTargetRef).toEqual({ entityId: "task-abc" });
+    expect(result.workflowChanged).toBe(false);
+  });
+
+  it("carries forward prior targetRef when no new entity is resolved", () => {
+    const result = applyCommitPolicy(
+      buildInput({
+        turnType: "clarification_answer",
+        priorPendingWriteOperation: priorOp("plan", { day: "tomorrow" }, "task-abc"),
+      }),
+    );
+
+    expect(result.resolvedTargetRef).toEqual({ entityId: "task-abc" });
+    expect(result.workflowChanged).toBe(false);
+  });
+
+  it("clears prior schedule fields and sets workflowChanged when target changes", () => {
+    const result = applyCommitPolicy(
+      buildInput({
+        turnType: "planning_request",
+        extractedValues: { day: "friday" },
+        confidence: { day: 0.9 },
+        currentTargetEntityId: "task-xyz",
+        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }, "task-abc"),
+      }),
+    );
+
+    expect(result.resolvedTargetRef).toEqual({ entityId: "task-xyz" });
+    expect(result.workflowChanged).toBe(true);
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
+    expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
+  });
+
+  it("does not set workflowChanged when target is the same entity", () => {
+    const result = applyCommitPolicy(
+      buildInput({
+        turnType: "clarification_answer",
+        extractedValues: { time: t(17, 0) },
+        confidence: { time: 0.9 },
+        currentTargetEntityId: "task-abc",
+        priorPendingWriteOperation: priorOp("plan", { day: "tomorrow" }, "task-abc"),
+      }),
+    );
+
+    expect(result.resolvedTargetRef).toEqual({ entityId: "task-abc" });
+    expect(result.workflowChanged).toBe(false);
+    expect(result.resolvedFields.scheduleFields?.day).toBe("tomorrow");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(17, 0));
   });
 });

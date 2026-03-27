@@ -55,14 +55,14 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        clarificationSlots: ["time"],
+        clarificationSlots: ["scheduleFields.time"],
       },
       interpretation: {
         turnType: "planning_request",
         confidence: 0.58,
         resolvedEntityIds: [],
         ambiguity: "high",
-        missingFields: ["time"],
+        missingFields: ["scheduleFields.time"],
       },
       reply: "What time should I schedule the Malaysia trip planning?",
       userTurnText: "schedule malaysia trip planning tomorrow",
@@ -75,12 +75,12 @@ describe("deriveConversationReplyState", () => {
       kind: "clarification",
       status: "active",
       data: {
-        reason: "time",
+        reason: "scheduleFields.time",
       },
     });
     expect(result.discourseState?.pending_clarifications).toEqual([
       expect.objectContaining({
-        slot: "time",
+        slot: "scheduleFields.time",
         status: "pending",
       }),
     ]);
@@ -217,7 +217,7 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        clarificationSlots: ["time"],
+        clarificationSlots: ["scheduleFields.time"],
         resolvedOperation: op,
       },
       interpretation: {
@@ -225,7 +225,7 @@ describe("deriveConversationReplyState", () => {
         confidence: 0.58,
         resolvedEntityIds: [],
         ambiguity: "high",
-        missingFields: ["time"],
+        missingFields: ["scheduleFields.time"],
       },
       reply: "What time should I schedule it?",
       userTurnText: "schedule gym tomorrow",

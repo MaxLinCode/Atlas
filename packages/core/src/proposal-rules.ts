@@ -168,7 +168,7 @@ function deriveSlotsCompatibility(
 
   return {
     compatible: true,
-    reason: "Committed slots are compatible with the proposal snapshot.",
+    reason: "Resolved fields are compatible with the proposal snapshot.",
   };
 }
 

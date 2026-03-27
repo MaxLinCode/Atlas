@@ -2,12 +2,13 @@ import type {
   OperationKind,
   PendingWriteOperation,
   ResolvedFields,
+  TargetRef,
   TimeSpec,
   TurnInterpretation,
 } from "./index";
 import { timeSpecsEqual } from "./time-spec";
 
-type ScheduleSlot = "day" | "time" | "duration" | "target";
+type ScheduleSlot = "day" | "time" | "duration";
 
 export type CommitPolicyInput = {
   turnType: TurnInterpretation["turnType"];
@@ -16,12 +17,15 @@ export type CommitPolicyInput = {
   unresolvable: ScheduleSlot[];
   operationKind: OperationKind;
   priorPendingWriteOperation?: PendingWriteOperation | undefined;
+  currentTargetEntityId?: string;
 };
 
 export type CommitPolicyOutput = {
   resolvedFields: ResolvedFields;
+  resolvedTargetRef: TargetRef;
   needsClarification: string[];
   missingFields: string[];
+  workflowChanged: boolean;
 };
 
 export const SLOT_COMMITTING_TURN_TYPES = new Set<
@@ -56,11 +60,19 @@ export function applyCommitPolicy(
     unresolvable,
     operationKind,
     priorPendingWriteOperation,
+    currentTargetEntityId,
   } = input;
+
+  // Target change: a new entity ID that differs from the prior workflow's target
+  // means the user switched subjects. Treat it the same as an operation change —
+  // prior committed schedule fields belong to a different task and must be cleared.
+  const targetChanged =
+    currentTargetEntityId !== undefined &&
+    currentTargetEntityId !== priorPendingWriteOperation?.targetRef?.entityId;
 
   const operationChanged =
     priorPendingWriteOperation != null &&
-    operationKind !== priorPendingWriteOperation.operationKind;
+    (operationKind !== priorPendingWriteOperation.operationKind || targetChanged);
 
   const priorScheduleFields: Partial<Record<ScheduleSlot, unknown>> =
     operationChanged
@@ -125,7 +137,12 @@ export function applyCommitPolicy(
     .filter((slot) => committedSchedule[slot] === undefined)
     .map((slot) => `scheduleFields.${slot}`);
 
-  return { resolvedFields, needsClarification, missingFields };
+  // Carry forward the prior target unless this turn introduced a new one.
+  const resolvedTargetRef: TargetRef = currentTargetEntityId
+    ? { entityId: currentTargetEntityId }
+    : (priorPendingWriteOperation?.targetRef ?? null);
+
+  return { resolvedFields, resolvedTargetRef, needsClarification, missingFields, workflowChanged: operationChanged };
 }
 
 function slotValuesEqual(slot: ScheduleSlot, a: unknown, b: unknown): boolean {

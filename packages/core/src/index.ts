@@ -957,7 +957,7 @@ export const routedTurnSchema = z.object({
   policy: turnPolicyDecisionSchema,
 });
 
-const slotKeySchema = z.enum(["day", "time", "duration", "target"]);
+const slotKeySchema = z.enum(["day", "time", "duration"]);
 
 const slotConfidenceSchema = z.object({
   day: z.number().nullable().optional(),

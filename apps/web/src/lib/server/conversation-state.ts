@@ -464,7 +464,11 @@ function upsertActiveProposalEntity(
   return nextProposal;
 }
 
-const PERSISTABLE_SLOT_KEYS = new Set(["day", "time", "duration", "target"]);
+const PERSISTABLE_SLOT_KEYS = new Set([
+  "scheduleFields.day",
+  "scheduleFields.time",
+  "scheduleFields.duration",
+]);
 
 function derivePersistableClarificationSlots(slots: string[] | undefined) {
   if (!slots) {

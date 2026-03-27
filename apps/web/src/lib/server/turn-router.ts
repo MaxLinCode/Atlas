@@ -29,7 +29,7 @@ export type TurnRouterResult = RoutedTurn;
 // Required schedule fields per operation kind — mirrors commit-policy internals.
 function requiredSlotsForOperation(
   operationKind: OperationKind,
-): ("day" | "time" | "duration" | "target")[] {
+): ("day" | "time" | "duration")[] {
   switch (operationKind) {
     case "plan":
       return ["day", "time"];
@@ -109,6 +109,9 @@ export async function routeMessageTurn(
     unresolvable: slotExtraction?.unresolvable ?? [],
     operationKind,
     priorPendingWriteOperation: priorOperation,
+    ...(classification.resolvedEntityIds[0] !== undefined
+      ? { currentTargetEntityId: classification.resolvedEntityIds[0] }
+      : {}),
   });
 
   const policy = decideTurnPolicy({
@@ -145,13 +148,14 @@ function buildResolvedOperation(
   priorOperation: PendingWriteOperation | undefined,
   currentTurnText: string,
 ): PendingWriteOperation {
+  const isNewWorkflow = commitResult.workflowChanged || !priorOperation;
   return {
     operationKind,
-    targetRef: priorOperation?.targetRef ?? null,
+    targetRef: commitResult.resolvedTargetRef,
     resolvedFields: commitResult.resolvedFields,
     missingFields: commitResult.missingFields,
-    originatingText: priorOperation?.originatingText ?? currentTurnText,
-    startedAt: priorOperation?.startedAt ?? new Date().toISOString(),
+    originatingText: isNewWorkflow ? currentTurnText : priorOperation.originatingText,
+    startedAt: isNewWorkflow ? new Date().toISOString() : priorOperation.startedAt,
   };
 }
 
@@ -220,11 +224,11 @@ function unique(values: string[]) {
 
 function compactConfidence(
   confidence: Record<string, number | null | undefined>,
-): Partial<Record<"day" | "time" | "duration" | "target", number>> {
-  const result: Partial<Record<"day" | "time" | "duration" | "target", number>> = {};
+): Partial<Record<"day" | "time" | "duration", number>> {
+  const result: Partial<Record<"day" | "time" | "duration", number>> = {};
   for (const [key, value] of Object.entries(confidence)) {
     if (typeof value === "number") {
-      result[key as "day" | "time" | "duration" | "target"] = value;
+      result[key as "day" | "time" | "duration"] = value;
     }
   }
   return result;

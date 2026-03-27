@@ -16,8 +16,10 @@ import {
 
 const emptyCommit: CommitPolicyOutput = {
   resolvedFields: {},
+  resolvedTargetRef: null,
   needsClarification: [],
   missingFields: [],
+  workflowChanged: false,
 };
 
 function input(
