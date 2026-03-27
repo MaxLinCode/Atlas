@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "vitest": "vitest",
     "db:generate": "drizzle-kit generate --config=./drizzle.config.ts",
     "db:check": "drizzle-kit check --config=./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config=./drizzle.config.ts",

@@ -16,7 +16,8 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "eval:turn-router": "vitest run --config vitest.manual.config.ts src/manual/turn-router.eval.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "vitest": "vitest"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
