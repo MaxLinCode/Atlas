@@ -172,7 +172,7 @@ describe("turn router", () => {
     });
   });
 
-  it("includes resolvedOperation with empty resolvedFields for non-planning turns", async () => {
+  it("does not set resolvedOperation for reply_only turns", async () => {
     mockClassification({
       turnType: "informational",
       confidence: 0.93,
@@ -184,10 +184,8 @@ describe("turn router", () => {
       recentTurns: [],
     });
 
-    expect(result.policy.resolvedOperation).toMatchObject({
-      operationKind: "plan",
-      resolvedFields: {},
-    });
+    expect(result.policy.action).toBe("reply_only");
+    expect(result.policy.resolvedOperation).toBeUndefined();
   });
 
   it("includes resolvedOperation with extracted fields for planning_request", async () => {

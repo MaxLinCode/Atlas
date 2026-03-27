@@ -925,7 +925,7 @@ export const turnInterpretationSchema = z.object({
   resolvedProposalId: z.string().min(1).optional(),
   ambiguity: turnAmbiguitySchema,
   ambiguityReason: z.string().min(1).optional(),
-  missingSlots: z.array(z.string().min(1)).optional(),
+  missingFields: z.array(z.string().min(1)).optional(),
   notes: z.array(z.string().min(1)).optional(),
 });
 

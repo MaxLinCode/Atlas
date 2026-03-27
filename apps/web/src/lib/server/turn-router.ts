@@ -117,13 +117,18 @@ export async function routeMessageTurn(
     routingContext: input,
   });
 
-  // Assemble the resolved PendingWriteOperation to carry through to state persistence.
-  const resolvedOperation = buildResolvedOperation(
-    operationKind,
-    commitResult,
-    priorOperation,
-    input.normalizedText,
-  );
+  // Assemble the resolved PendingWriteOperation for any turn that advances or maintains
+  // a write workflow. reply_only turns must not create or overwrite pending_write_operation
+  // in discourse state — they carry no write intent.
+  const resolvedOperation =
+    policy.action !== "reply_only"
+      ? buildResolvedOperation(
+          operationKind,
+          commitResult,
+          priorOperation,
+          input.normalizedText,
+        )
+      : undefined;
 
   // Build interpretation for backward compatibility
   const interpretation = buildInterpretation(classification, commitResult);
@@ -187,7 +192,7 @@ function buildInterpretation(
           ),
         }
       : {}),
-    ...(allMissingFields.length > 0 ? { missingSlots: allMissingFields } : {}),
+    ...(allMissingFields.length > 0 ? { missingFields: allMissingFields } : {}),
   };
 }
 
