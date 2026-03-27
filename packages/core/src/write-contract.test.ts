@@ -1,111 +1,88 @@
 import { describe, expect, it } from "vitest";
 
-import type { WriteContract } from "./index";
-import { DEFAULT_WRITE_CONTRACT, resolveWriteContract } from "./write-contract";
+import { resolveOperationKind } from "./write-contract";
 
-describe("resolveWriteContract", () => {
-  it("returns the default plan contract for planning_request", () => {
-    expect(resolveWriteContract({ turnType: "planning_request" })).toEqual(
-      DEFAULT_WRITE_CONTRACT,
-    );
+describe("resolveOperationKind", () => {
+  it("returns 'plan' for planning_request", () => {
+    expect(resolveOperationKind({ turnType: "planning_request" })).toBe("plan");
   });
 
-  it("returns an edit contract for edit_request", () => {
-    const result = resolveWriteContract({ turnType: "edit_request" });
-    expect(result).toEqual({
-      requiredSlots: ["time"],
-      intentKind: "edit",
-    });
+  it("returns 'edit' for edit_request", () => {
+    expect(resolveOperationKind({ turnType: "edit_request" })).toBe("edit");
   });
 
-  it("carries forward priorContract for clarification_answer", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    };
+  it("carries forward priorOperationKind for clarification_answer", () => {
     expect(
-      resolveWriteContract({
+      resolveOperationKind({
         turnType: "clarification_answer",
-        priorContract: prior,
+        priorOperationKind: "plan",
       }),
-    ).toBe(prior);
+    ).toBe("plan");
   });
 
-  it("carries forward priorContract for confirmation", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["time"],
-      intentKind: "edit",
-    };
+  it("carries forward priorOperationKind for confirmation", () => {
     expect(
-      resolveWriteContract({ turnType: "confirmation", priorContract: prior }),
-    ).toBe(prior);
+      resolveOperationKind({
+        turnType: "confirmation",
+        priorOperationKind: "edit",
+      }),
+    ).toBe("edit");
   });
 
-  it("carries forward priorContract for follow_up_reply", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    };
+  it("carries forward priorOperationKind for follow_up_reply", () => {
     expect(
-      resolveWriteContract({
+      resolveOperationKind({
         turnType: "follow_up_reply",
-        priorContract: prior,
+        priorOperationKind: "plan",
       }),
-    ).toBe(prior);
+    ).toBe("plan");
   });
 
-  it("carries forward priorContract for informational", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    };
+  it("carries forward priorOperationKind for informational", () => {
     expect(
-      resolveWriteContract({ turnType: "informational", priorContract: prior }),
-    ).toBe(prior);
+      resolveOperationKind({
+        turnType: "informational",
+        priorOperationKind: "plan",
+      }),
+    ).toBe("plan");
   });
 
-  it("carries forward priorContract for unknown", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    };
+  it("carries forward priorOperationKind for unknown", () => {
     expect(
-      resolveWriteContract({ turnType: "unknown", priorContract: prior }),
-    ).toBe(prior);
+      resolveOperationKind({ turnType: "unknown", priorOperationKind: "plan" }),
+    ).toBe("plan");
   });
 
-  it("returns undefined for carry-forward turn types with no prior contract", () => {
+  it("returns undefined for carry-forward turn types with no prior operation", () => {
     expect(
-      resolveWriteContract({ turnType: "clarification_answer" }),
+      resolveOperationKind({ turnType: "clarification_answer" }),
     ).toBeUndefined();
-    expect(resolveWriteContract({ turnType: "confirmation" })).toBeUndefined();
-    expect(resolveWriteContract({ turnType: "informational" })).toBeUndefined();
-    expect(resolveWriteContract({ turnType: "unknown" })).toBeUndefined();
+    expect(
+      resolveOperationKind({ turnType: "confirmation" }),
+    ).toBeUndefined();
+    expect(
+      resolveOperationKind({ turnType: "informational" }),
+    ).toBeUndefined();
+    expect(
+      resolveOperationKind({ turnType: "unknown" }),
+    ).toBeUndefined();
   });
 
-  it("ignores priorContract for planning_request — always returns fresh plan contract", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["time"],
-      intentKind: "edit",
-    };
-    const result = resolveWriteContract({
-      turnType: "planning_request",
-      priorContract: prior,
-    });
-    expect(result).toEqual(DEFAULT_WRITE_CONTRACT);
-    expect(result).not.toBe(prior);
+  it("ignores priorOperationKind for planning_request — always returns 'plan'", () => {
+    expect(
+      resolveOperationKind({
+        turnType: "planning_request",
+        priorOperationKind: "edit",
+      }),
+    ).toBe("plan");
   });
 
-  it("ignores priorContract for edit_request — always returns fresh edit contract", () => {
-    const prior: WriteContract = {
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    };
-    const result = resolveWriteContract({
-      turnType: "edit_request",
-      priorContract: prior,
-    });
-    expect(result?.intentKind).toBe("edit");
-    expect(result).not.toBe(prior);
+  it("ignores priorOperationKind for edit_request — always returns 'edit'", () => {
+    expect(
+      resolveOperationKind({
+        turnType: "edit_request",
+        priorOperationKind: "plan",
+      }),
+    ).toBe("edit");
   });
 });

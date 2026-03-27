@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationEntity, ResolvedSlots, TimeSpec } from "./index";
+import type { ConversationEntity, ResolvedFields, ResolvedSlots, TimeSpec } from "./index";
 import { deriveProposalCompatibility } from "./proposal-rules";
 
 function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
+}
+
+function sf(slots: ResolvedSlots): ResolvedFields {
+  return { scheduleFields: slots };
 }
 
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
@@ -37,7 +41,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: t(15, 0), day: "friday" },
+        sf({ time: t(15, 0), day: "friday" }),
         proposal,
       );
 
@@ -51,7 +55,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: t(17, 0) },
+        sf({ time: t(17, 0) }),
         proposal,
       );
 
@@ -66,7 +70,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { day: "friday", time: t(17, 0) },
+        sf({ day: "friday", time: t(17, 0) }),
         proposal,
       );
 
@@ -80,7 +84,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        {},
+        sf({}),
         proposal,
       );
 
@@ -94,7 +98,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "planning_request",
-        { duration: 60 },
+        sf({ duration: 60 }),
         proposal,
       );
 
@@ -112,7 +116,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "edit_request",
-        { time: t(15, 0) },
+        sf({ time: t(15, 0) }),
         proposal,
       );
 
@@ -128,7 +132,7 @@ describe("deriveProposalCompatibility", () => {
 
       const result = deriveProposalCompatibility(
         "clarification_answer",
-        { time: t(15, 0) },
+        sf({ time: t(15, 0) }),
         proposal,
       );
 

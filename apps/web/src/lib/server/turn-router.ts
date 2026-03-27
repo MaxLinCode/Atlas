@@ -4,20 +4,19 @@ import {
   type ConversationEntity,
   type ConversationTurn,
   createEmptyDiscourseState,
-  DEFAULT_WRITE_CONTRACT,
   deriveAmbiguity,
+  type OperationKind,
+  type PendingWriteOperation,
   type RoutedTurn,
-  resolveWriteContract,
+  resolveOperationKind,
   routedTurnSchema,
   SLOT_COMMITTING_TURN_TYPES,
-  type SlotKey,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
   type TurnPolicyAction,
   type TurnRoute,
   type TurnRoutingInput,
-  type WriteContract,
 } from "@atlas/core";
 
 import { decideTurnPolicy } from "./decide-turn-policy";
@@ -26,6 +25,22 @@ import { extractSlots } from "./slot-extractor";
 
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
+
+// Required schedule fields per operation kind — mirrors commit-policy internals.
+function requiredSlotsForOperation(
+  operationKind: OperationKind,
+): ("day" | "time" | "duration" | "target")[] {
+  switch (operationKind) {
+    case "plan":
+      return ["day", "time"];
+    case "edit":
+    case "reschedule":
+      return ["time"];
+    case "complete":
+    case "archive":
+      return [];
+  }
+}
 
 export async function routeMessageTurn(
   input: TurnRouterInput,
@@ -63,22 +78,25 @@ export async function routeMessageTurn(
   }
 
   // Pipeline B: extract slots (conditional)
-  const priorContract = discourseState.pending_write_contract;
-  const activeContract =
-    resolveWriteContract({
+  const priorOperation = discourseState.pending_write_operation;
+  const operationKind =
+    resolveOperationKind({
       turnType: classification.turnType,
-      priorContract,
-    }) ?? DEFAULT_WRITE_CONTRACT;
+      priorOperationKind: priorOperation?.operationKind,
+    }) ?? "plan";
+
   let slotExtraction = null;
 
   if (SLOT_COMMITTING_TURN_TYPES.has(classification.turnType)) {
+    const priorScheduleFields = priorOperation?.resolvedFields.scheduleFields ?? {};
+    const pendingSlots = requiredSlotsForOperation(operationKind).filter(
+      (slot) => priorScheduleFields[slot as keyof typeof priorScheduleFields] === undefined,
+    );
+
     slotExtraction = await extractSlots({
       currentTurnText: input.normalizedText,
-      pendingSlots: derivePendingSlots(
-        activeContract,
-        discourseState.resolved_slots ?? {},
-      ),
-      priorResolvedSlots: discourseState.resolved_slots ?? {},
+      pendingSlots,
+      priorResolvedSlots: priorScheduleFields,
       conversationContext: deriveConversationContext(input.recentTurns),
     });
   }
@@ -89,9 +107,8 @@ export async function routeMessageTurn(
     extractedValues: slotExtraction?.extractedValues ?? {},
     confidence: compactConfidence(slotExtraction?.confidence ?? {}),
     unresolvable: slotExtraction?.unresolvable ?? [],
-    priorResolvedSlots: discourseState.resolved_slots ?? {},
-    activeContract,
-    priorContract,
+    operationKind,
+    priorPendingWriteOperation: priorOperation,
   });
 
   const policy = decideTurnPolicy({
@@ -100,22 +117,37 @@ export async function routeMessageTurn(
     routingContext: input,
   });
 
+  // Assemble the resolved PendingWriteOperation to carry through to state persistence.
+  const resolvedOperation = buildResolvedOperation(
+    operationKind,
+    commitResult,
+    priorOperation,
+    input.normalizedText,
+  );
+
   // Build interpretation for backward compatibility
   const interpretation = buildInterpretation(classification, commitResult);
 
   return routedTurnSchema.parse({
     interpretation,
-    policy: { ...policy, resolvedContract: activeContract },
+    policy: { ...policy, resolvedOperation },
   });
 }
 
-function derivePendingSlots(
-  contract: WriteContract,
-  resolvedSlots: Record<string, unknown>,
-): SlotKey[] {
-  return contract.requiredSlots.filter(
-    (slot) => resolvedSlots[slot] === undefined,
-  );
+function buildResolvedOperation(
+  operationKind: OperationKind,
+  commitResult: CommitPolicyOutput,
+  priorOperation: PendingWriteOperation | undefined,
+  currentTurnText: string,
+): PendingWriteOperation {
+  return {
+    operationKind,
+    targetRef: priorOperation?.targetRef ?? null,
+    resolvedFields: commitResult.resolvedFields,
+    missingFields: commitResult.missingFields,
+    originatingText: priorOperation?.originatingText ?? currentTurnText,
+    startedAt: priorOperation?.startedAt ?? new Date().toISOString(),
+  };
 }
 
 function deriveConversationContext(recentTurns: ConversationTurn[]): string {
@@ -129,13 +161,13 @@ function buildInterpretation(
   classification: TurnClassifierOutput,
   commitResult: CommitPolicyOutput,
 ): TurnInterpretation {
-  const allMissingSlots = unique([
-    ...commitResult.missingSlots,
+  const allMissingFields = unique([
+    ...commitResult.missingFields,
     ...commitResult.needsClarification,
   ]);
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
-    missingSlots: commitResult.missingSlots,
+    missingFields: commitResult.missingFields,
     needsClarification: commitResult.needsClarification,
   });
 
@@ -155,7 +187,7 @@ function buildInterpretation(
           ),
         }
       : {}),
-    ...(allMissingSlots.length > 0 ? { missingSlots: allMissingSlots } : {}),
+    ...(allMissingFields.length > 0 ? { missingSlots: allMissingFields } : {}),
   };
 }
 
@@ -183,11 +215,11 @@ function unique(values: string[]) {
 
 function compactConfidence(
   confidence: Record<string, number | null | undefined>,
-): Partial<Record<SlotKey, number>> {
-  const result: Partial<Record<SlotKey, number>> = {};
+): Partial<Record<"day" | "time" | "duration" | "target", number>> {
+  const result: Partial<Record<"day" | "time" | "duration" | "target", number>> = {};
   for (const [key, value] of Object.entries(confidence)) {
     if (typeof value === "number") {
-      result[key as SlotKey] = value;
+      result[key as "day" | "time" | "duration" | "target"] = value;
     }
   }
   return result;

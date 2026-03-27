@@ -1,15 +1,11 @@
 import type {
   ConversationEntity,
   InboxPlanningOutput,
+  PendingWriteOperation,
   RoutedTurn,
-  TimeSpec,
   TurnInterpretationType,
   TurnPolicyAction,
 } from "@atlas/core";
-
-function t(hour: number, minute: number): TimeSpec {
-  return { kind: "absolute", hour, minute };
-}
 
 import {
   getDefaultFollowUpRuntimeStore,
@@ -155,8 +151,8 @@ function buildRoutedTurn(input: {
   confidence?: number;
   ambiguity?: "none" | "low" | "high";
   resolvedProposalId?: string;
-  committedSlots?: Record<string, string | number | TimeSpec>;
   clarificationSlots?: string[];
+  resolvedOperation?: PendingWriteOperation;
 }): RoutedTurn {
   return {
     interpretation: {
@@ -186,9 +182,11 @@ function buildRoutedTurn(input: {
         : input.action === "execute_mutation"
           ? { mutationInputSource: "direct_user_turn" as const }
           : {}),
-      committedSlots: input.committedSlots ?? {},
       ...(input.clarificationSlots
         ? { clarificationSlots: input.clarificationSlots }
+        : {}),
+      ...(input.resolvedOperation
+        ? { resolvedOperation: input.resolvedOperation }
         : {}),
     },
   };
@@ -1192,7 +1190,16 @@ describe("telegram webhook route", () => {
             turnType: "confirmation",
             action: "recover_and_execute",
             resolvedProposalId: "proposal-1",
-            committedSlots: { time: t(15, 0) },
+            resolvedOperation: {
+              operationKind: "plan",
+              targetRef: null,
+              resolvedFields: {
+                scheduleFields: { time: { kind: "absolute", hour: 15, minute: 0 } },
+              },
+              missingFields: [],
+              originatingText: "Schedule the dentist reminder",
+              startedAt: new Date().toISOString(),
+            },
           }),
       },
     );

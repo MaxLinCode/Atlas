@@ -3,8 +3,8 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   conversationDiscourseStateSchema,
+  pendingWriteOperationSchema,
   resolvedSlotsSchema,
-  writeContractSchema,
 } from "./discourse-state";
 
 export * from "./ambiguity";
@@ -949,8 +949,7 @@ export const turnPolicyDecisionSchema = z.object({
     .enum(["direct_user_turn", "recovered_proposal"])
     .optional(),
   clarificationSlots: z.array(z.string().min(1)).optional(),
-  committedSlots: resolvedSlotsSchema.optional().default({}),
-  resolvedContract: writeContractSchema.optional(),
+  resolvedOperation: pendingWriteOperationSchema.optional(),
 });
 
 export const routedTurnSchema = z.object({
@@ -1132,7 +1131,6 @@ export type TurnInterpretation = z.infer<typeof turnInterpretationSchema>;
 export type TurnPolicyAction = z.infer<typeof turnPolicyActionSchema>;
 export type TurnPolicyDecision = z.infer<typeof turnPolicyDecisionSchema>;
 export type RoutedTurn = z.infer<typeof routedTurnSchema>;
-export type SlotKey = z.infer<typeof slotKeySchema>;
 export type RawSlotExtraction = z.infer<typeof rawSlotExtractionSchema>;
 export type SlotExtractorInput = z.infer<typeof slotExtractorInputSchema>;
 export type SlotExtractorOutput = z.infer<typeof slotExtractorOutputSchema>;

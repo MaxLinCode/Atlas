@@ -2,16 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import type { CommitPolicyInput } from "./commit-policy";
 import { applyCommitPolicy } from "./commit-policy";
-import type { TimeSpec, WriteContract } from "./index";
+import type { PendingWriteOperation, TimeSpec } from "./index";
 
 function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
 }
 
-const defaultContract: WriteContract = {
-  requiredSlots: ["day", "time"],
-  intentKind: "plan",
-};
+function priorOp(
+  operationKind: PendingWriteOperation["operationKind"],
+  scheduleFields: PendingWriteOperation["resolvedFields"]["scheduleFields"],
+): PendingWriteOperation {
+  return {
+    operationKind,
+    targetRef: null,
+    resolvedFields: { scheduleFields },
+    missingFields: [],
+    originatingText: "prior turn",
+    startedAt: new Date().toISOString(),
+  };
+}
 
 function buildInput(overrides: Partial<CommitPolicyInput>): CommitPolicyInput {
   return {
@@ -19,8 +28,7 @@ function buildInput(overrides: Partial<CommitPolicyInput>): CommitPolicyInput {
     extractedValues: {},
     confidence: {},
     unresolvable: [],
-    priorResolvedSlots: {},
-    activeContract: defaultContract,
+    operationKind: "plan",
     ...overrides,
   };
 }
@@ -35,7 +43,7 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
   });
 
   it("does not commit slots for confirmation turns", () => {
@@ -47,7 +55,7 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
   });
 
   it("commits slots above confidence threshold for planning_request", () => {
@@ -59,8 +67,8 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(17, 0));
-    expect(result.committedSlots.day).toBe("tomorrow");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(17, 0));
+    expect(result.resolvedFields.scheduleFields?.day).toBe("tomorrow");
     expect(result.needsClarification).toEqual([]);
   });
 
@@ -73,8 +81,8 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
-    expect(result.needsClarification).toContain("time");
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
+    expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
   it("does not commit correction below correction threshold", () => {
@@ -83,12 +91,12 @@ describe("applyCommitPolicy", () => {
         turnType: "clarification_answer",
         extractedValues: { time: t(15, 0) },
         confidence: { time: 0.8 },
-        priorResolvedSlots: { time: t(14, 0) },
+        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }),
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(14, 0));
-    expect(result.needsClarification).toContain("time");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(14, 0));
+    expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
   it("commits correction at or above correction threshold", () => {
@@ -97,12 +105,12 @@ describe("applyCommitPolicy", () => {
         turnType: "clarification_answer",
         extractedValues: { time: t(15, 0) },
         confidence: { time: 0.92 },
-        priorResolvedSlots: { time: t(14, 0) },
+        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }),
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(15, 0));
-    expect(result.needsClarification).not.toContain("time");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(15, 0));
+    expect(result.needsClarification).not.toContain("scheduleFields.time");
   });
 
   it("routes unresolvable slots to needsClarification", () => {
@@ -114,83 +122,82 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
-    expect(result.needsClarification).toContain("time");
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
+    expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
-  it("resets prior slots on contract change", () => {
+  it("resets prior slots on operation kind change", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
         extractedValues: { day: "friday" },
         confidence: { day: 0.9 },
-        priorResolvedSlots: { time: t(14, 0), day: "tomorrow" },
-        activeContract: { requiredSlots: ["day", "time"], intentKind: "edit" },
-        priorContract: { requiredSlots: ["day", "time"], intentKind: "plan" },
+        operationKind: "edit",
+        priorPendingWriteOperation: priorOp("plan", {
+          time: t(14, 0),
+          day: "tomorrow",
+        }),
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
-    expect(result.committedSlots.day).toBe("friday");
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
+    expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
   });
 
-  it("does not reset slots when contract intentKind is unchanged", () => {
+  it("does not reset slots when operation kind is unchanged", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
         extractedValues: { day: "friday" },
         confidence: { day: 0.9 },
-        priorResolvedSlots: { time: t(14, 0) },
-        activeContract: { requiredSlots: ["day", "time"], intentKind: "plan" },
-        priorContract: { requiredSlots: ["day"], intentKind: "plan" },
+        operationKind: "plan",
+        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }),
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(14, 0));
-    expect(result.committedSlots.day).toBe("friday");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(14, 0));
+    expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
   });
 
-  it("derives missingSlots from post-commit state", () => {
+  it("derives missingFields from post-commit state for plan", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
         extractedValues: { day: "tomorrow" },
         confidence: { day: 0.9 },
-        activeContract: { requiredSlots: ["day", "time"], intentKind: "plan" },
+        operationKind: "plan",
       }),
     );
 
-    expect(result.missingSlots).toEqual(["time"]);
-    expect(result.missingSlots).not.toContain("day");
+    expect(result.missingFields).toContain("scheduleFields.time");
+    expect(result.missingFields).not.toContain("scheduleFields.day");
   });
 
-  it("reports all required slots as missing when nothing is committed", () => {
+  it("reports all required fields as missing when nothing is committed", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
         extractedValues: {},
-        activeContract: {
-          requiredSlots: ["day", "time", "target"],
-          intentKind: "plan",
-        },
+        operationKind: "plan",
       }),
     );
 
-    expect(result.missingSlots).toEqual(["day", "time", "target"]);
+    expect(result.missingFields).toContain("scheduleFields.day");
+    expect(result.missingFields).toContain("scheduleFields.time");
   });
 
-  it("preserves prior resolved slots when new turn adds more", () => {
+  it("preserves prior resolved fields when new turn adds more", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "clarification_answer",
         extractedValues: { time: t(17, 0) },
         confidence: { time: 0.9 },
-        priorResolvedSlots: { day: "tomorrow" },
+        priorPendingWriteOperation: priorOp("plan", { day: "tomorrow" }),
       }),
     );
 
-    expect(result.committedSlots.day).toBe("tomorrow");
-    expect(result.committedSlots.time).toEqual(t(17, 0));
+    expect(result.resolvedFields.scheduleFields?.day).toBe("tomorrow");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(17, 0));
   });
 
   it("commits slots for edit_request turn type", () => {
@@ -199,12 +206,12 @@ describe("applyCommitPolicy", () => {
         turnType: "edit_request",
         extractedValues: { time: t(10, 0) },
         confidence: { time: 0.88 },
-        activeContract: { requiredSlots: ["time"], intentKind: "edit" },
+        operationKind: "edit",
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(10, 0));
-    expect(result.missingSlots).toEqual([]);
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(10, 0));
+    expect(result.missingFields).toEqual([]);
   });
 
   it("treats missing confidence as zero", () => {
@@ -216,8 +223,8 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.time).toBeUndefined();
-    expect(result.needsClarification).toContain("time");
+    expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
+    expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
   it("does not flag unresolvable slot that is already resolved from prior turn", () => {
@@ -227,13 +234,13 @@ describe("applyCommitPolicy", () => {
         extractedValues: { day: "friday" },
         confidence: { day: 0.9 },
         unresolvable: ["time"],
-        priorResolvedSlots: { time: t(14, 0) },
+        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }),
       }),
     );
 
-    expect(result.committedSlots.time).toEqual(t(14, 0));
-    expect(result.needsClarification).not.toContain("time");
-    expect(result.committedSlots.day).toBe("friday");
+    expect(result.resolvedFields.scheduleFields?.time).toEqual(t(14, 0));
+    expect(result.needsClarification).not.toContain("scheduleFields.time");
+    expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
   });
 
   it("handles unresolvable slots not in extractedValues", () => {
@@ -246,7 +253,7 @@ describe("applyCommitPolicy", () => {
       }),
     );
 
-    expect(result.committedSlots.day).toBe("friday");
-    expect(result.needsClarification).toContain("time");
+    expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
+    expect(result.needsClarification).toContain("scheduleFields.time");
   });
 });

@@ -1,4 +1,8 @@
-import type { TimeSpec, TurnClassifierOutput } from "@atlas/core";
+import type {
+  PendingWriteOperation,
+  TimeSpec,
+  TurnClassifierOutput,
+} from "@atlas/core";
 import { describe, expect, it, vi } from "vitest";
 
 function t(hour: number, minute: number): TimeSpec {
@@ -168,7 +172,7 @@ describe("turn router", () => {
     });
   });
 
-  it("includes committedSlots on policy output", async () => {
+  it("includes resolvedOperation with empty resolvedFields for non-planning turns", async () => {
     mockClassification({
       turnType: "informational",
       confidence: 0.93,
@@ -180,10 +184,13 @@ describe("turn router", () => {
       recentTurns: [],
     });
 
-    expect(result.policy.committedSlots).toEqual({});
+    expect(result.policy.resolvedOperation).toMatchObject({
+      operationKind: "plan",
+      resolvedFields: {},
+    });
   });
 
-  it("includes resolvedContract on policy output for planning_request", async () => {
+  it("includes resolvedOperation with extracted fields for planning_request", async () => {
     mockClassification({
       turnType: "planning_request",
       confidence: 0.95,
@@ -200,16 +207,23 @@ describe("turn router", () => {
       recentTurns: [],
     });
 
-    expect(result.policy.resolvedContract).toEqual({
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
+    expect(result.policy.resolvedOperation).toMatchObject({
+      operationKind: "plan",
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(18, 0) },
+      },
+      missingFields: [],
     });
   });
 
-  it("carries forward priorContract from discourse state for clarification_answer", async () => {
-    const priorContract = {
-      requiredSlots: ["time"] as ("day" | "time" | "duration" | "target")[],
-      intentKind: "edit" as const,
+  it("carries forward operationKind from prior pending_write_operation for clarification_answer", async () => {
+    const priorOperation: PendingWriteOperation = {
+      operationKind: "edit",
+      targetRef: null,
+      resolvedFields: {},
+      missingFields: ["scheduleFields.time"],
+      originatingText: "reschedule gym",
+      startedAt: new Date().toISOString(),
     };
 
     mockClassification({
@@ -232,15 +246,18 @@ describe("turn router", () => {
         last_user_mentioned_entity_ids: [],
         last_presented_items: [],
         pending_clarifications: [],
-        pending_write_contract: priorContract,
+        pending_write_operation: priorOperation,
         mode: "clarifying",
       },
     });
 
-    expect(result.policy.resolvedContract).toEqual(priorContract);
+    expect(result.policy.resolvedOperation).toMatchObject({
+      operationKind: "edit",
+      resolvedFields: { scheduleFields: { time: t(17, 0) } },
+    });
   });
 
-  it("falls back to default contract when no prior contract exists", async () => {
+  it("defaults to plan operationKind when no prior operation exists for clarification_answer", async () => {
     mockClassification({
       turnType: "clarification_answer",
       confidence: 0.9,
@@ -257,9 +274,9 @@ describe("turn router", () => {
       recentTurns: [],
     });
 
-    expect(result.policy.resolvedContract).toEqual({
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
+    expect(result.policy.resolvedOperation).toMatchObject({
+      operationKind: "plan",
+      resolvedFields: { scheduleFields: { time: t(17, 0) } },
     });
   });
 
