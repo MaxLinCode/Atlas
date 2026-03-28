@@ -6,7 +6,8 @@
     "build": "next build",
     "lint": "biome check src next.config.ts vitest.config.mts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "vitest": "vitest"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

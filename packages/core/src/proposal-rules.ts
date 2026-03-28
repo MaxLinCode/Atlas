@@ -1,5 +1,6 @@
 import type {
   ConversationEntity,
+  ResolvedFields,
   ResolvedSlots,
   TurnClassifierOutput,
   TurnInterpretationType,
@@ -11,7 +12,7 @@ type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 export type ConsentRequirementInput = {
   classification: TurnClassifierOutput;
   entityRegistry: ConversationEntity[];
-  committedSlots: ResolvedSlots;
+  resolvedFields: ResolvedFields;
 };
 
 export function deriveConsentRequirement(input: ConsentRequirementInput) {
@@ -59,7 +60,7 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
 
   const compatibility = deriveProposalCompatibility(
     classification.turnType,
-    input.committedSlots,
+    input.resolvedFields,
     activeProposal,
   );
 
@@ -102,9 +103,11 @@ export function matchesProposalTarget(
 
 export function deriveProposalCompatibility(
   turnType: TurnInterpretationType,
-  committedSlots: ResolvedSlots,
+  resolvedFields: ResolvedFields,
   proposal: ProposalOption,
 ) {
+  const committedSlots = flattenScheduleFields(resolvedFields);
+
   if (turnType === "clarification_answer") {
     return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
   }
@@ -122,6 +125,12 @@ export function deriveProposalCompatibility(
   }
 
   return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
+}
+
+// Adapter: flatten grouped schedule fields back to ResolvedSlots for
+// comparison against proposal.data.slotSnapshot (entity shape not yet migrated).
+function flattenScheduleFields(fields: ResolvedFields): ResolvedSlots {
+  return fields.scheduleFields ?? {};
 }
 
 function deriveSlotsCompatibility(
@@ -159,7 +168,7 @@ function deriveSlotsCompatibility(
 
   return {
     compatible: true,
-    reason: "Committed slots are compatible with the proposal snapshot.",
+    reason: "Resolved fields are compatible with the proposal snapshot.",
   };
 }
 

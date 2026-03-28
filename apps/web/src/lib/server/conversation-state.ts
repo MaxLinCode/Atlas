@@ -21,11 +21,7 @@ type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
   policy: Pick<
     TurnPolicyDecision,
-    | "action"
-    | "clarificationSlots"
-    | "targetProposalId"
-    | "committedSlots"
-    | "resolvedContract"
+    "action" | "clarificationSlots" | "targetProposalId" | "resolvedOperation"
   > & {
     action: Extract<
       TurnPolicyAction,
@@ -109,7 +105,8 @@ export function deriveConversationReplyState(
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
           missingSlots: input.policy.clarificationSlots,
-          slotSnapshot: input.policy.committedSlots ?? {},
+          slotSnapshot:
+            input.policy.resolvedOperation?.resolvedFields.scheduleFields ?? {},
         },
       }),
     );
@@ -176,14 +173,10 @@ export function deriveConversationReplyState(
     },
   ).state;
 
-  const committedSlots = input.policy.committedSlots;
   const nextDiscourseState = {
     ...updatedDiscourseState,
-    ...(committedSlots && Object.keys(committedSlots).length > 0
-      ? { resolved_slots: committedSlots }
-      : {}),
-    ...(input.policy.resolvedContract
-      ? { pending_write_contract: input.policy.resolvedContract }
+    ...(input.policy.resolvedOperation
+      ? { pending_write_operation: input.policy.resolvedOperation }
       : {}),
   };
 
@@ -319,8 +312,7 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
   const finalDiscourseState = isFlowComplete
     ? {
         ...discourseState,
-        resolved_slots: {},
-        pending_write_contract: undefined,
+        pending_write_operation: undefined,
       }
     : discourseState;
 
@@ -470,7 +462,11 @@ function upsertActiveProposalEntity(
   return nextProposal;
 }
 
-const PERSISTABLE_SLOT_KEYS = new Set(["day", "time", "duration", "target"]);
+const PERSISTABLE_SLOT_KEYS = new Set([
+  "scheduleFields.day",
+  "scheduleFields.time",
+  "scheduleFields.duration",
+]);
 
 function derivePersistableClarificationSlots(slots: string[] | undefined) {
   if (!slots) {

@@ -151,29 +151,30 @@ a user says something like "yes but make it 3pm".
 Slot extraction runs **only** for `SLOT_COMMITTING_TURN_TYPES`:
 `planning_request`, `edit_request`, `clarification_answer`.
 
-Before calling the LLM, `derivePendingSlots()` computes which required slots
-are still missing from the current `WriteContract`:
+Before calling the LLM, `requiredSlotsForOperation()` computes which schedule
+fields are still missing given the current `operationKind`:
 
-- **`DEFAULT_WRITE_CONTRACT`** (plan intent): requires `["day", "time"]`
-- **`EDIT_CONTRACT`** (edit intent): requires `["time"]`
+- **`plan`**: requires `["day", "time"]`
+- **`edit` / `reschedule`**: requires `["time"]`
+- **`complete` / `archive`**: requires `[]`
 
-`resolveWriteContract()` picks the active contract:
-- `planning_request` → always `DEFAULT_WRITE_CONTRACT`
-- `edit_request` → always `EDIT_CONTRACT`
-- everything else → inherits `priorContract` from discourse state
+`resolveOperationKind()` (`packages/core`) derives the active operation:
+- `planning_request` → `plan`
+- `edit_request` → `edit`
+- everything else → inherits `priorOperationKind` from `pending_write_operation`
 
-**Slot types** (`ResolvedSlots`):
+**Schedule slot types** (grouped under `scheduleFields` in `ResolvedFields`):
 ```ts
 {
-  day?: string;           // e.g. "monday", "tomorrow"
-  time?: TimeSpec;        // absolute {hour,minute}, relative {minutes}, or window {morning|afternoon|evening}
-  duration?: number;      // minutes
-  target?: string;        // entity ID of the task/block being referenced
+  day?: string;       // e.g. "monday", "tomorrow"
+  time?: TimeSpec;    // absolute {hour,minute}, relative {minutes}, or window {morning|afternoon|evening}
+  duration?: number;  // minutes
 }
 ```
 
-The slot normalizer (`packages/core/src/slot-normalizer.ts`) validates ranges
-and converts raw LLM output into typed `ResolvedSlots`.
+Target entity resolution happens via `classification.resolvedEntityIds`, not
+slot extraction. The slot normalizer (`packages/core/src/slot-normalizer.ts`)
+validates ranges and converts raw LLM output into typed schedule values.
 
 **Output:** `{ extractedValues, confidence, unresolvable }`
 - `confidence` is a per-slot score (0–1)
@@ -184,29 +185,36 @@ and converts raw LLM output into typed `ResolvedSlots`.
 **File:** `packages/core/src/commit-policy.ts` → `applyCommitPolicy()`
 
 The commit policy is the gate between "LLM extracted something" and "the
-system will act on it". Each extracted slot is individually evaluated:
+system will act on it". Each extracted schedule field is individually evaluated:
 
 | Condition | Result |
 |-----------|--------|
-| Slot is in `unresolvable` | → `needsClarification` |
-| `confidence[slot] < 0.75` | → `needsClarification` |
-| Slot corrects a prior value AND `confidence < 0.90` | → `needsClarification` |
-| Otherwise | → `committedSlots` |
+| Field is in `unresolvable` | → `needsClarification` |
+| `confidence[field] < 0.75` | → `needsClarification` |
+| Field corrects a prior value AND `confidence < 0.90` | → `needsClarification` |
+| Otherwise | → `resolvedFields.scheduleFields` |
 
-The correction threshold (0.90 vs 0.75) is higher because overwriting a slot
+The correction threshold (0.90 vs 0.75) is higher because overwriting a field
 the user previously confirmed carries more risk.
 
-**Contract change detection:** if the new `activeContract.intentKind` differs
-from `priorContract.intentKind` (e.g., the user switches from scheduling to
-editing), all prior resolved slots are discarded so stale plan-slots don't
-bleed into an edit.
+**Workflow change detection:** if `operationKind` changed from the prior
+operation, or if `currentTargetEntityId` differs from the prior
+`targetRef.entityId`, all prior resolved schedule fields are discarded so stale
+fields don't bleed into a new workflow. `workflowChanged: true` is surfaced in
+the output so `buildResolvedOperation` can reset `originatingText`/`startedAt`.
+
+**Target resolution:** `resolvedTargetRef` is the canonical next target —
+`currentTargetEntityId` when the classifier resolved one, otherwise carried
+forward from `priorPendingWriteOperation.targetRef`.
 
 **Output:** `CommitPolicyOutput`
 ```ts
 {
-  committedSlots: ResolvedSlots;   // slots safe to act on
-  needsClarification: SlotKey[];  // slots extracted but not confident enough
-  missingSlots: SlotKey[];        // required by contract, not yet resolved
+  resolvedFields: ResolvedFields;   // schedule fields safe to act on
+  resolvedTargetRef: TargetRef;     // canonical target for this workflow step
+  needsClarification: string[];     // dot-path fields not confident enough (e.g. "scheduleFields.time")
+  missingFields: string[];          // required by operationKind, not yet resolved
+  workflowChanged: boolean;         // true when operation or target switched
 }
 ```
 
@@ -251,9 +259,8 @@ relative to a prior proposal.
   targetEntityId?: string;
   targetProposalId?: string;
   mutationInputSource?: "direct_user_turn" | "recovered_proposal";
-  clarificationSlots?: string[];
-  committedSlots: ResolvedSlots;
-  resolvedContract: WriteContract;
+  clarificationSlots?: string[];    // dot-path fields (e.g. "scheduleFields.time")
+  resolvedOperation?: PendingWriteOperation;  // set for non-reply_only turns
 }
 ```
 
@@ -431,7 +438,7 @@ After any branch completes, the conversation state is updated:
   - New pending clarification (for `ask_clarification`)
   - New proposal entity (for `present_proposal`)
   - Conversation mode update (planning → clarifying / confirming)
-  - Committed slots in `pending_write_contract` and `resolved_slots`
+  - `pending_write_operation` updated from `policy.resolvedOperation` (non-`reply_only` turns only)
 
 **Mutation branch:**
 `deriveMutationState()` (`apps/web/src/lib/server/conversation-state.ts`)
@@ -480,8 +487,8 @@ computed, not stored directly — it is derived from whether there are pending
 clarifications or presented proposals in the entity registry.
 
 **`editing` mode** is entered when an `edit_request` turn arrives and an
-editable entity is present. It is structurally similar to `planning` but uses
-`EDIT_CONTRACT` which requires only `time`.
+editable entity is present. It is structurally similar to `planning` but the
+`edit` operationKind requires only `time`.
 
 ---
 
@@ -502,7 +509,7 @@ slots.
 **From:** `applyCommitPolicy()` → `CommitPolicyOutput`
 **To:** `decideTurnPolicy()` → `TurnPolicyDecision`
 
-The policy decision reads `missingSlots` and `needsClarification` from the
+The policy decision reads `missingFields` and `needsClarification` from the
 commit output to determine whether the system can proceed or must ask. It also
 reads the entity registry to check for consent requirements.
 
@@ -590,12 +597,14 @@ User-facing reply renderer for mutation outcomes. Converts
 `ProcessedInboxResult` to a human-readable message in the user's timezone.
 
 ### `packages/core/src/commit-policy.ts`
-Slot gating logic. Thresholds: 0.75 (normal), 0.90 (correction). Contract
-change detection resets prior slots. Pure function, no LLM calls.
+Schedule field gating logic. Thresholds: 0.75 (normal), 0.90 (correction).
+Operation/target change detection clears prior schedule fields and sets
+`workflowChanged`. Outputs `resolvedTargetRef` as the canonical next target.
+Pure function, no LLM calls.
 
 ### `packages/core/src/write-contract.ts`
-Contract definitions and resolver. `DEFAULT_WRITE_CONTRACT` requires
-`[day, time]`. `EDIT_CONTRACT` requires `[time]`.
+`resolveOperationKind()` — derives the active `OperationKind` from turn type
+and prior operation. Required fields per operation are owned by commit-policy.
 
 ### `packages/core/src/discourse-state.ts`
 All discourse state schema types, helpers, and mode derivation. Contains

@@ -1,9 +1,27 @@
-import type { ConversationStateSnapshot, TimeSpec } from "@atlas/core";
+import type {
+  ConversationStateSnapshot,
+  PendingWriteOperation,
+  TimeSpec,
+} from "@atlas/core";
 import type { ProcessedInboxResult } from "@atlas/db";
 import { describe, expect, it } from "vitest";
 
 function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
+}
+
+function buildPendingWriteOperation(
+  overrides?: Partial<PendingWriteOperation>,
+): PendingWriteOperation {
+  return {
+    operationKind: "plan",
+    targetRef: null,
+    resolvedFields: {},
+    missingFields: [],
+    originatingText: "schedule gym tomorrow",
+    startedAt: "2026-03-22T16:00:00.000Z",
+    ...overrides,
+  };
 }
 
 import {
@@ -41,15 +59,14 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        clarificationSlots: ["time"],
-        committedSlots: {},
+        clarificationSlots: ["scheduleFields.time"],
       },
       interpretation: {
         turnType: "planning_request",
         confidence: 0.58,
         resolvedEntityIds: [],
         ambiguity: "high",
-        missingSlots: ["time"],
+        missingFields: ["scheduleFields.time"],
       },
       reply: "What time should I schedule the Malaysia trip planning?",
       userTurnText: "schedule malaysia trip planning tomorrow",
@@ -62,12 +79,12 @@ describe("deriveConversationReplyState", () => {
       kind: "clarification",
       status: "active",
       data: {
-        reason: "time",
+        reason: "scheduleFields.time",
       },
     });
     expect(result.discourseState?.pending_clarifications).toEqual([
       expect.objectContaining({
-        slot: "time",
+        slot: "scheduleFields.time",
         status: "pending",
       }),
     ]);
@@ -80,7 +97,6 @@ describe("deriveConversationReplyState", () => {
       policy: {
         action: "ask_clarification",
         clarificationSlots: ["proposal"],
-        committedSlots: {},
       },
       interpretation: {
         turnType: "confirmation",
@@ -104,14 +120,13 @@ describe("deriveConversationReplyState", () => {
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        committedSlots: {},
       },
       interpretation: {
         turnType: "unknown",
         confidence: 0.42,
         resolvedEntityIds: [],
         ambiguity: "high",
-        missingSlots: ["unknown"],
+        missingFields: ["unknown"],
       },
       reply: "Can you clarify what you want me to change?",
       userTurnText: "do it",
@@ -165,7 +180,6 @@ describe("deriveConversationReplyState", () => {
       snapshot,
       policy: {
         action: "present_proposal",
-        committedSlots: {},
       },
       interpretation: {
         turnType: "clarification_answer",
@@ -197,31 +211,25 @@ describe("deriveConversationReplyState", () => {
     expect(result.discourseState?.mode).toBe("confirming");
   });
 
-  it("persists pending_write_contract when resolvedContract is provided", () => {
-    const contract = {
-      requiredSlots: ["day", "time"] as (
-        | "day"
-        | "time"
-        | "duration"
-        | "target"
-      )[],
-      intentKind: "plan" as const,
-    };
+  it("persists pending_write_operation when resolvedOperation is provided", () => {
+    const op = buildPendingWriteOperation({
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
 
     const result = deriveConversationReplyState({
       snapshot: buildSnapshot(),
       policy: {
         action: "ask_clarification",
-        clarificationSlots: ["time"],
-        committedSlots: { day: "tomorrow" },
-        resolvedContract: contract,
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
       },
       interpretation: {
         turnType: "planning_request",
         confidence: 0.58,
         resolvedEntityIds: [],
         ambiguity: "high",
-        missingSlots: ["time"],
+        missingFields: ["scheduleFields.time"],
       },
       reply: "What time should I schedule it?",
       userTurnText: "schedule gym tomorrow",
@@ -229,15 +237,14 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
-    expect(result.discourseState?.pending_write_contract).toEqual(contract);
+    expect(result.discourseState?.pending_write_operation).toEqual(op);
   });
 
-  it("does not set pending_write_contract when resolvedContract is absent", () => {
+  it("does not set pending_write_operation when resolvedOperation is absent", () => {
     const result = deriveConversationReplyState({
       snapshot: buildSnapshot(),
       policy: {
         action: "reply_only",
-        committedSlots: {},
       },
       interpretation: {
         turnType: "informational",
@@ -251,7 +258,7 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
-    expect(result.discourseState?.pending_write_contract).toBeUndefined();
+    expect(result.discourseState?.pending_write_operation).toBeUndefined();
   });
 
   it("clears active clarifications when a clarification_answer resolves all slots", () => {
@@ -294,7 +301,12 @@ describe("deriveConversationReplyState", () => {
       snapshot,
       policy: {
         action: "present_proposal",
-        committedSlots: { day: "tomorrow", time: t(17, 0) },
+        resolvedOperation: buildPendingWriteOperation({
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
+          missingFields: [],
+        }),
       },
       interpretation: {
         turnType: "clarification_answer",
@@ -428,15 +440,13 @@ describe("deriveMutationState", () => {
     expect(result.discourseState.mode).toBe("editing");
   });
 
-  it("clears resolved_slots and pending_write_contract on successful mutation", () => {
+  it("clears pending_write_operation on successful mutation", () => {
     const snapshot = buildSnapshot();
     snapshot.discourseState = {
       ...snapshot.discourseState!,
-      resolved_slots: { day: "tomorrow", time: t(17, 0) },
-      pending_write_contract: {
-        requiredSlots: ["day", "time"],
-        intentKind: "plan",
-      },
+      pending_write_operation: buildPendingWriteOperation({
+        resolvedFields: { scheduleFields: { day: "tomorrow", time: t(17, 0) } },
+      }),
     };
 
     const processing: ProcessedInboxResult = {
@@ -504,19 +514,18 @@ describe("deriveMutationState", () => {
       occurredAt: "2026-03-22T16:10:00.000Z",
     });
 
-    expect(result.discourseState.resolved_slots).toEqual({});
-    expect(result.discourseState.pending_write_contract).toBeUndefined();
+    expect(result.discourseState.pending_write_operation).toBeUndefined();
   });
 
-  it("preserves resolved_slots and pending_write_contract on needs_clarification", () => {
+  it("preserves pending_write_operation on needs_clarification", () => {
+    const op = buildPendingWriteOperation({
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
     const snapshot = buildSnapshot();
     snapshot.discourseState = {
       ...snapshot.discourseState!,
-      resolved_slots: { day: "tomorrow" },
-      pending_write_contract: {
-        requiredSlots: ["day", "time"],
-        intentKind: "plan",
-      },
+      pending_write_operation: op,
     };
 
     const processing: ProcessedInboxResult = {
@@ -549,10 +558,6 @@ describe("deriveMutationState", () => {
       occurredAt: "2026-03-22T16:10:00.000Z",
     });
 
-    expect(result.discourseState.resolved_slots).toEqual({ day: "tomorrow" });
-    expect(result.discourseState.pending_write_contract).toEqual({
-      requiredSlots: ["day", "time"],
-      intentKind: "plan",
-    });
+    expect(result.discourseState.pending_write_operation).toEqual(op);
   });
 });

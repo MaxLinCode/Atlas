@@ -71,6 +71,7 @@ export const timeSpecSchema = z.discriminatedUnion("kind", [
 
 export type TimeSpec = z.infer<typeof timeSpecSchema>;
 
+// Kept for entity slotSnapshot fields (proposal_option, task_draft) — not used in discourse state.
 export const resolvedSlotsSchema = z.object({
   day: z.string().optional(),
   time: timeSpecSchema.optional(),
@@ -80,15 +81,54 @@ export const resolvedSlotsSchema = z.object({
 
 export type ResolvedSlots = z.infer<typeof resolvedSlotsSchema>;
 
-export const writeContractSchema = z.object({
-  requiredSlots: z.array(z.enum(["day", "time", "duration", "target"])),
-  optionalSlots: z
-    .array(z.enum(["day", "time", "duration", "target"]))
+export const operationKindSchema = z.enum([
+  "plan",
+  "edit",
+  "reschedule",
+  "complete",
+  "archive",
+]);
+
+export type OperationKind = z.infer<typeof operationKindSchema>;
+
+export const targetRefSchema = z
+  .object({
+    entityId: z.string().optional(),
+    description: z.string().optional(),
+  })
+  .nullable();
+
+export type TargetRef = z.infer<typeof targetRefSchema>;
+
+export const resolvedFieldsSchema = z.object({
+  scheduleFields: z
+    .object({
+      day: z.string().optional(),
+      time: timeSpecSchema.optional(),
+      duration: z.number().optional(),
+    })
     .optional(),
-  intentKind: z.enum(["plan", "edit"]),
+  taskFields: z
+    .object({
+      priority: z.string().optional(),
+      label: z.string().optional(),
+      sourceText: z.string().optional(),
+    })
+    .optional(),
 });
 
-export type WriteContract = z.infer<typeof writeContractSchema>;
+export type ResolvedFields = z.infer<typeof resolvedFieldsSchema>;
+
+export const pendingWriteOperationSchema = z.object({
+  operationKind: operationKindSchema,
+  targetRef: targetRefSchema,
+  resolvedFields: resolvedFieldsSchema,
+  missingFields: z.array(z.string()),
+  originatingText: z.string(),
+  startedAt: z.string().datetime(),
+});
+
+export type PendingWriteOperation = z.infer<typeof pendingWriteOperationSchema>;
 
 export const discourseStateSchema = z.object({
   focus_entity_id: z.string().min(1).nullable(),
@@ -96,8 +136,7 @@ export const discourseStateSchema = z.object({
   last_user_mentioned_entity_ids: z.array(z.string().min(1)),
   last_presented_items: z.array(presentedItemSchema),
   pending_clarifications: z.array(pendingClarificationSchema),
-  resolved_slots: resolvedSlotsSchema.optional(),
-  pending_write_contract: writeContractSchema.optional(),
+  pending_write_operation: pendingWriteOperationSchema.optional(),
   mode: conversationModeSchema,
 });
 
@@ -192,7 +231,6 @@ export function createEmptyDiscourseState(): DiscourseState {
     last_user_mentioned_entity_ids: [],
     last_presented_items: [],
     pending_clarifications: [],
-    resolved_slots: {},
     mode: "planning",
   });
 }
@@ -332,10 +370,7 @@ export function deriveMode(
 }
 
 function hasContractGaps(state: DiscourseState): boolean {
-  const contract = state.pending_write_contract;
-  if (!contract) return false;
-  const resolved = state.resolved_slots ?? {};
-  return contract.requiredSlots.some((slot) => resolved[slot] === undefined);
+  return (state.pending_write_operation?.missingFields.length ?? 0) > 0;
 }
 
 export function cleanupDiscourseState(

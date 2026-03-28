@@ -408,8 +408,7 @@ export async function handleTelegramWebhook(
               action: routedWithContext.policy.action,
               clarificationSlots: routedWithContext.policy.clarificationSlots,
               targetProposalId: routedWithContext.policy.targetProposalId,
-              committedSlots: routedWithContext.policy.committedSlots,
-              resolvedContract: routedWithContext.policy.resolvedContract,
+              resolvedOperation: routedWithContext.policy.resolvedOperation,
             },
             interpretation: routedWithContext.interpretation,
             reply: conversationResponse.reply,
@@ -454,7 +453,9 @@ export async function handleTelegramWebhook(
     );
 
     const synthesis = synthesizeMutationText({
-      resolvedSlots: routedWithContext.policy.committedSlots,
+      resolvedSlots:
+        routedWithContext.policy.resolvedOperation?.resolvedFields
+          .scheduleFields ?? {},
       proposalEntity,
       entityRegistry,
     });
@@ -484,8 +485,7 @@ export async function handleTelegramWebhook(
               snapshot: conversationState,
               policy: {
                 action: "ask_clarification",
-                committedSlots: routedWithContext.policy.committedSlots,
-                resolvedContract: routedWithContext.policy.resolvedContract,
+                resolvedOperation: routedWithContext.policy.resolvedOperation,
               },
               interpretation: routedWithContext.interpretation,
               reply: clarificationMessage,

@@ -39,7 +39,7 @@ export function decideTurnPolicy(
   const targetEntityId = classification.resolvedEntityIds[0];
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
-    missingSlots: commitResult.missingSlots,
+    missingFields: commitResult.missingFields,
     needsClarification: commitResult.needsClarification,
   });
 
@@ -52,7 +52,6 @@ export function decideTurnPolicy(
         requiresConfirmation: false,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
-        committedSlots: commitResult.committedSlots,
       };
     case "follow_up_reply":
       return {
@@ -63,12 +62,13 @@ export function decideTurnPolicy(
         requiresConfirmation: false,
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
-        committedSlots: commitResult.committedSlots,
       };
     case "confirmation": {
       const proposalId =
         classification.resolvedProposalId ??
-        resolveSingleActiveProposalId(input.routingContext.entityRegistry ?? []);
+        resolveSingleActiveProposalId(
+          input.routingContext.entityRegistry ?? [],
+        );
 
       if (proposalId) {
         return {
@@ -80,7 +80,6 @@ export function decideTurnPolicy(
           ...(targetEntityId ? { targetEntityId } : {}),
           targetProposalId: proposalId,
           mutationInputSource: "recovered_proposal",
-          committedSlots: commitResult.committedSlots,
         };
       }
 
@@ -92,7 +91,6 @@ export function decideTurnPolicy(
         requiresConfirmation: true,
         useMutationPipeline: false,
         clarificationSlots: [],
-        committedSlots: commitResult.committedSlots,
       };
     }
     case "clarification_answer":
@@ -101,7 +99,6 @@ export function decideTurnPolicy(
       return buildPolicyFromStructuredReadiness(
         deriveStructuredWriteReadiness(input, ambiguity),
         targetEntityId,
-        commitResult.committedSlots,
       );
     case "unknown": {
       const isNonWrite =
@@ -109,7 +106,7 @@ export function decideTurnPolicy(
         !containsWriteVerb(input.routingContext.normalizedText);
       const clarificationSlots = Array.from(
         new Set([
-          ...commitResult.missingSlots,
+          ...commitResult.missingFields,
           ...commitResult.needsClarification,
         ]),
       );
@@ -126,7 +123,6 @@ export function decideTurnPolicy(
           : clarificationSlots.length > 0
             ? clarificationSlots
             : undefined,
-        committedSlots: commitResult.committedSlots,
       };
     }
   }
@@ -138,7 +134,10 @@ function deriveStructuredWriteReadiness(
 ): StructuredWriteReadiness {
   const { classification, commitResult } = input;
   const allClarificationSlots = Array.from(
-    new Set([...commitResult.missingSlots, ...commitResult.needsClarification]),
+    new Set([
+      ...commitResult.missingFields,
+      ...commitResult.needsClarification,
+    ]),
   );
 
   if (ambiguity === "high") {
@@ -184,7 +183,7 @@ function deriveStructuredWriteReadiness(
   const consentRequirement = deriveConsentRequirement({
     classification,
     entityRegistry: input.routingContext.entityRegistry ?? [],
-    committedSlots: commitResult.committedSlots,
+    resolvedFields: commitResult.resolvedFields,
   });
 
   if (consentRequirement.required) {
@@ -221,7 +220,6 @@ function resolveSingleActiveProposalId(
 function buildPolicyFromStructuredReadiness(
   readiness: StructuredWriteReadiness,
   targetEntityId: string | undefined,
-  committedSlots: TurnPolicyDecision["committedSlots"],
 ): TurnPolicyDecision {
   switch (readiness.state) {
     case "not_ready":
@@ -233,7 +231,6 @@ function buildPolicyFromStructuredReadiness(
         useMutationPipeline: false,
         ...(targetEntityId ? { targetEntityId } : {}),
         clarificationSlots: readiness.clarificationSlots,
-        committedSlots,
       };
     case "ready_needs_consent":
       return {
@@ -246,7 +243,6 @@ function buildPolicyFromStructuredReadiness(
         ...(readiness.targetProposalId
           ? { targetProposalId: readiness.targetProposalId }
           : {}),
-        committedSlots,
       };
     case "ready_for_execution":
       return {
@@ -257,7 +253,6 @@ function buildPolicyFromStructuredReadiness(
         useMutationPipeline: true,
         ...(targetEntityId ? { targetEntityId } : {}),
         mutationInputSource: "direct_user_turn",
-        committedSlots,
       };
   }
 }

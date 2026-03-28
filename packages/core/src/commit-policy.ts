@@ -1,34 +1,56 @@
 import type {
-  ResolvedSlots,
-  SlotKey,
+  OperationKind,
+  PendingWriteOperation,
+  ResolvedFields,
+  TargetRef,
   TimeSpec,
   TurnInterpretation,
-  WriteContract,
 } from "./index";
 import { timeSpecsEqual } from "./time-spec";
 
+type ScheduleFieldKey = "day" | "time" | "duration";
+
 export type CommitPolicyInput = {
   turnType: TurnInterpretation["turnType"];
-  extractedValues: Partial<ResolvedSlots>;
-  confidence: Partial<Record<SlotKey, number>>;
-  unresolvable: SlotKey[];
-  priorResolvedSlots: ResolvedSlots;
-  activeContract: WriteContract;
-  priorContract?: WriteContract | undefined;
+  extractedValues: Partial<Record<ScheduleFieldKey, unknown>>;
+  confidence: Partial<Record<ScheduleFieldKey, number>>;
+  unresolvable: ScheduleFieldKey[];
+  operationKind: OperationKind;
+  priorPendingWriteOperation?: PendingWriteOperation | undefined;
+  currentTargetEntityId?: string;
 };
 
 export type CommitPolicyOutput = {
-  committedSlots: ResolvedSlots;
-  needsClarification: SlotKey[];
-  missingSlots: SlotKey[];
+  resolvedFields: ResolvedFields;
+  resolvedTargetRef: TargetRef;
+  needsClarification: string[];
+  missingFields: string[];
+  workflowChanged: boolean;
 };
 
-export const SLOT_COMMITTING_TURN_TYPES = new Set<
+export const FIELD_COMMITTING_TURN_TYPES = new Set<
   TurnInterpretation["turnType"]
 >(["clarification_answer", "planning_request", "edit_request"]);
 
 const CONFIDENCE_THRESHOLD = 0.75;
 const CORRECTION_THRESHOLD = 0.9;
+
+// Required schedule fields per operation kind.
+// Contract derivation lives here rather than as a pre-extraction gate.
+function requiredFieldsForOperation(
+  operationKind: OperationKind,
+): ScheduleFieldKey[] {
+  switch (operationKind) {
+    case "plan":
+      return ["day", "time"];
+    case "edit":
+    case "reschedule":
+      return ["time"];
+    case "complete":
+    case "archive":
+      return [];
+  }
+}
 
 export function applyCommitPolicy(
   input: CommitPolicyInput,
@@ -38,82 +60,109 @@ export function applyCommitPolicy(
     extractedValues,
     confidence,
     unresolvable,
-    activeContract,
-    priorContract,
+    operationKind,
+    priorPendingWriteOperation,
+    currentTargetEntityId,
   } = input;
 
-  const contractChanged =
-    priorContract != null &&
-    activeContract.intentKind !== priorContract.intentKind;
-  const priorSlots: ResolvedSlots = contractChanged
-    ? {}
-    : { ...input.priorResolvedSlots };
+  // Target change: a new entity ID that differs from the prior workflow's target
+  // means the user switched subjects. Treat it the same as an operation change —
+  // prior committed schedule fields belong to a different task and must be cleared.
+  const targetChanged =
+    currentTargetEntityId !== undefined &&
+    currentTargetEntityId !== priorPendingWriteOperation?.targetRef?.entityId;
 
-  const needsClarification: SlotKey[] = [];
-  const committedSlots: ResolvedSlots = { ...priorSlots };
+  const operationChanged =
+    priorPendingWriteOperation != null &&
+    (operationKind !== priorPendingWriteOperation.operationKind ||
+      targetChanged);
 
-  if (!SLOT_COMMITTING_TURN_TYPES.has(turnType)) {
-    return {
-      committedSlots,
-      needsClarification,
-      missingSlots: deriveMissingSlots(activeContract, committedSlots),
-    };
+  const priorScheduleFields: Partial<Record<ScheduleFieldKey, unknown>> =
+    operationChanged
+      ? {}
+      : {
+          ...(priorPendingWriteOperation?.resolvedFields.scheduleFields ?? {}),
+        };
+
+  const needsClarification: string[] = [];
+  const committedScheduleFields: Partial<Record<ScheduleFieldKey, unknown>> = {
+    ...priorScheduleFields,
+  };
+
+  if (FIELD_COMMITTING_TURN_TYPES.has(turnType)) {
+    const extractedFieldKeys = Object.keys(extractedValues) as ScheduleFieldKey[];
+
+    for (const fieldKey of extractedFieldKeys) {
+      const value = extractedValues[fieldKey];
+      if (value === undefined) continue;
+
+      if (unresolvable.includes(fieldKey)) {
+        needsClarification.push(`scheduleFields.${fieldKey}`);
+        continue;
+      }
+
+      const fieldConfidence = confidence[fieldKey] ?? 0;
+      if (fieldConfidence < CONFIDENCE_THRESHOLD) {
+        needsClarification.push(`scheduleFields.${fieldKey}`);
+        continue;
+      }
+
+      const priorValue = priorScheduleFields[fieldKey];
+      const isCorrection =
+        priorValue !== undefined &&
+        !scheduleFieldValuesEqual(fieldKey, priorValue, value);
+      if (isCorrection && fieldConfidence < CORRECTION_THRESHOLD) {
+        needsClarification.push(`scheduleFields.${fieldKey}`);
+        continue;
+      }
+
+      committedScheduleFields[fieldKey] = value;
+    }
+
+    for (const fieldKey of unresolvable) {
+      const dotPath = `scheduleFields.${fieldKey}`;
+      if (
+        !extractedFieldKeys.includes(fieldKey) &&
+        !needsClarification.includes(dotPath) &&
+        committedScheduleFields[fieldKey] === undefined
+      ) {
+        needsClarification.push(dotPath);
+      }
+    }
   }
 
-  const slotKeys = Object.keys(extractedValues) as SlotKey[];
+  const resolvedFields: ResolvedFields = {
+    scheduleFields:
+      Object.keys(committedScheduleFields).length > 0
+        ? (committedScheduleFields as ResolvedFields["scheduleFields"])
+        : undefined,
+  };
 
-  for (const slot of slotKeys) {
-    const value = extractedValues[slot];
-    if (value === undefined) continue;
+  const requiredFieldKeys = requiredFieldsForOperation(operationKind);
+  const missingFields = requiredFieldKeys
+    .filter((fieldKey) => committedScheduleFields[fieldKey] === undefined)
+    .map((fieldKey) => `scheduleFields.${fieldKey}`);
 
-    if (unresolvable.includes(slot)) {
-      needsClarification.push(slot);
-      continue;
-    }
-
-    const slotConfidence = confidence[slot] ?? 0;
-    if (slotConfidence < CONFIDENCE_THRESHOLD) {
-      needsClarification.push(slot);
-      continue;
-    }
-
-    const priorValue = priorSlots[slot];
-    const isCorrection =
-      priorValue !== undefined && !slotValuesEqual(slot, priorValue, value);
-    if (isCorrection && slotConfidence < CORRECTION_THRESHOLD) {
-      needsClarification.push(slot);
-      continue;
-    }
-
-    (committedSlots as Record<string, unknown>)[slot] = value;
-  }
-
-  for (const slot of unresolvable) {
-    if (
-      !slotKeys.includes(slot) &&
-      !needsClarification.includes(slot) &&
-      committedSlots[slot] === undefined
-    ) {
-      needsClarification.push(slot);
-    }
-  }
+  // Carry forward the prior target unless this turn introduced a new one.
+  const resolvedTargetRef: TargetRef = currentTargetEntityId
+    ? { entityId: currentTargetEntityId }
+    : (priorPendingWriteOperation?.targetRef ?? null);
 
   return {
-    committedSlots,
+    resolvedFields,
+    resolvedTargetRef,
     needsClarification,
-    missingSlots: deriveMissingSlots(activeContract, committedSlots),
+    missingFields,
+    workflowChanged: operationChanged,
   };
 }
 
-function deriveMissingSlots(
-  contract: WriteContract,
-  committed: ResolvedSlots,
-): SlotKey[] {
-  return contract.requiredSlots.filter((slot) => committed[slot] === undefined);
-}
-
-function slotValuesEqual(slot: SlotKey, a: unknown, b: unknown): boolean {
-  if (slot === "time" && a && b) {
+function scheduleFieldValuesEqual(
+  fieldKey: ScheduleFieldKey,
+  a: unknown,
+  b: unknown,
+): boolean {
+  if (fieldKey === "time" && a && b) {
     return timeSpecsEqual(a as TimeSpec, b as TimeSpec);
   }
   return a === b;

@@ -15,9 +15,11 @@ import {
 } from "./decide-turn-policy";
 
 const emptyCommit: CommitPolicyOutput = {
-  committedSlots: {},
+  resolvedFields: {},
+  resolvedTargetRef: null,
   needsClarification: [],
-  missingSlots: [],
+  missingFields: [],
+  workflowChanged: false,
 };
 
 function input(
@@ -62,7 +64,7 @@ describe("decideTurnPolicy", () => {
       decideTurnPolicy(
         input(
           { turnType: "planning_request", confidence: 0.58 },
-          { missingSlots: ["time"] },
+          { missingFields: ["scheduleFields.time"] },
           {
             rawText: "Schedule gym tomorrow",
             normalizedText: "Schedule gym tomorrow",
@@ -72,7 +74,7 @@ describe("decideTurnPolicy", () => {
       ),
     ).toMatchObject({
       action: "ask_clarification",
-      clarificationSlots: ["time"],
+      clarificationSlots: ["scheduleFields.time"],
     });
   });
 
@@ -81,13 +83,13 @@ describe("decideTurnPolicy", () => {
       decideTurnPolicy(
         input(
           { turnType: "clarification_answer", confidence: 0.84 },
-          { missingSlots: ["time"] },
+          { missingFields: ["scheduleFields.time"] },
           { rawText: "Tomorrow", normalizedText: "Tomorrow", recentTurns: [] },
         ),
       ),
     ).toMatchObject({
       action: "ask_clarification",
-      clarificationSlots: ["time"],
+      clarificationSlots: ["scheduleFields.time"],
     });
   });
 
@@ -96,7 +98,11 @@ describe("decideTurnPolicy", () => {
       decideTurnPolicy(
         input(
           { turnType: "planning_request", confidence: 0.68 },
-          { committedSlots: { day: "tomorrow", time: t(18, 0) } },
+          {
+            resolvedFields: {
+              scheduleFields: { day: "tomorrow", time: t(18, 0) },
+            },
+          },
           {
             rawText: "Schedule gym tomorrow at 6pm",
             normalizedText: "Schedule gym tomorrow at 6pm",
@@ -366,7 +372,11 @@ describe("decideTurnPolicy", () => {
           resolvedEntityIds: ["task-1"],
           resolvedProposalId: "proposal-1",
         },
-        { committedSlots: { time: t(15, 0), day: "tomorrow" } },
+        {
+          resolvedFields: {
+            scheduleFields: { time: t(15, 0), day: "tomorrow" },
+          },
+        },
         {
           rawText: "make it 3 instead",
           normalizedText: "make it 3 instead",
@@ -540,7 +550,11 @@ describe("decideTurnPolicy", () => {
           confidence: 0.9,
           resolvedEntityIds: ["task-1"],
         },
-        { committedSlots: { day: "tomorrow", time: t(17, 0) } },
+        {
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
+        },
         {
           rawText: "ok but make it 5pm",
           normalizedText: "ok but make it 5pm",
@@ -581,9 +595,9 @@ describe("decideTurnPolicy", () => {
         input(
           { turnType: "clarification_answer", confidence: 0.9 },
           {
-            committedSlots: { day: "tomorrow" },
-            missingSlots: ["time"],
-            needsClarification: ["time"],
+            resolvedFields: { scheduleFields: { day: "tomorrow" } },
+            missingFields: ["scheduleFields.time"],
+            needsClarification: ["scheduleFields.time"],
           },
           {
             rawText: "ok but tomorrow",
@@ -611,24 +625,7 @@ describe("decideTurnPolicy", () => {
       ),
     ).toMatchObject({
       action: "ask_clarification",
-      clarificationSlots: expect.arrayContaining(["time"]),
+      clarificationSlots: expect.arrayContaining(["scheduleFields.time"]),
     });
-  });
-
-  it("returns committedSlots on every policy decision", () => {
-    const slots = { day: "tomorrow", time: t(17, 0) };
-    const result = decideTurnPolicy(
-      input(
-        { turnType: "planning_request", confidence: 0.95 },
-        { committedSlots: slots },
-        {
-          rawText: "Schedule gym tomorrow at 5pm",
-          normalizedText: "Schedule gym tomorrow at 5pm",
-          recentTurns: [],
-        },
-      ),
-    );
-
-    expect(result.committedSlots).toEqual(slots);
   });
 });
