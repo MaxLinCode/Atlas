@@ -71,7 +71,7 @@ export const timeSpecSchema = z.discriminatedUnion("kind", [
 
 export type TimeSpec = z.infer<typeof timeSpecSchema>;
 
-// Kept for entity slotSnapshot fields (proposal_option, task_draft) — not used in discourse state.
+// Kept for slot-extractor schemas — not used in discourse state.
 export const resolvedSlotsSchema = z.object({
   day: z.string().optional(),
   time: timeSpecSchema.optional(),
