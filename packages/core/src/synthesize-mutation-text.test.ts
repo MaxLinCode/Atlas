@@ -15,7 +15,7 @@ function buildProposalEntity(
   overrides: Partial<{
     id: string;
     originatingTurnText: string | null;
-    missingSlots: string[];
+    missingFields: string[];
     targetEntityId: string | null;
     replyText: string;
   }> = {},
@@ -36,8 +36,8 @@ function buildProposalEntity(
           ? overrides.originatingTurnText!
           : "schedule dentist tomorrow",
       targetEntityId: overrides.targetEntityId ?? null,
-      missingSlots: overrides.missingSlots ?? [],
-      slotSnapshot: {},
+      missingFields: overrides.missingFields ?? [],
+      fieldSnapshot: {},
     },
   };
 }
@@ -65,14 +65,14 @@ function buildInput(
   overrides: Partial<SynthesizeMutationTextInput> = {},
 ): SynthesizeMutationTextInput {
   return {
-    resolvedSlots: {},
+    resolvedFields: {},
     entityRegistry: [],
     ...overrides,
   };
 }
 
 describe("synthesizeMutationText", () => {
-  it("returns originatingTurnText unchanged when no missing slots", () => {
+  it("returns originatingTurnText unchanged when no missing fields", () => {
     const result = synthesizeMutationText(
       buildInput({
         proposalEntity: buildProposalEntity({
@@ -87,13 +87,13 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("augments originatingTurnText with resolved time slot", () => {
+  it("augments originatingTurnText with resolved time field", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { time: t(15, 0) },
+        resolvedFields: { scheduleFields: { time: t(15, 0) } },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist tomorrow",
-          missingSlots: ["time"],
+          missingFields: ["time"],
         }),
       }),
     );
@@ -104,13 +104,15 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("augments with multiple missing slots", () => {
+  it("augments with multiple missing fields", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "friday", time: t(9, 30), duration: 60 },
+        resolvedFields: {
+          scheduleFields: { day: "friday", time: t(9, 30), duration: 60 },
+        },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist",
-          missingSlots: ["day", "time", "duration"],
+          missingFields: ["day", "time", "duration"],
         }),
       }),
     );
@@ -121,13 +123,15 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("does not augment slots that were not in missingSlots", () => {
+  it("does not augment fields that were not in missingFields", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "friday", time: t(15, 0) },
+        resolvedFields: {
+          scheduleFields: { day: "friday", time: t(15, 0) },
+        },
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule dentist on friday",
-          missingSlots: ["time"],
+          missingFields: ["time"],
         }),
       }),
     );
@@ -143,7 +147,7 @@ describe("synthesizeMutationText", () => {
       buildInput({
         proposalEntity: buildProposalEntity({
           originatingTurnText: "mark journaling as done",
-          missingSlots: [],
+          missingFields: [],
         }),
       }),
     );
@@ -158,10 +162,10 @@ describe("synthesizeMutationText", () => {
     const taskEntity = buildTaskEntity("entity-1", "Team standup");
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { target: "entity-1" },
+        targetEntityId: "entity-1",
         proposalEntity: buildProposalEntity({
           originatingTurnText: "schedule it tomorrow at 3pm",
-          missingSlots: ["target"],
+          missingFields: ["target"],
         }),
         entityRegistry: [taskEntity],
       }),
@@ -173,10 +177,12 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("falls back to slot-only synthesis when no originatingTurnText", () => {
+  it("falls back to field-only synthesis when no originatingTurnText", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { day: "tomorrow", time: t(15, 0) },
+        resolvedFields: {
+          scheduleFields: { day: "tomorrow", time: t(15, 0) },
+        },
         proposalEntity: buildProposalEntity({
           originatingTurnText: null,
         }),
@@ -189,11 +195,14 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("falls back to slot-only synthesis when no proposal entity", () => {
+  it("falls back to field-only synthesis when no proposal entity", () => {
     const taskEntity = buildTaskEntity("entity-1", "Dentist");
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { target: "entity-1", day: "friday", time: t(14, 0) },
+        resolvedFields: {
+          scheduleFields: { day: "friday", time: t(14, 0) },
+        },
+        targetEntityId: "entity-1",
         entityRegistry: [taskEntity],
       }),
     );
@@ -204,39 +213,39 @@ describe("synthesizeMutationText", () => {
     });
   });
 
-  it("returns insufficient_data when no proposal and no useful slots", () => {
+  it("returns insufficient_data when no proposal and no useful fields", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: {},
+        resolvedFields: {},
       }),
     );
 
     expect(result).toEqual({
       outcome: "insufficient_data",
       reason:
-        "No originating turn text and insufficient resolved slots to synthesize a mutation request.",
+        "No originating turn text and insufficient resolved fields to synthesize a mutation request.",
     });
   });
 
-  it("returns insufficient_data when only target slot with unknown entity", () => {
+  it("returns insufficient_data when only target with unknown entity", () => {
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { target: "unknown-entity" },
+        targetEntityId: "unknown-entity",
       }),
     );
 
     expect(result).toEqual({
       outcome: "insufficient_data",
       reason:
-        "No originating turn text and insufficient resolved slots to synthesize a mutation request.",
+        "No originating turn text and insufficient resolved fields to synthesize a mutation request.",
     });
   });
 
-  it("synthesizes from target-only slot when entity exists", () => {
+  it("synthesizes from target-only when entity exists", () => {
     const taskEntity = buildTaskEntity("entity-1", "Dentist");
     const result = synthesizeMutationText(
       buildInput({
-        resolvedSlots: { target: "entity-1" },
+        targetEntityId: "entity-1",
         entityRegistry: [taskEntity],
       }),
     );

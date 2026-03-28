@@ -1,24 +1,23 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ConversationEntity,
-  ResolvedFields,
-  ResolvedSlots,
-  TimeSpec,
-} from "./index";
+import type { ConversationEntity, ResolvedFields, TimeSpec } from "./index";
 import { deriveProposalCompatibility } from "./proposal-rules";
 
 function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
 }
 
-function sf(slots: ResolvedSlots): ResolvedFields {
-  return { scheduleFields: slots };
+type ScheduleFields = NonNullable<ResolvedFields["scheduleFields"]>;
+
+function sf(fields: ScheduleFields): ResolvedFields {
+  return { scheduleFields: fields };
 }
 
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 
 function makeProposal(
-  overrides: Partial<ProposalOption["data"]> & { slotSnapshot: ResolvedSlots },
+  overrides: Partial<ProposalOption["data"]> & {
+    fieldSnapshot: ResolvedFields;
+  },
 ): ProposalOption {
   return {
     id: "proposal-1",
@@ -38,10 +37,10 @@ function makeProposal(
 }
 
 describe("deriveProposalCompatibility", () => {
-  describe("slot-based compatibility", () => {
-    it("is compatible when committed slots match the snapshot", () => {
+  describe("field-based compatibility", () => {
+    it("is compatible when committed fields match the snapshot", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: t(15, 0), day: "friday" },
+        fieldSnapshot: sf({ time: t(15, 0), day: "friday" }),
       });
 
       const result = deriveProposalCompatibility(
@@ -53,9 +52,9 @@ describe("deriveProposalCompatibility", () => {
       expect(result.compatible).toBe(true);
     });
 
-    it("is incompatible when a committed slot differs from the snapshot", () => {
+    it("is incompatible when a committed field differs from the snapshot", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: t(15, 0) },
+        fieldSnapshot: sf({ time: t(15, 0) }),
       });
 
       const result = deriveProposalCompatibility(
@@ -68,9 +67,9 @@ describe("deriveProposalCompatibility", () => {
       expect(result.reason).toMatch(/differs from proposal snapshot/);
     });
 
-    it("is compatible when committed slot is new (not in snapshot)", () => {
+    it("is compatible when committed field is new (not in snapshot)", () => {
       const proposal = makeProposal({
-        slotSnapshot: { day: "friday" },
+        fieldSnapshot: sf({ day: "friday" }),
       });
 
       const result = deriveProposalCompatibility(
@@ -82,9 +81,9 @@ describe("deriveProposalCompatibility", () => {
       expect(result.compatible).toBe(true);
     });
 
-    it("is compatible when committed slots are empty", () => {
+    it("is compatible when committed fields are empty", () => {
       const proposal = makeProposal({
-        slotSnapshot: { time: t(15, 0), day: "friday" },
+        fieldSnapshot: sf({ time: t(15, 0), day: "friday" }),
       });
 
       const result = deriveProposalCompatibility(
@@ -98,7 +97,7 @@ describe("deriveProposalCompatibility", () => {
 
     it("detects duration change as incompatible", () => {
       const proposal = makeProposal({
-        slotSnapshot: { duration: 30 },
+        fieldSnapshot: sf({ duration: 30 }),
       });
 
       const result = deriveProposalCompatibility(
@@ -116,7 +115,7 @@ describe("deriveProposalCompatibility", () => {
     it("is incompatible when action kind changes from plan to edit", () => {
       const proposal = makeProposal({
         originatingTurnText: "schedule a meeting",
-        slotSnapshot: { time: t(15, 0) },
+        fieldSnapshot: sf({ time: t(15, 0) }),
       });
 
       const result = deriveProposalCompatibility(
@@ -132,7 +131,7 @@ describe("deriveProposalCompatibility", () => {
     it("skips action kind check for clarification answers", () => {
       const proposal = makeProposal({
         originatingTurnText: "move the meeting",
-        slotSnapshot: { time: t(15, 0) },
+        fieldSnapshot: sf({ time: t(15, 0) }),
       });
 
       const result = deriveProposalCompatibility(
