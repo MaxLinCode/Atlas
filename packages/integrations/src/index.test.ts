@@ -11,6 +11,7 @@ import {
   exchangeGoogleOAuthCode,
   fetchGoogleCalendarIdentity,
   getDefaultCalendarAdapter,
+  interpretWriteTurnWithResponses,
   planInboxItemWithResponses,
   recoverConfirmedMutationWithResponses,
   refreshGoogleOAuthToken,
@@ -591,6 +592,75 @@ describe("integrations", () => {
               output_parsed: {
                 route: "write_now",
                 reason: "",
+              },
+            }),
+          },
+        },
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("parses structured write interpretation output from the Responses API client", async () => {
+    const result = await interpretWriteTurnWithResponses(
+      {
+        currentTurnText: "Schedule gym tomorrow at 6pm",
+        turnType: "planning_request",
+      },
+      {
+        responses: {
+          parse: async () => ({
+            output_parsed: {
+              operationKind: "plan",
+              actionDomain: "task",
+              targetRef: null,
+              taskName: "gym",
+              fields: {
+                scheduleFields: {
+                  day: { kind: "relative", value: "tomorrow" },
+                  time: { kind: "absolute", hour: 18, minute: 0 },
+                  duration: null,
+                },
+                taskFields: null,
+              },
+              confidence: {
+                "scheduleFields.day": 0.94,
+                "scheduleFields.time": 0.95,
+              },
+              unresolvedFields: [],
+            },
+          }),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      operationKind: "plan",
+      actionDomain: "task",
+      taskName: "gym",
+    });
+  });
+
+  it("rejects malformed structured write interpretation output", async () => {
+    await expect(
+      interpretWriteTurnWithResponses(
+        {
+          currentTurnText: "Schedule gym tomorrow at 6pm",
+          turnType: "planning_request",
+        },
+        {
+          responses: {
+            parse: async () => ({
+              output_parsed: {
+                operationKind: "invent",
+                actionDomain: "",
+                targetRef: null,
+                taskName: null,
+                fields: {
+                  scheduleFields: null,
+                  taskFields: null,
+                },
+                confidence: {},
+                unresolvedFields: [],
               },
             }),
           },

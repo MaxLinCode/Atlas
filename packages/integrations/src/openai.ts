@@ -1,6 +1,7 @@
 import {
   type ConfirmedMutationRecoveryInput,
   type ConfirmedMutationRecoveryOutput,
+  type RawWriteInterpretation,
   confirmedMutationRecoveryInputSchema,
   confirmedMutationRecoveryOutputSchema,
   confirmedMutationRecoveryResponseFormatSchema,
@@ -13,6 +14,7 @@ import {
   inboxPlanningResponseFormatSchema,
   type RawSlotExtraction,
   rawSlotExtractionSchema,
+  rawWriteInterpretationSchema,
   type SlotExtractorInput,
   slotExtractorInputSchema,
   type TurnClassifierInput,
@@ -23,6 +25,8 @@ import {
   turnClassifierResponseSchema,
   turnRoutingInputSchema,
   turnRoutingOutputSchema,
+  type WriteInterpretationInput,
+  writeInterpretationInputSchema,
 } from "@atlas/core";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
@@ -30,6 +34,7 @@ import { z } from "zod";
 import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
+import { interpretWriteTurnSystemPrompt } from "./prompts/interpret-write-turn";
 import { inboxPlannerSystemPrompt } from "./prompts/planner";
 import { slotExtractorSystemPrompt } from "./prompts/slot-extractor";
 import { turnClassifierSystemPrompt } from "./prompts/turn-classifier";
@@ -42,6 +47,7 @@ export const DEFAULT_CONVERSATION_MEMORY_SUMMARY_MODEL = "gpt-4o-mini";
 export const DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL = "gpt-4o-mini";
 export const DEFAULT_SLOT_EXTRACTOR_MODEL = "gpt-4o-mini";
 export const DEFAULT_TURN_CLASSIFIER_MODEL = "gpt-4o-mini";
+export const DEFAULT_WRITE_INTERPRETATION_MODEL = "gpt-4o-mini";
 
 export const conversationMemorySummaryInputSchema = z.object({
   recentTurns: z.array(conversationTurnSchema),
@@ -301,6 +307,45 @@ export async function extractSlotsWithResponses(
   return rawSlotExtractionSchema.parse(response.output_parsed);
 }
 
+export async function interpretWriteTurnWithResponses(
+  input: unknown,
+  client: OpenAIResponsesClient = createOpenAIClient(),
+): Promise<RawWriteInterpretation> {
+  const context = writeInterpretationInputSchema.parse(input);
+
+  const response = await client.responses.parse({
+    model: DEFAULT_WRITE_INTERPRETATION_MODEL,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: interpretWriteTurnSystemPrompt,
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(buildWriteInterpretationPromptContext(context)),
+          },
+        ],
+      },
+    ],
+    text: {
+      format: zodTextFormat(
+        rawWriteInterpretationSchema,
+        "atlas_write_interpretation_output",
+      ),
+    },
+  });
+
+  return rawWriteInterpretationSchema.parse(response.output_parsed);
+}
+
 export async function classifyTurnWithResponses(
   input: unknown,
   client: OpenAIResponsesClient = createOpenAIClient(),
@@ -361,6 +406,17 @@ function buildSlotExtractorPromptContext(context: SlotExtractorInput) {
     currentTurnText: context.currentTurnText,
     pendingSlots: context.pendingSlots,
     priorResolvedSlots: context.priorResolvedSlots,
+    conversationContext: context.conversationContext ?? null,
+  };
+}
+
+function buildWriteInterpretationPromptContext(
+  context: WriteInterpretationInput,
+) {
+  return {
+    currentTurnText: context.currentTurnText,
+    turnType: context.turnType,
+    priorPendingWriteOperation: context.priorPendingWriteOperation ?? null,
     conversationContext: context.conversationContext ?? null,
   };
 }

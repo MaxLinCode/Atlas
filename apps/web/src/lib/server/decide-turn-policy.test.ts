@@ -20,6 +20,7 @@ const emptyCommit: CommitPolicyOutput = {
   needsClarification: [],
   missingFields: [],
   workflowChanged: false,
+  committedFieldPaths: [],
 };
 
 function input(

@@ -143,27 +143,33 @@ signals (time, day, duration, or words like "but"/"instead"/"actually"),
 `clarification_answer`. This prevents edits from being silently dropped when
 a user says something like "yes but make it 3pm".
 
-### Step B — Slot extraction
+### Step B — Write interpretation
 
-**File:** `apps/web/src/lib/server/slot-extractor.ts` → `extractSlots()`
-**Downstream:** `packages/integrations/src/prompts/slot-extractor.ts`
+**File:** `apps/web/src/lib/server/interpret-write-turn.ts` → `interpretWriteTurn()`
+**Downstream:** `packages/integrations/src/prompts/interpret-write-turn.ts`
 
-Slot extraction runs **only** for `SLOT_COMMITTING_TURN_TYPES`:
+Write interpretation runs only for write-capable turns:
 `planning_request`, `edit_request`, `clarification_answer`.
 
-Before calling the LLM, `requiredSlotsForOperation()` computes which schedule
-fields are still missing given the current `operationKind`:
+Unlike the old slot-extractor seam, this stage does not precompute pending
+fields before the LLM call. It interprets the whole turn in one pass and
+returns a turn-scoped `WriteInterpretation` object.
 
-- **`plan`**: requires `["day", "time"]`
-- **`edit` / `reschedule`**: requires `["time"]`
-- **`complete` / `archive`**: requires `[]`
+**Output:** `WriteInterpretation`
+```ts
+{
+  operationKind: "plan" | "edit" | "reschedule" | "complete" | "archive";
+  actionDomain: string;
+  targetRef: TargetRef;
+  taskName: string | null;
+  fields: ResolvedFields;
+  sourceText: string;
+  confidence: Record<string, number>;
+  unresolvedFields: string[];
+}
+```
 
-`resolveOperationKind()` (`packages/core`) derives the active operation:
-- `planning_request` → `plan`
-- `edit_request` → `edit`
-- everything else → inherits `priorOperationKind` from `pending_write_operation`
-
-**Schedule slot types** (grouped under `scheduleFields` in `ResolvedFields`):
+**Schedule field types** (grouped under `fields.scheduleFields`):
 ```ts
 {
   day?: string;       // e.g. "monday", "tomorrow"
@@ -172,36 +178,36 @@ fields are still missing given the current `operationKind`:
 }
 ```
 
-Target entity resolution happens via `classification.resolvedEntityIds`, not
-slot extraction. The slot normalizer (`packages/core/src/slot-normalizer.ts`)
-validates ranges and converts raw LLM output into typed schedule values.
-
-**Output:** `{ extractedValues, confidence, unresolvable }`
-- `confidence` is a per-slot score (0–1)
-- `unresolvable` lists slots the LLM flagged as impossible to extract
+Target entity resolution still stays on the classifier side in Phase 2 via
+`classification.resolvedEntityIds`; `targetRef` is available for richer later
+phases and descriptive continuity. The slot normalizer still validates ranges
+and converts raw schedule values into typed fields.
 
 ### Step C — Commit policy
 
-**File:** `packages/core/src/commit-policy.ts` → `applyCommitPolicy()`
+**File:** `packages/core/src/write-commit.ts` → `applyWriteCommit()`
 
-The commit policy is the gate between "LLM extracted something" and "the
-system will act on it". Each extracted schedule field is individually evaluated:
+The commit step is the gate between "LLM interpreted something" and "the
+system will act on it". Each interpreted field is individually evaluated:
 
 | Condition | Result |
 |-----------|--------|
-| Field is in `unresolvable` | → `needsClarification` |
-| `confidence[field] < 0.75` | → `needsClarification` |
+| Field is in `unresolvedFields` | → `needsClarification` |
+| `confidence[fieldPath] < 0.75` | → `needsClarification` |
 | Field corrects a prior value AND `confidence < 0.90` | → `needsClarification` |
 | Otherwise | → `resolvedFields.scheduleFields` |
 
 The correction threshold (0.90 vs 0.75) is higher because overwriting a field
 the user previously confirmed carries more risk.
 
-**Workflow change detection:** if `operationKind` changed from the prior
-operation, or if `currentTargetEntityId` differs from the prior
-`targetRef.entityId`, all prior resolved schedule fields are discarded so stale
-fields don't bleed into a new workflow. `workflowChanged: true` is surfaced in
-the output so `buildResolvedOperation` can reset `originatingText`/`startedAt`.
+**Required-field derivation:** required fields are derived inside commit from
+`interpretation.operationKind`, not before interpretation.
+
+**Workflow change detection:** if the interpreted `operationKind` changed from
+the prior operation, or if the effective target changed, all prior resolved
+workflow fields are discarded so stale data does not bleed into a new workflow.
+`workflowChanged: true` is surfaced so `buildResolvedOperation` can reset
+`originatingText` and `startedAt`.
 
 **Target resolution:** `resolvedTargetRef` is the canonical next target —
 `currentTargetEntityId` when the classifier resolved one, otherwise carried
@@ -210,11 +216,12 @@ forward from `priorPendingWriteOperation.targetRef`.
 **Output:** `CommitPolicyOutput`
 ```ts
 {
-  resolvedFields: ResolvedFields;   // schedule fields safe to act on
+  resolvedFields: ResolvedFields;   // grouped fields safe to act on
   resolvedTargetRef: TargetRef;     // canonical target for this workflow step
   needsClarification: string[];     // dot-path fields not confident enough (e.g. "scheduleFields.time")
   missingFields: string[];          // required by operationKind, not yet resolved
   workflowChanged: boolean;         // true when operation or target switched
+  committedFieldPaths: string[];
 }
 ```
 
@@ -561,7 +568,7 @@ routing dispatch, execution branch selection, reply delivery, and state save.
 All dependencies are injected for testability.
 
 ### `apps/web/src/lib/server/turn-router.ts`
-Pure pipeline. Composes classify → extract → commit → decide into a single
+Pure pipeline. Composes classify → interpret → commit → decide into a single
 `RoutedTurn`. Contains `containsModificationPayload()` (compound confirmation
 guard) and `doesPolicyAllowWrites()` / `getConversationRouteForPolicy()`
 helpers used by the webhook orchestrator.
@@ -570,8 +577,9 @@ helpers used by the webhook orchestrator.
 Intent classification. Fast-path for pure confirmations with an active
 proposal. Falls back to LLM via `@atlas/integrations`.
 
-### `apps/web/src/lib/server/slot-extractor.ts`
-Slot extraction. Calls LLM, normalizes output via `packages/core/src/slot-normalizer.ts`.
+### `apps/web/src/lib/server/interpret-write-turn.ts`
+Write interpretation boundary. Calls the unified write-interpretation prompt
+and normalizes the raw response into `WriteInterpretation`.
 
 ### `apps/web/src/lib/server/decide-turn-policy.ts`
 Turn policy decision. Pure function. Maps intent + commit result + entity
@@ -596,15 +604,12 @@ dispatches actions, writes to calendar and DB. The only file that calls
 User-facing reply renderer for mutation outcomes. Converts
 `ProcessedInboxResult` to a human-readable message in the user's timezone.
 
-### `packages/core/src/commit-policy.ts`
-Schedule field gating logic. Thresholds: 0.75 (normal), 0.90 (correction).
-Operation/target change detection clears prior schedule fields and sets
-`workflowChanged`. Outputs `resolvedTargetRef` as the canonical next target.
+### `packages/core/src/write-commit.ts`
+Grouped field gating logic. Thresholds: 0.75 (normal), 0.90 (correction).
+Required fields are derived from `operationKind` inside commit. Operation or
+target changes clear prior workflow fields and set `workflowChanged`.
+Outputs `resolvedTargetRef` as the canonical next target.
 Pure function, no LLM calls.
-
-### `packages/core/src/write-contract.ts`
-`resolveOperationKind()` — derives the active `OperationKind` from turn type
-and prior operation. Required fields per operation are owned by commit-policy.
 
 ### `packages/core/src/discourse-state.ts`
 All discourse state schema types, helpers, and mode derivation. Contains
@@ -630,8 +635,8 @@ entity + entity registry + committed slots.
 ### `packages/integrations/src/prompts/turn-classifier.ts`
 LLM prompt for intent classification.
 
-### `packages/integrations/src/prompts/slot-extractor.ts`
-LLM prompt for slot extraction.
+### `packages/integrations/src/prompts/interpret-write-turn.ts`
+LLM prompt for unified write interpretation.
 
 ### `packages/integrations/src/prompts/planner.ts`
 LLM prompt for inbox item planning. Receives full planning context; outputs

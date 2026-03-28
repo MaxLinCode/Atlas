@@ -44,7 +44,7 @@ const {
   summarizeConversationMemoryWithResponsesMock,
   respondToConversationTurnWithResponsesMock,
   recoverConfirmedMutationWithResponsesMock,
-  extractSlotsWithResponsesMock,
+  interpretWriteTurnWithResponsesMock,
 } = vi.hoisted(() => ({
   editTelegramMessageMock: vi.fn(),
   sendTelegramMessageMock: vi.fn(),
@@ -54,7 +54,7 @@ const {
   summarizeConversationMemoryWithResponsesMock: vi.fn(),
   respondToConversationTurnWithResponsesMock: vi.fn(),
   recoverConfirmedMutationWithResponsesMock: vi.fn(),
-  extractSlotsWithResponsesMock: vi.fn(),
+  interpretWriteTurnWithResponsesMock: vi.fn(),
 }));
 
 vi.mock("@atlas/integrations", async () => {
@@ -102,7 +102,7 @@ vi.mock("@atlas/integrations", async () => {
       recoverConfirmedMutationWithResponsesMock,
     classifyTurnWithResponses: classifyTurnWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
-    extractSlotsWithResponses: extractSlotsWithResponsesMock,
+    interpretWriteTurnWithResponses: interpretWriteTurnWithResponsesMock,
     sendTelegramChatAction: sendTelegramChatActionMock,
     sendTelegramMessage: sendTelegramMessageMock,
     summarizeConversationMemoryWithResponses:
@@ -367,14 +367,25 @@ beforeEach(async () => {
   summarizeConversationMemoryWithResponsesMock.mockReset();
   respondToConversationTurnWithResponsesMock.mockReset();
   recoverConfirmedMutationWithResponsesMock.mockReset();
-  extractSlotsWithResponsesMock.mockReset();
-  extractSlotsWithResponsesMock.mockResolvedValue({
-    time: { kind: "absolute", hour: 9, minute: 0 },
-    day: { kind: "relative", value: "tomorrow" },
-    duration: null,
-    target: null,
-    confidence: { day: 0.95, time: 0.95 },
-    unresolvable: [],
+  interpretWriteTurnWithResponsesMock.mockReset();
+  interpretWriteTurnWithResponsesMock.mockResolvedValue({
+    operationKind: "plan",
+    actionDomain: "task",
+    targetRef: null,
+    taskName: null,
+    fields: {
+      scheduleFields: {
+        time: { kind: "absolute", hour: 9, minute: 0 },
+        day: { kind: "relative", value: "tomorrow" },
+        duration: null,
+      },
+      taskFields: null,
+    },
+    confidence: {
+      "scheduleFields.day": 0.95,
+      "scheduleFields.time": 0.95,
+    },
+    unresolvedFields: [],
   });
   routeTurnWithResponsesMock.mockResolvedValue({
     route: "mutation",
@@ -842,13 +853,17 @@ describe("telegram webhook route", () => {
 
   it("normalizes a Telegram text message and routes to clarification when slots are missing", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
-    extractSlotsWithResponsesMock.mockResolvedValueOnce({
-      time: null,
-      day: null,
-      duration: null,
-      target: null,
+    interpretWriteTurnWithResponsesMock.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: {
+        scheduleFields: null,
+        taskFields: null,
+      },
       confidence: {},
-      unresolvable: [],
+      unresolvedFields: [],
     });
 
     const response = await handleTelegramWebhook(
@@ -1058,13 +1073,25 @@ describe("telegram webhook route", () => {
 
   it("does not keep clear scheduling requests in discuss-first mode", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
-    extractSlotsWithResponsesMock.mockResolvedValueOnce({
-      time: { kind: "absolute", hour: 18, minute: 0 },
-      day: { kind: "relative", value: "tomorrow" },
-      duration: { minutes: 60 },
-      target: null,
-      confidence: { day: 0.95, time: 0.95, duration: 0.9 },
-      unresolvable: [],
+    interpretWriteTurnWithResponsesMock.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: {
+        scheduleFields: {
+          time: { kind: "absolute", hour: 18, minute: 0 },
+          day: { kind: "relative", value: "tomorrow" },
+          duration: { minutes: 60 },
+        },
+        taskFields: null,
+      },
+      confidence: {
+        "scheduleFields.day": 0.95,
+        "scheduleFields.time": 0.95,
+        "scheduleFields.duration": 0.9,
+      },
+      unresolvedFields: [],
     });
 
     const response = await handleTelegramWebhook(

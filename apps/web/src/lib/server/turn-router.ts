@@ -1,46 +1,28 @@
 import {
-  applyCommitPolicy,
-  type CommitPolicyOutput,
+  applyWriteCommit,
   type ConversationEntity,
   type ConversationTurn,
   createEmptyDiscourseState,
   deriveAmbiguity,
-  type OperationKind,
   type PendingWriteOperation,
   type RoutedTurn,
-  resolveOperationKind,
   routedTurnSchema,
-  FIELD_COMMITTING_TURN_TYPES,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
   type TurnPolicyAction,
   type TurnRoute,
   type TurnRoutingInput,
+  type WriteCommitOutput,
+  WRITE_INTERPRETING_TURN_TYPES,
 } from "@atlas/core";
 
 import { decideTurnPolicy } from "./decide-turn-policy";
 import { classifyTurn } from "./llm-classifier";
-import { extractSlots } from "./slot-extractor";
+import { interpretWriteTurn } from "./interpret-write-turn";
 
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
-
-// Required schedule fields per operation kind — mirrors commit-policy internals.
-function requiredScheduleFieldsForOperation(
-  operationKind: OperationKind,
-): ("day" | "time" | "duration")[] {
-  switch (operationKind) {
-    case "plan":
-      return ["day", "time"];
-    case "edit":
-    case "reschedule":
-      return ["time"];
-    case "complete":
-    case "archive":
-      return [];
-  }
-}
 
 export async function routeMessageTurn(
   input: TurnRouterInput,
@@ -77,42 +59,32 @@ export async function routeMessageTurn(
     }
   }
 
-  // Pipeline B: extract fields via the slot extractor (conditional)
+  // Pipeline B: interpret write intent for write-capable turns only.
   const priorOperation = discourseState.pending_write_operation;
-  const operationKind =
-    resolveOperationKind({
-      turnType: classification.turnType,
-      priorOperationKind: priorOperation?.operationKind,
-    }) ?? "plan";
-
-  let fieldExtraction = null;
-
-  if (FIELD_COMMITTING_TURN_TYPES.has(classification.turnType)) {
-    const priorScheduleFields =
-      priorOperation?.resolvedFields.scheduleFields ?? {};
-    const pendingScheduleFields = requiredScheduleFieldsForOperation(
-      operationKind,
-    ).filter(
-      (fieldKey) =>
-        priorScheduleFields[fieldKey as keyof typeof priorScheduleFields] ===
-        undefined,
-    );
-
-    fieldExtraction = await extractSlots({
-      currentTurnText: input.normalizedText,
-      pendingSlots: pendingScheduleFields,
-      priorResolvedSlots: priorScheduleFields,
-      conversationContext: deriveConversationContext(input.recentTurns),
-    });
-  }
+  const writeInterpretation = WRITE_INTERPRETING_TURN_TYPES.has(
+    classification.turnType,
+  )
+    ? await interpretWriteTurn({
+        currentTurnText: input.normalizedText,
+        turnType: classification.turnType,
+        priorPendingWriteOperation: priorOperation,
+        conversationContext: deriveConversationContext(input.recentTurns),
+      })
+    : {
+        operationKind: priorOperation?.operationKind ?? "plan",
+        actionDomain: "task",
+        targetRef: priorOperation?.targetRef ?? null,
+        taskName: null,
+        fields: {},
+        sourceText: input.normalizedText,
+        confidence: {},
+        unresolvedFields: [],
+      };
 
   // Policy layer: commit + route
-  const commitResult = applyCommitPolicy({
+  const commitResult = applyWriteCommit({
     turnType: classification.turnType,
-    extractedValues: fieldExtraction?.extractedValues ?? {},
-    confidence: compactConfidence(fieldExtraction?.confidence ?? {}),
-    unresolvable: fieldExtraction?.unresolvable ?? [],
-    operationKind,
+    interpretation: writeInterpretation,
     priorPendingWriteOperation: priorOperation,
     ...(classification.resolvedEntityIds[0] !== undefined
       ? { currentTargetEntityId: classification.resolvedEntityIds[0] }
@@ -131,10 +103,10 @@ export async function routeMessageTurn(
   const resolvedOperation =
     policy.action !== "reply_only"
       ? buildResolvedOperation(
-          operationKind,
+          writeInterpretation.operationKind,
           commitResult,
           priorOperation,
-          input.normalizedText,
+          writeInterpretation.sourceText,
         )
       : undefined;
 
@@ -148,8 +120,8 @@ export async function routeMessageTurn(
 }
 
 function buildResolvedOperation(
-  operationKind: OperationKind,
-  commitResult: CommitPolicyOutput,
+  operationKind: PendingWriteOperation["operationKind"],
+  commitResult: WriteCommitOutput,
   priorOperation: PendingWriteOperation | undefined,
   currentTurnText: string,
 ): PendingWriteOperation {
@@ -177,7 +149,7 @@ function deriveConversationContext(recentTurns: ConversationTurn[]): string {
 
 function buildInterpretation(
   classification: TurnClassifierOutput,
-  commitResult: CommitPolicyOutput,
+  commitResult: WriteCommitOutput,
 ): TurnInterpretation {
   const allMissingFields = unique([
     ...commitResult.missingFields,
@@ -229,18 +201,6 @@ function deriveAmbiguityReason(
 
 function unique(values: string[]) {
   return Array.from(new Set(values));
-}
-
-function compactConfidence(
-  confidence: Record<string, number | null | undefined>,
-): Partial<Record<"day" | "time" | "duration", number>> {
-  const result: Partial<Record<"day" | "time" | "duration", number>> = {};
-  for (const [key, value] of Object.entries(confidence)) {
-    if (typeof value === "number") {
-      result[key as "day" | "time" | "duration"] = value;
-    }
-  }
-  return result;
 }
 
 export function doesPolicyAllowWrites(action: TurnPolicyAction) {
