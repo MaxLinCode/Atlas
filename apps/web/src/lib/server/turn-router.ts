@@ -10,7 +10,7 @@ import {
   type RoutedTurn,
   resolveOperationKind,
   routedTurnSchema,
-  SLOT_COMMITTING_TURN_TYPES,
+  FIELD_COMMITTING_TURN_TYPES,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
@@ -27,7 +27,7 @@ export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
 
 // Required schedule fields per operation kind — mirrors commit-policy internals.
-function requiredSlotsForOperation(
+function requiredScheduleFieldsForOperation(
   operationKind: OperationKind,
 ): ("day" | "time" | "duration")[] {
   switch (operationKind) {
@@ -56,7 +56,7 @@ export async function routeMessageTurn(
   });
 
   // Guard: reclassify compound confirmations (confirmation + modification payload)
-  // so slot extraction runs and the edit is not silently dropped.
+  // so field extraction runs and the edit is not silently dropped.
   // Scoped to active write/proposal context only.
   if (classification.turnType === "confirmation") {
     const hasActiveProposal = entityRegistry.some(
@@ -77,7 +77,7 @@ export async function routeMessageTurn(
     }
   }
 
-  // Pipeline B: extract slots (conditional)
+  // Pipeline B: extract fields via the slot extractor (conditional)
   const priorOperation = discourseState.pending_write_operation;
   const operationKind =
     resolveOperationKind({
@@ -85,20 +85,22 @@ export async function routeMessageTurn(
       priorOperationKind: priorOperation?.operationKind,
     }) ?? "plan";
 
-  let slotExtraction = null;
+  let fieldExtraction = null;
 
-  if (SLOT_COMMITTING_TURN_TYPES.has(classification.turnType)) {
+  if (FIELD_COMMITTING_TURN_TYPES.has(classification.turnType)) {
     const priorScheduleFields =
       priorOperation?.resolvedFields.scheduleFields ?? {};
-    const pendingSlots = requiredSlotsForOperation(operationKind).filter(
-      (slot) =>
-        priorScheduleFields[slot as keyof typeof priorScheduleFields] ===
+    const pendingScheduleFields = requiredScheduleFieldsForOperation(
+      operationKind,
+    ).filter(
+      (fieldKey) =>
+        priorScheduleFields[fieldKey as keyof typeof priorScheduleFields] ===
         undefined,
     );
 
-    slotExtraction = await extractSlots({
+    fieldExtraction = await extractSlots({
       currentTurnText: input.normalizedText,
-      pendingSlots,
+      pendingSlots: pendingScheduleFields,
       priorResolvedSlots: priorScheduleFields,
       conversationContext: deriveConversationContext(input.recentTurns),
     });
@@ -107,9 +109,9 @@ export async function routeMessageTurn(
   // Policy layer: commit + route
   const commitResult = applyCommitPolicy({
     turnType: classification.turnType,
-    extractedValues: slotExtraction?.extractedValues ?? {},
-    confidence: compactConfidence(slotExtraction?.confidence ?? {}),
-    unresolvable: slotExtraction?.unresolvable ?? [],
+    extractedValues: fieldExtraction?.extractedValues ?? {},
+    confidence: compactConfidence(fieldExtraction?.confidence ?? {}),
+    unresolvable: fieldExtraction?.unresolvable ?? [],
     operationKind,
     priorPendingWriteOperation: priorOperation,
     ...(classification.resolvedEntityIds[0] !== undefined

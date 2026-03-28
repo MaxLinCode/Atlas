@@ -35,7 +35,7 @@ function buildInput(overrides: Partial<CommitPolicyInput>): CommitPolicyInput {
 }
 
 describe("applyCommitPolicy", () => {
-  it("does not commit slots for informational turns", () => {
+  it("does not commit fields for informational turns", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "informational",
@@ -47,7 +47,7 @@ describe("applyCommitPolicy", () => {
     expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
   });
 
-  it("does not commit slots for confirmation turns", () => {
+  it("does not commit fields for confirmation turns", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "confirmation",
@@ -59,7 +59,7 @@ describe("applyCommitPolicy", () => {
     expect(result.resolvedFields.scheduleFields?.time).toBeUndefined();
   });
 
-  it("commits slots above confidence threshold for planning_request", () => {
+  it("commits fields above confidence threshold for planning_request", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
@@ -114,7 +114,7 @@ describe("applyCommitPolicy", () => {
     expect(result.needsClarification).not.toContain("scheduleFields.time");
   });
 
-  it("routes unresolvable slots to needsClarification", () => {
+  it("routes unresolvable fields to needsClarification", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "clarification_answer",
@@ -127,7 +127,7 @@ describe("applyCommitPolicy", () => {
     expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
-  it("resets prior slots on operation kind change", () => {
+  it("resets prior fields on operation kind change", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
@@ -145,7 +145,7 @@ describe("applyCommitPolicy", () => {
     expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
   });
 
-  it("does not reset slots when operation kind is unchanged", () => {
+  it("does not reset fields when operation kind is unchanged", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "planning_request",
@@ -201,7 +201,7 @@ describe("applyCommitPolicy", () => {
     expect(result.resolvedFields.scheduleFields?.time).toEqual(t(17, 0));
   });
 
-  it("commits slots for edit_request turn type", () => {
+  it("commits fields for edit_request turn type", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "edit_request",
@@ -228,7 +228,7 @@ describe("applyCommitPolicy", () => {
     expect(result.needsClarification).toContain("scheduleFields.time");
   });
 
-  it("does not flag unresolvable slot that is already resolved from prior turn", () => {
+  it("does not flag an unresolvable field that is already resolved from prior turn", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "clarification_answer",
@@ -244,7 +244,7 @@ describe("applyCommitPolicy", () => {
     expect(result.resolvedFields.scheduleFields?.day).toBe("friday");
   });
 
-  it("handles unresolvable slots not in extractedValues", () => {
+  it("handles unresolvable fields not in extractedValues", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "clarification_answer",
