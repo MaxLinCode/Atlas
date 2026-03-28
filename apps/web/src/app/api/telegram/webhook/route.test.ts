@@ -1194,7 +1194,9 @@ describe("telegram webhook route", () => {
               operationKind: "plan",
               targetRef: null,
               resolvedFields: {
-                scheduleFields: { time: { kind: "absolute", hour: 15, minute: 0 } },
+                scheduleFields: {
+                  time: { kind: "absolute", hour: 15, minute: 0 },
+                },
               },
               missingFields: [],
               originatingText: "Schedule the dentist reminder",

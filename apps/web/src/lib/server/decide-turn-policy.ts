@@ -66,7 +66,9 @@ export function decideTurnPolicy(
     case "confirmation": {
       const proposalId =
         classification.resolvedProposalId ??
-        resolveSingleActiveProposalId(input.routingContext.entityRegistry ?? []);
+        resolveSingleActiveProposalId(
+          input.routingContext.entityRegistry ?? [],
+        );
 
       if (proposalId) {
         return {
@@ -132,7 +134,10 @@ function deriveStructuredWriteReadiness(
 ): StructuredWriteReadiness {
   const { classification, commitResult } = input;
   const allClarificationSlots = Array.from(
-    new Set([...commitResult.missingFields, ...commitResult.needsClarification]),
+    new Set([
+      ...commitResult.missingFields,
+      ...commitResult.needsClarification,
+    ]),
   );
 
   if (ambiguity === "high") {

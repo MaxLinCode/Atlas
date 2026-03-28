@@ -57,15 +57,9 @@ describe("resolveOperationKind", () => {
     expect(
       resolveOperationKind({ turnType: "clarification_answer" }),
     ).toBeUndefined();
-    expect(
-      resolveOperationKind({ turnType: "confirmation" }),
-    ).toBeUndefined();
-    expect(
-      resolveOperationKind({ turnType: "informational" }),
-    ).toBeUndefined();
-    expect(
-      resolveOperationKind({ turnType: "unknown" }),
-    ).toBeUndefined();
+    expect(resolveOperationKind({ turnType: "confirmation" })).toBeUndefined();
+    expect(resolveOperationKind({ turnType: "informational" })).toBeUndefined();
+    expect(resolveOperationKind({ turnType: "unknown" })).toBeUndefined();
   });
 
   it("ignores priorOperationKind for planning_request — always returns 'plan'", () => {

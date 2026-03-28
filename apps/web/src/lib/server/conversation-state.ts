@@ -21,10 +21,7 @@ type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
   policy: Pick<
     TurnPolicyDecision,
-    | "action"
-    | "clarificationSlots"
-    | "targetProposalId"
-    | "resolvedOperation"
+    "action" | "clarificationSlots" | "targetProposalId" | "resolvedOperation"
   > & {
     action: Extract<
       TurnPolicyAction,
@@ -108,7 +105,8 @@ export function deriveConversationReplyState(
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
           missingSlots: input.policy.clarificationSlots,
-          slotSnapshot: input.policy.resolvedOperation?.resolvedFields.scheduleFields ?? {},
+          slotSnapshot:
+            input.policy.resolvedOperation?.resolvedFields.scheduleFields ?? {},
         },
       }),
     );

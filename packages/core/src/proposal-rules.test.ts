@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ConversationEntity, ResolvedFields, ResolvedSlots, TimeSpec } from "./index";
+import type {
+  ConversationEntity,
+  ResolvedFields,
+  ResolvedSlots,
+  TimeSpec,
+} from "./index";
 import { deriveProposalCompatibility } from "./proposal-rules";
 
 function t(hour: number, minute: number): TimeSpec {

@@ -88,9 +88,12 @@ export async function routeMessageTurn(
   let slotExtraction = null;
 
   if (SLOT_COMMITTING_TURN_TYPES.has(classification.turnType)) {
-    const priorScheduleFields = priorOperation?.resolvedFields.scheduleFields ?? {};
+    const priorScheduleFields =
+      priorOperation?.resolvedFields.scheduleFields ?? {};
     const pendingSlots = requiredSlotsForOperation(operationKind).filter(
-      (slot) => priorScheduleFields[slot as keyof typeof priorScheduleFields] === undefined,
+      (slot) =>
+        priorScheduleFields[slot as keyof typeof priorScheduleFields] ===
+        undefined,
     );
 
     slotExtraction = await extractSlots({
@@ -154,8 +157,12 @@ function buildResolvedOperation(
     targetRef: commitResult.resolvedTargetRef,
     resolvedFields: commitResult.resolvedFields,
     missingFields: commitResult.missingFields,
-    originatingText: isNewWorkflow ? currentTurnText : priorOperation.originatingText,
-    startedAt: isNewWorkflow ? new Date().toISOString() : priorOperation.startedAt,
+    originatingText: isNewWorkflow
+      ? currentTurnText
+      : priorOperation.originatingText,
+    startedAt: isNewWorkflow
+      ? new Date().toISOString()
+      : priorOperation.startedAt,
   };
 }
 

@@ -274,7 +274,11 @@ describe("applyCommitPolicy", () => {
     const result = applyCommitPolicy(
       buildInput({
         turnType: "clarification_answer",
-        priorPendingWriteOperation: priorOp("plan", { day: "tomorrow" }, "task-abc"),
+        priorPendingWriteOperation: priorOp(
+          "plan",
+          { day: "tomorrow" },
+          "task-abc",
+        ),
       }),
     );
 
@@ -289,7 +293,11 @@ describe("applyCommitPolicy", () => {
         extractedValues: { day: "friday" },
         confidence: { day: 0.9 },
         currentTargetEntityId: "task-xyz",
-        priorPendingWriteOperation: priorOp("plan", { time: t(14, 0) }, "task-abc"),
+        priorPendingWriteOperation: priorOp(
+          "plan",
+          { time: t(14, 0) },
+          "task-abc",
+        ),
       }),
     );
 
@@ -306,7 +314,11 @@ describe("applyCommitPolicy", () => {
         extractedValues: { time: t(17, 0) },
         confidence: { time: 0.9 },
         currentTargetEntityId: "task-abc",
-        priorPendingWriteOperation: priorOp("plan", { day: "tomorrow" }, "task-abc"),
+        priorPendingWriteOperation: priorOp(
+          "plan",
+          { day: "tomorrow" },
+          "task-abc",
+        ),
       }),
     );
 

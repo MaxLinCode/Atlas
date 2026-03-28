@@ -37,7 +37,9 @@ const CORRECTION_THRESHOLD = 0.9;
 
 // Required schedule fields per operation kind.
 // Contract derivation lives here rather than as a pre-extraction gate.
-function requiredFieldsForOperation(operationKind: OperationKind): ScheduleSlot[] {
+function requiredFieldsForOperation(
+  operationKind: OperationKind,
+): ScheduleSlot[] {
   switch (operationKind) {
     case "plan":
       return ["day", "time"];
@@ -72,12 +74,15 @@ export function applyCommitPolicy(
 
   const operationChanged =
     priorPendingWriteOperation != null &&
-    (operationKind !== priorPendingWriteOperation.operationKind || targetChanged);
+    (operationKind !== priorPendingWriteOperation.operationKind ||
+      targetChanged);
 
   const priorScheduleFields: Partial<Record<ScheduleSlot, unknown>> =
     operationChanged
       ? {}
-      : { ...(priorPendingWriteOperation?.resolvedFields.scheduleFields ?? {}) };
+      : {
+          ...(priorPendingWriteOperation?.resolvedFields.scheduleFields ?? {}),
+        };
 
   const needsClarification: string[] = [];
   const committedSchedule: Partial<Record<ScheduleSlot, unknown>> = {
@@ -142,7 +147,13 @@ export function applyCommitPolicy(
     ? { entityId: currentTargetEntityId }
     : (priorPendingWriteOperation?.targetRef ?? null);
 
-  return { resolvedFields, resolvedTargetRef, needsClarification, missingFields, workflowChanged: operationChanged };
+  return {
+    resolvedFields,
+    resolvedTargetRef,
+    needsClarification,
+    missingFields,
+    workflowChanged: operationChanged,
+  };
 }
 
 function slotValuesEqual(slot: ScheduleSlot, a: unknown, b: unknown): boolean {

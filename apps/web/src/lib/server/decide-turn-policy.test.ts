@@ -98,7 +98,11 @@ describe("decideTurnPolicy", () => {
       decideTurnPolicy(
         input(
           { turnType: "planning_request", confidence: 0.68 },
-          { resolvedFields: { scheduleFields: { day: "tomorrow", time: t(18, 0) } } },
+          {
+            resolvedFields: {
+              scheduleFields: { day: "tomorrow", time: t(18, 0) },
+            },
+          },
           {
             rawText: "Schedule gym tomorrow at 6pm",
             normalizedText: "Schedule gym tomorrow at 6pm",
@@ -368,7 +372,11 @@ describe("decideTurnPolicy", () => {
           resolvedEntityIds: ["task-1"],
           resolvedProposalId: "proposal-1",
         },
-        { resolvedFields: { scheduleFields: { time: t(15, 0), day: "tomorrow" } } },
+        {
+          resolvedFields: {
+            scheduleFields: { time: t(15, 0), day: "tomorrow" },
+          },
+        },
         {
           rawText: "make it 3 instead",
           normalizedText: "make it 3 instead",
@@ -542,7 +550,11 @@ describe("decideTurnPolicy", () => {
           confidence: 0.9,
           resolvedEntityIds: ["task-1"],
         },
-        { resolvedFields: { scheduleFields: { day: "tomorrow", time: t(17, 0) } } },
+        {
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
+        },
         {
           rawText: "ok but make it 5pm",
           normalizedText: "ok but make it 5pm",
@@ -616,5 +628,4 @@ describe("decideTurnPolicy", () => {
       clarificationSlots: expect.arrayContaining(["scheduleFields.time"]),
     });
   });
-
 });

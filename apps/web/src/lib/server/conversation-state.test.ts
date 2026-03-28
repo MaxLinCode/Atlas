@@ -1,4 +1,8 @@
-import type { ConversationStateSnapshot, PendingWriteOperation, TimeSpec } from "@atlas/core";
+import type {
+  ConversationStateSnapshot,
+  PendingWriteOperation,
+  TimeSpec,
+} from "@atlas/core";
 import type { ProcessedInboxResult } from "@atlas/db";
 import { describe, expect, it } from "vitest";
 
@@ -298,7 +302,9 @@ describe("deriveConversationReplyState", () => {
       policy: {
         action: "present_proposal",
         resolvedOperation: buildPendingWriteOperation({
-          resolvedFields: { scheduleFields: { day: "tomorrow", time: t(17, 0) } },
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
           missingFields: [],
         }),
       },
