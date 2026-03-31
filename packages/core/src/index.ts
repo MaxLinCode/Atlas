@@ -3,8 +3,11 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   conversationDiscourseStateSchema,
+  operationKindSchema,
   pendingWriteOperationSchema,
+  resolvedFieldsSchema,
   resolvedSlotsSchema,
+  targetRefSchema,
 } from "./discourse-state";
 
 export * from "./ambiguity";
@@ -15,6 +18,8 @@ export * from "./slot-normalizer";
 export * from "./synthesize-mutation-text";
 export * from "./telegram";
 export * from "./time-spec";
+export * from "./write-commit";
+export * from "./write-interpretation";
 export * from "./write-contract";
 
 const postgresConnectionStringSchema = z.string().refine((value) => {
@@ -986,6 +991,33 @@ const rawTimeWindowSchema = z.object({
   window: z.enum(["morning", "afternoon", "evening"]),
 });
 
+const rawScheduleFieldsSchema = z.object({
+  time: z
+    .union([rawTimeAbsoluteSchema, rawTimeRelativeSchema, rawTimeWindowSchema])
+    .nullable(),
+  day: z
+    .object({
+      kind: z.enum(["relative", "weekday", "absolute"]),
+      value: z.string(),
+    })
+    .nullable(),
+  duration: z.object({ minutes: z.number().int().min(0) }).nullable(),
+});
+
+const rawTaskFieldsSchema = z.object({
+  priority: z.string().nullable(),
+  label: z.string().nullable(),
+  sourceText: z.string().nullable(),
+});
+
+const rawWriteTargetRefSchema = z
+  .object({
+    entityId: z.string().nullable(),
+    description: z.string().nullable(),
+    entityKind: z.string().nullable(),
+  })
+  .nullable();
+
 export const rawSlotExtractionSchema = z.object({
   time: z
     .union([rawTimeAbsoluteSchema, rawTimeRelativeSchema, rawTimeWindowSchema])
@@ -1013,6 +1045,37 @@ export const slotExtractorOutputSchema = z.object({
   extractedValues: resolvedSlotsSchema.partial(),
   confidence: slotConfidenceSchema,
   unresolvable: z.array(slotKeySchema),
+});
+
+export const writeInterpretationInputSchema = z.object({
+  currentTurnText: z.string().min(1),
+  turnType: turnInterpretationTypeSchema,
+  priorPendingWriteOperation: pendingWriteOperationSchema.optional(),
+  conversationContext: z.string().optional(),
+});
+
+export const rawWriteInterpretationSchema = z.object({
+  operationKind: operationKindSchema,
+  actionDomain: z.string().min(1),
+  targetRef: rawWriteTargetRefSchema,
+  taskName: z.string().nullable(),
+  fields: z.object({
+    scheduleFields: rawScheduleFieldsSchema.nullable(),
+    taskFields: rawTaskFieldsSchema.nullable(),
+  }),
+  confidence: z.record(z.string(), z.number().min(0).max(1)),
+  unresolvedFields: z.array(z.string().min(1)),
+});
+
+export const writeInterpretationSchema = z.object({
+  operationKind: operationKindSchema,
+  actionDomain: z.string().min(1),
+  targetRef: targetRefSchema,
+  taskName: z.string().nullable(),
+  fields: resolvedFieldsSchema,
+  sourceText: z.string().min(1),
+  confidence: z.record(z.string(), z.number().min(0).max(1)),
+  unresolvedFields: z.array(z.string().min(1)),
 });
 
 export const turnClassifierInputSchema = z.object({
@@ -1134,6 +1197,13 @@ export type RoutedTurn = z.infer<typeof routedTurnSchema>;
 export type RawSlotExtraction = z.infer<typeof rawSlotExtractionSchema>;
 export type SlotExtractorInput = z.infer<typeof slotExtractorInputSchema>;
 export type SlotExtractorOutput = z.infer<typeof slotExtractorOutputSchema>;
+export type WriteInterpretationInput = z.infer<
+  typeof writeInterpretationInputSchema
+>;
+export type RawWriteInterpretation = z.infer<
+  typeof rawWriteInterpretationSchema
+>;
+export type WriteInterpretation = z.infer<typeof writeInterpretationSchema>;
 export type TurnClassifierInput = z.input<typeof turnClassifierInputSchema>;
 export type TurnClassifierResponse = z.infer<
   typeof turnClassifierResponseSchema

@@ -4,6 +4,7 @@ REMOVE: pr smoke test
 
 Atlas is a schedule-forward, Google-calendar-gated product with a working mutation pipeline.
 Current implementation focus: replace transcript-heavy conversation memory with an explicit conversation-state layer. Atlas now persists a user-scoped conversation snapshot with transcript, summary, entity registry, and discourse state so reference resolution can anchor on known objects instead of reconstructing intent from recent turns alone. Recent work still includes the prompt-asset cleanup, expanded live eval coverage around ambiguous routing and confirmed-mutation recovery, a consolidated `pnpm eval:all` loop plus suite-specific eval reports and prompt-improvement briefs for prompt iteration, chat-first prompt/docs framing, and consistent `referenceTime` threading through scheduling.
+The turn-routing pipeline now uses a unified write-interpretation stage for write-capable turns: `classifyTurn -> interpretWriteTurn -> writeCommit -> decideTurnPolicy`. The old router-owned pre-gating around slot extraction is retired from the active path.
 
 DB rollout hardening is now part of the active release path: `packages/db` owns all Drizzle commands and config, root-level DB command aliases are removed, and production migrations are expected to run from GitHub Actions before Vercel production release.
 
@@ -85,6 +86,10 @@ DB rollout hardening is now part of the active release path: `packages/db` owns 
   - live scheduled commitment is now stored directly on `tasks`
   - `schedule_blocks` are no longer the active persisted runtime schedule record
   - planner-facing `schedule_block_*` aliases are reconstructed from task state for compatibility
+- Phase 2 of the turn-routing refactor is now landed:
+  - write-capable turns use one interpretation call instead of a separate slot-extractor pass
+  - commit derives required fields from `operationKind` and commits grouped field paths
+  - classifier-owned entity resolution is intentionally still in place for now; moving that to the interpretation stage remains Phase 3 work
 - Webhook ingress is idempotent and persists canonical `inbox_items` before any planner mutation for linked users.
 - Unlinked allowlisted Telegram users are now short-circuited before ingress persistence with a signed Google connect reply. Atlas does not keep stale pre-link messages in v1.
 - Telegram webhook ingress is now protected by a required `TELEGRAM_ALLOWED_USER_IDS` allowlist; blocked users are rejected before inbox persistence, planning, or outbound delivery, and app config fails fast when that env var is missing.

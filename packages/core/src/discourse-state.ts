@@ -95,6 +95,7 @@ export const targetRefSchema = z
   .object({
     entityId: z.string().optional(),
     description: z.string().optional(),
+    entityKind: z.string().optional(),
   })
   .nullable();
 

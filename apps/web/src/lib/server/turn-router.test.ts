@@ -3,7 +3,7 @@ import type {
   TimeSpec,
   TurnClassifierOutput,
 } from "@atlas/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
@@ -15,19 +15,38 @@ vi.mock("./llm-classifier", () => ({
   classifyTurn: vi.fn(),
 }));
 
-vi.mock("./slot-extractor", () => ({
-  extractSlots: vi.fn().mockResolvedValue({
-    extractedValues: {},
+vi.mock("./interpret-write-turn", () => ({
+  interpretWriteTurn: vi.fn().mockResolvedValue({
+    operationKind: "plan",
+    actionDomain: "task",
+    targetRef: null,
+    taskName: null,
+    fields: {},
+    sourceText: "default",
     confidence: {},
-    unresolvable: [],
+    unresolvedFields: [],
   }),
 }));
 
 import { classifyTurn } from "./llm-classifier";
-import { extractSlots } from "./slot-extractor";
+import { interpretWriteTurn } from "./interpret-write-turn";
 
 const mockClassifyTurn = vi.mocked(classifyTurn);
-const mockExtractSlots = vi.mocked(extractSlots);
+const mockInterpretWriteTurn = vi.mocked(interpretWriteTurn);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockInterpretWriteTurn.mockResolvedValue({
+    operationKind: "plan",
+    actionDomain: "task",
+    targetRef: null,
+    taskName: null,
+    fields: {},
+    sourceText: "default",
+    confidence: {},
+    unresolvedFields: [],
+  });
+});
 
 function mockClassification(output: Partial<TurnClassifierOutput>) {
   const full: TurnClassifierOutput = {
@@ -45,10 +64,18 @@ describe("turn router", () => {
       turnType: "planning_request",
       confidence: 0.95,
     });
-    mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { day: "tomorrow", time: t(18, 0) },
-      confidence: { day: 0.95, time: 0.95 },
-      unresolvable: [],
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: "gym",
+      fields: { scheduleFields: { day: "tomorrow", time: t(18, 0) } },
+      sourceText: "Schedule gym tomorrow at 6pm for 1 hour",
+      confidence: {
+        "scheduleFields.day": 0.95,
+        "scheduleFields.time": 0.95,
+      },
+      unresolvedFields: [],
     });
 
     const result = await routeMessageTurn({
@@ -193,10 +220,18 @@ describe("turn router", () => {
       turnType: "planning_request",
       confidence: 0.95,
     });
-    mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { day: "tomorrow", time: t(18, 0) },
-      confidence: { day: 0.95, time: 0.95 },
-      unresolvable: [],
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: "gym",
+      fields: { scheduleFields: { day: "tomorrow", time: t(18, 0) } },
+      sourceText: "Schedule gym tomorrow at 6pm",
+      confidence: {
+        "scheduleFields.day": 0.95,
+        "scheduleFields.time": 0.95,
+      },
+      unresolvedFields: [],
     });
 
     const result = await routeMessageTurn({
@@ -228,10 +263,15 @@ describe("turn router", () => {
       turnType: "clarification_answer",
       confidence: 0.9,
     });
-    mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: t(17, 0) },
-      confidence: { time: 0.92 },
-      unresolvable: [],
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "edit",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: { scheduleFields: { time: t(17, 0) } },
+      sourceText: "5pm",
+      confidence: { "scheduleFields.time": 0.92 },
+      unresolvedFields: [],
     });
 
     const result = await routeMessageTurn({
@@ -260,10 +300,15 @@ describe("turn router", () => {
       turnType: "clarification_answer",
       confidence: 0.9,
     });
-    mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: t(17, 0) },
-      confidence: { time: 0.92 },
-      unresolvable: [],
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: { scheduleFields: { time: t(17, 0) } },
+      sourceText: "5pm",
+      confidence: { "scheduleFields.time": 0.92 },
+      unresolvedFields: [],
     });
 
     const result = await routeMessageTurn({
@@ -284,10 +329,15 @@ describe("turn router", () => {
       confidence: 0.95,
       resolvedProposalId: "proposal-1",
     });
-    mockExtractSlots.mockResolvedValueOnce({
-      extractedValues: { time: t(17, 0) },
-      confidence: { time: 0.92 },
-      unresolvable: [],
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: { scheduleFields: { time: t(17, 0) } },
+      sourceText: "ok but make it 5pm",
+      confidence: { "scheduleFields.time": 0.92 },
+      unresolvedFields: [],
     });
 
     const result = await routeMessageTurn({
@@ -370,6 +420,70 @@ describe("turn router", () => {
     });
 
     expect(result.interpretation.turnType).toBe("confirmation");
+  });
+
+  it("does not run write interpretation for informational turns", async () => {
+    mockClassification({
+      turnType: "informational",
+      confidence: 0.9,
+    });
+
+    await routeMessageTurn({
+      rawText: "What's later today?",
+      normalizedText: "What's later today?",
+      recentTurns: [],
+    });
+
+    expect(mockInterpretWriteTurn).not.toHaveBeenCalled();
+  });
+
+  it("clears prior committed fields when the interpreted workflow changes", async () => {
+    mockClassification({
+      turnType: "planning_request",
+      confidence: 0.94,
+    });
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "edit",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: { scheduleFields: { time: t(11, 0) } },
+      sourceText: "Move it to 11",
+      confidence: { "scheduleFields.time": 0.94 },
+      unresolvedFields: [],
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "Move it to 11",
+      normalizedText: "Move it to 11",
+      recentTurns: [],
+      discourseState: {
+        focus_entity_id: null,
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        pending_write_operation: {
+          operationKind: "plan",
+          targetRef: null,
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(18, 0) },
+          },
+          missingFields: [],
+          originatingText: "Schedule gym tomorrow at 6",
+          startedAt: new Date().toISOString(),
+        },
+        mode: "planning",
+      },
+    });
+
+    expect(result.policy.resolvedOperation).toMatchObject({
+      operationKind: "edit",
+      resolvedFields: { scheduleFields: { time: t(11, 0) } },
+    });
+    expect(
+      result.policy.resolvedOperation?.resolvedFields.scheduleFields?.day,
+    ).toBeUndefined();
   });
 });
 
