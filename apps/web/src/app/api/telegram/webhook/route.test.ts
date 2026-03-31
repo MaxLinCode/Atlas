@@ -195,7 +195,7 @@ function buildRoutedTurn(input: {
 async function seedProposalEntity(input: {
   proposalId: string;
   originatingTurnText: string;
-  missingSlots?: string[];
+  missingFields?: string[];
   replyText?: string;
 }) {
   const entity: ConversationEntity = {
@@ -210,8 +210,8 @@ async function seedProposalEntity(input: {
       route: "conversation_then_mutation",
       replyText: input.replyText ?? "Shall I schedule that?",
       originatingTurnText: input.originatingTurnText,
-      missingSlots: input.missingSlots ?? [],
-      slotSnapshot: {},
+      missingFields: input.missingFields ?? [],
+      fieldSnapshot: {},
     },
   };
 
@@ -1148,7 +1148,7 @@ describe("telegram webhook route", () => {
     await seedProposalEntity({
       proposalId: "proposal-1",
       originatingTurnText: "Schedule the dentist reminder",
-      missingSlots: ["time"],
+      missingFields: ["time"],
       replyText: "Would you like me to schedule it at 3pm?",
     });
     const planner = vi.fn(
