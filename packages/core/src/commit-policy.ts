@@ -90,7 +90,9 @@ export function applyCommitPolicy(
   };
 
   if (FIELD_COMMITTING_TURN_TYPES.has(turnType)) {
-    const extractedFieldKeys = Object.keys(extractedValues) as ScheduleFieldKey[];
+    const extractedFieldKeys = Object.keys(
+      extractedValues,
+    ) as ScheduleFieldKey[];
 
     for (const fieldKey of extractedFieldKeys) {
       const value = extractedValues[fieldKey];

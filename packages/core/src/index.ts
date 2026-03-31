@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   conversationDiscourseStateSchema,
   pendingWriteOperationSchema,
+  resolvedFieldsSchema,
   resolvedSlotsSchema,
 } from "./discourse-state";
 
@@ -821,8 +822,8 @@ export const conversationProposalOptionEntitySchema =
         .optional(),
       confirmationRequired: z.boolean().optional(),
       originatingTurnText: z.string().min(1).nullable().optional(),
-      missingSlots: z.array(z.string().min(1)).optional(),
-      slotSnapshot: resolvedSlotsSchema,
+      missingFields: z.array(z.string().min(1)).optional(),
+      fieldSnapshot: resolvedFieldsSchema,
     }),
   });
 
