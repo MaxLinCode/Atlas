@@ -104,9 +104,8 @@ export function deriveConversationReplyState(
           mutationInputSource: null,
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
-          missingSlots: input.policy.clarificationSlots,
-          slotSnapshot:
-            input.policy.resolvedOperation?.resolvedFields.scheduleFields ?? {},
+          missingFields: input.policy.clarificationSlots,
+          fieldSnapshot: input.policy.resolvedOperation?.resolvedFields ?? {},
         },
       }),
     );

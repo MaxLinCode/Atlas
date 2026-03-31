@@ -212,7 +212,7 @@ describe("db package", () => {
             route: "conversation_then_mutation",
             replyText:
               "It sounds like you want to move the dentist reminder after lunch.",
-            slotSnapshot: {},
+            fieldSnapshot: {},
           },
         },
       ],
