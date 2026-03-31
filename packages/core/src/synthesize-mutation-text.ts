@@ -1,19 +1,20 @@
 import type { z } from "zod";
-import type { resolvedSlotsSchema } from "./discourse-state";
+import type { resolvedFieldsSchema } from "./discourse-state";
 import type {
   conversationEntitySchema,
   conversationProposalOptionEntitySchema,
 } from "./index";
 import { formatTimeSpec } from "./time-spec";
 
-type ResolvedSlots = z.infer<typeof resolvedSlotsSchema>;
+type ResolvedFields = z.infer<typeof resolvedFieldsSchema>;
 type ConversationEntity = z.infer<typeof conversationEntitySchema>;
 type ProposalOptionEntity = z.infer<
   typeof conversationProposalOptionEntitySchema
 >;
 
 export type SynthesizeMutationTextInput = {
-  resolvedSlots: ResolvedSlots;
+  resolvedFields: ResolvedFields;
+  targetEntityId?: string | undefined;
   proposalEntity?: ProposalOptionEntity | undefined;
   entityRegistry: ConversationEntity[];
 };
@@ -25,15 +26,19 @@ export type SynthesizeMutationTextResult =
 export function synthesizeMutationText(
   input: SynthesizeMutationTextInput,
 ): SynthesizeMutationTextResult {
-  const { resolvedSlots, proposalEntity, entityRegistry } = input;
+  const { resolvedFields, proposalEntity, entityRegistry } = input;
+  const scheduleFields = resolvedFields.scheduleFields ?? {};
+  const targetEntityId =
+    input.targetEntityId ?? proposalEntity?.data.targetEntityId ?? undefined;
 
   const originatingText = proposalEntity?.data.originatingTurnText;
-  const missingSlots = new Set(proposalEntity?.data.missingSlots ?? []);
+  const missingFields = new Set(proposalEntity?.data.missingFields ?? []);
 
   if (originatingText) {
-    const augmentations = buildSlotAugmentations(
-      resolvedSlots,
-      missingSlots,
+    const augmentations = buildFieldAugmentations(
+      scheduleFields,
+      targetEntityId,
+      missingFields,
       entityRegistry,
     );
     const text =
@@ -43,7 +48,11 @@ export function synthesizeMutationText(
     return { outcome: "synthesized", text };
   }
 
-  const synthesized = buildFromSlotsOnly(resolvedSlots, entityRegistry);
+  const synthesized = buildFromFieldsOnly(
+    scheduleFields,
+    targetEntityId,
+    entityRegistry,
+  );
   if (synthesized) {
     return { outcome: "synthesized", text: synthesized };
   }
@@ -51,28 +60,31 @@ export function synthesizeMutationText(
   return {
     outcome: "insufficient_data",
     reason:
-      "No originating turn text and insufficient resolved slots to synthesize a mutation request.",
+      "No originating turn text and insufficient resolved fields to synthesize a mutation request.",
   };
 }
 
-function buildSlotAugmentations(
-  slots: ResolvedSlots,
-  missingSlots: Set<string>,
+type ScheduleFields = NonNullable<ResolvedFields["scheduleFields"]>;
+
+function buildFieldAugmentations(
+  fields: ScheduleFields,
+  targetEntityId: string | undefined,
+  missingFields: Set<string>,
   entityRegistry: ConversationEntity[],
 ): string[] {
   const parts: string[] = [];
 
-  if (slots.day && missingSlots.has("day")) {
-    parts.push(`on ${slots.day}`);
+  if (fields.day && missingFields.has("day")) {
+    parts.push(`on ${fields.day}`);
   }
-  if (slots.time && missingSlots.has("time")) {
-    parts.push(`at ${formatTimeSpec(slots.time)}`);
+  if (fields.time && missingFields.has("time")) {
+    parts.push(`at ${formatTimeSpec(fields.time)}`);
   }
-  if (slots.duration != null && missingSlots.has("duration")) {
-    parts.push(formatDurationForPlanner(slots.duration));
+  if (fields.duration != null && missingFields.has("duration")) {
+    parts.push(formatDurationForPlanner(fields.duration));
   }
-  if (slots.target && missingSlots.has("target")) {
-    const name = resolveEntityName(slots.target, entityRegistry);
+  if (targetEntityId && missingFields.has("target")) {
+    const name = resolveEntityName(targetEntityId, entityRegistry);
     if (name) {
       parts.push(`for ${name}`);
     }
@@ -81,32 +93,33 @@ function buildSlotAugmentations(
   return parts;
 }
 
-function buildFromSlotsOnly(
-  slots: ResolvedSlots,
+function buildFromFieldsOnly(
+  fields: ScheduleFields,
+  targetEntityId: string | undefined,
   entityRegistry: ConversationEntity[],
 ): string | null {
   const parts: string[] = [];
 
-  const targetName = slots.target
-    ? resolveEntityName(slots.target, entityRegistry)
+  const targetName = targetEntityId
+    ? resolveEntityName(targetEntityId, entityRegistry)
     : null;
 
   if (targetName) {
     parts.push(`Schedule ${targetName}`);
-  } else if (slots.day || slots.time) {
+  } else if (fields.day || fields.time) {
     parts.push("Schedule");
   } else {
     return null;
   }
 
-  if (slots.day) {
-    parts.push(`on ${slots.day}`);
+  if (fields.day) {
+    parts.push(`on ${fields.day}`);
   }
-  if (slots.time) {
-    parts.push(`at ${formatTimeSpec(slots.time)}`);
+  if (fields.time) {
+    parts.push(`at ${formatTimeSpec(fields.time)}`);
   }
-  if (slots.duration != null) {
-    parts.push(formatDurationForPlanner(slots.duration));
+  if (fields.duration != null) {
+    parts.push(formatDurationForPlanner(fields.duration));
   }
 
   return parts.join(" ");

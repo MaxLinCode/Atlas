@@ -1,7 +1,6 @@
 import type {
   ConversationEntity,
   ResolvedFields,
-  ResolvedSlots,
   TurnClassifierOutput,
   TurnInterpretationType,
 } from "./index";
@@ -101,15 +100,18 @@ export function matchesProposalTarget(
   return resolvedEntityIds.includes(targetEntityId);
 }
 
+type ScheduleFields = NonNullable<ResolvedFields["scheduleFields"]>;
+
 export function deriveProposalCompatibility(
   turnType: TurnInterpretationType,
   resolvedFields: ResolvedFields,
   proposal: ProposalOption,
 ) {
-  const committedSlots = flattenScheduleFields(resolvedFields);
+  const committedSchedule = resolvedFields.scheduleFields ?? {};
+  const snapshotSchedule = proposal.data.fieldSnapshot.scheduleFields ?? {};
 
   if (turnType === "clarification_answer") {
-    return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
+    return deriveFieldsCompatibility(committedSchedule, snapshotSchedule);
   }
 
   const currentActionKind = turnType === "edit_request" ? "edit" : "plan";
@@ -124,24 +126,18 @@ export function deriveProposalCompatibility(
     };
   }
 
-  return deriveSlotsCompatibility(committedSlots, proposal.data.slotSnapshot);
+  return deriveFieldsCompatibility(committedSchedule, snapshotSchedule);
 }
 
-// Adapter: flatten grouped schedule fields back to ResolvedSlots for
-// comparison against proposal.data.slotSnapshot (entity shape not yet migrated).
-function flattenScheduleFields(fields: ResolvedFields): ResolvedSlots {
-  return fields.scheduleFields ?? {};
-}
-
-function deriveSlotsCompatibility(
-  committedSlots: ResolvedSlots,
-  snapshotSlots: ResolvedSlots,
+function deriveFieldsCompatibility(
+  committedFields: ScheduleFields,
+  snapshotFields: ScheduleFields,
 ) {
-  const scalarKeys = ["day", "duration", "target"] as const;
+  const scalarKeys = ["day", "duration"] as const;
 
   for (const key of scalarKeys) {
-    const committed = committedSlots[key];
-    const snapshot = snapshotSlots[key];
+    const committed = committedFields[key];
+    const snapshot = snapshotFields[key];
 
     if (
       committed !== undefined &&
@@ -150,19 +146,19 @@ function deriveSlotsCompatibility(
     ) {
       return {
         compatible: false,
-        reason: `Committed slot "${key}" differs from proposal snapshot, so it needs fresh consent.`,
+        reason: `Committed field "${key}" differs from proposal snapshot, so it needs fresh consent.`,
       };
     }
   }
 
   if (
-    committedSlots.time !== undefined &&
-    snapshotSlots.time !== undefined &&
-    !timeSpecsEqual(committedSlots.time, snapshotSlots.time)
+    committedFields.time !== undefined &&
+    snapshotFields.time !== undefined &&
+    !timeSpecsEqual(committedFields.time, snapshotFields.time)
   ) {
     return {
       compatible: false,
-      reason: `Committed slot "time" differs from proposal snapshot, so it needs fresh consent.`,
+      reason: `Committed field "time" differs from proposal snapshot, so it needs fresh consent.`,
     };
   }
 

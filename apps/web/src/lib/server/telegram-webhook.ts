@@ -453,9 +453,9 @@ export async function handleTelegramWebhook(
     );
 
     const synthesis = synthesizeMutationText({
-      resolvedSlots:
-        routedWithContext.policy.resolvedOperation?.resolvedFields
-          .scheduleFields ?? {},
+      resolvedFields:
+        routedWithContext.policy.resolvedOperation?.resolvedFields ?? {},
+      targetEntityId: routedWithContext.policy.targetEntityId,
       proposalEntity,
       entityRegistry,
     });
