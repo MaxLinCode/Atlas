@@ -1093,8 +1093,6 @@ export const turnClassifierResponseSchema = z.object({
 export const turnClassifierOutputSchema = z.object({
   turnType: turnInterpretationTypeSchema,
   confidence: z.number().min(0).max(1),
-  resolvedEntityIds: z.array(z.string().min(1)).default([]),
-  resolvedProposalId: z.string().min(1).optional(),
 });
 
 export const confirmedMutationRecoveryInputSchema = z.object({

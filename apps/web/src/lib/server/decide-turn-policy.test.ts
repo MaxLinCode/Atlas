@@ -24,19 +24,27 @@ const emptyCommit: CommitPolicyOutput = {
 };
 
 function input(
-  classification: Partial<TurnClassifierOutput>,
+  classification: Partial<TurnClassifierOutput> & {
+    resolvedEntityIds?: string[];
+    resolvedProposalId?: string;
+  },
   commitResult: Partial<CommitPolicyOutput>,
   routingContext: DecideTurnPolicyInput["routingContext"],
 ): DecideTurnPolicyInput {
+  const { resolvedEntityIds, resolvedProposalId, ...classificationRest } =
+    classification;
   return {
     classification: {
       turnType: "unknown",
       confidence: 0.5,
-      resolvedEntityIds: [],
-      ...classification,
+      ...classificationRest,
     },
     commitResult: { ...emptyCommit, ...commitResult },
     routingContext,
+    ...(resolvedEntityIds?.[0]
+      ? { targetEntityId: resolvedEntityIds[0] }
+      : {}),
+    ...(resolvedProposalId ? { resolvedProposalId } : {}),
   };
 }
 

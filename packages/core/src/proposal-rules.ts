@@ -1,7 +1,6 @@
 import type {
   ConversationEntity,
   ResolvedFields,
-  TurnClassifierOutput,
   TurnInterpretationType,
 } from "./index";
 import { timeSpecsEqual } from "./time-spec";
@@ -9,14 +8,14 @@ import { timeSpecsEqual } from "./time-spec";
 type ProposalOption = Extract<ConversationEntity, { kind: "proposal_option" }>;
 
 export type ConsentRequirementInput = {
-  classification: TurnClassifierOutput;
+  resolvedEntityIds: string[];
+  resolvedProposalId?: string;
   entityRegistry: ConversationEntity[];
   resolvedFields: ResolvedFields;
+  turnType: TurnInterpretationType;
 };
 
 export function deriveConsentRequirement(input: ConsentRequirementInput) {
-  const { classification } = input;
-
   const consentRequiringProposals = input.entityRegistry.filter(
     (entity): entity is ProposalOption =>
       entity.kind === "proposal_option" &&
@@ -27,9 +26,9 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
   // Match by resolvedProposalId if available, otherwise fall back to the
   // single active/presented proposal (covers modified-proposal case where
   // the guard cleared resolvedProposalId).
-  const matchedById = classification.resolvedProposalId
+  const matchedById = input.resolvedProposalId
     ? consentRequiringProposals.find(
-        (p) => p.id === classification.resolvedProposalId,
+        (p) => p.id === input.resolvedProposalId,
       )
     : undefined;
   const inferredProposal =
@@ -48,7 +47,7 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
   if (
     !matchesProposalTarget(
       activeProposal.data.targetEntityId ?? null,
-      classification.resolvedEntityIds,
+      input.resolvedEntityIds,
     )
   ) {
     return {
@@ -58,7 +57,7 @@ export function deriveConsentRequirement(input: ConsentRequirementInput) {
   }
 
   const compatibility = deriveProposalCompatibility(
-    classification.turnType,
+    input.turnType,
     input.resolvedFields,
     activeProposal,
   );

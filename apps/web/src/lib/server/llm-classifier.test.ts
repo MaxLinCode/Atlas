@@ -48,8 +48,6 @@ describe("classifyTurn", () => {
       expect(result).toMatchObject({
         turnType: "confirmation",
         confidence: 0.97,
-        resolvedEntityIds: ["task-1"],
-        resolvedProposalId: "proposal-1",
       });
     });
 
@@ -78,7 +76,7 @@ describe("classifyTurn", () => {
 
       expect(result).toMatchObject({
         turnType: "confirmation",
-        resolvedProposalId: "proposal-1",
+        confidence: 0.97,
       });
     });
 
@@ -242,7 +240,6 @@ describe("classifyTurn", () => {
       expect(result).toMatchObject({
         turnType: "edit_request",
         confidence: 0.88,
-        resolvedEntityIds: ["task-1"],
       });
     });
 
@@ -284,7 +281,7 @@ describe("classifyTurn", () => {
       });
     });
 
-    it("attaches resolvedProposalId when single proposal exists", async () => {
+    it("does not attach resolvedProposalId (entity resolution moved to router)", async () => {
       const client = mockClient({
         turnType: "clarification_answer",
         confidence: 0.88,
@@ -316,7 +313,11 @@ describe("classifyTurn", () => {
         client,
       );
 
-      expect(result.resolvedProposalId).toBe("proposal-1");
+      expect(result).toMatchObject({
+        turnType: "clarification_answer",
+        confidence: 0.88,
+      });
+      expect((result as Record<string, unknown>).resolvedProposalId).toBeUndefined();
     });
 
     it("clamps confidence to 0-1 range", async () => {
