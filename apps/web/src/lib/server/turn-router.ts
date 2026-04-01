@@ -1,5 +1,6 @@
 import {
   applyWriteCommit,
+  type ConversationDiscourseState,
   type ConversationEntity,
   type ConversationTurn,
   createEmptyDiscourseState,
@@ -10,6 +11,7 @@ import {
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
+  type TurnInterpretationType,
   type TurnPolicyAction,
   type TurnRoute,
   type TurnRoutingInput,
@@ -24,6 +26,50 @@ import { interpretWriteTurn } from "./interpret-write-turn";
 export type TurnRouterInput = TurnRoutingInput;
 export type TurnRouterResult = RoutedTurn;
 
+export type WriteTarget = {
+  targetEntityId?: string;
+  resolvedProposalId?: string;
+};
+
+export function resolveWriteTarget(
+  discourseState: ConversationDiscourseState | null,
+  entityRegistry: ConversationEntity[],
+  turnType: TurnInterpretationType,
+): WriteTarget {
+  const resolvedEntityIds = compactResolvedEntityIds([
+    discourseState?.currently_editable_entity_id ?? null,
+    discourseState?.focus_entity_id ?? null,
+  ]);
+
+  const activeProposals = entityRegistry.filter(
+    (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
+      e.kind === "proposal_option" &&
+      (e.status === "active" || e.status === "presented"),
+  );
+  const singleProposal =
+    activeProposals.length === 1 ? activeProposals[0] : null;
+
+  if (turnType === "confirmation" && singleProposal) {
+    const entityId =
+      singleProposal.data.targetEntityId ?? resolvedEntityIds[0];
+    return {
+      ...(entityId ? { targetEntityId: entityId } : {}),
+      resolvedProposalId: singleProposal.id,
+    };
+  }
+
+  return {
+    ...(resolvedEntityIds[0] ? { targetEntityId: resolvedEntityIds[0] } : {}),
+    ...(singleProposal ? { resolvedProposalId: singleProposal.id } : {}),
+  };
+}
+
+function compactResolvedEntityIds(entityIds: Array<string | null>) {
+  return Array.from(
+    new Set(entityIds.filter((id): id is string => Boolean(id))),
+  );
+}
+
 export async function routeMessageTurn(
   input: TurnRouterInput,
 ): Promise<TurnRouterResult> {
@@ -36,6 +82,13 @@ export async function routeMessageTurn(
     discourseState,
     entityRegistry,
   });
+
+  // Resolve entity targets from discourse state (not classifier)
+  const writeTarget = resolveWriteTarget(
+    discourseState,
+    entityRegistry,
+    classification.turnType,
+  );
 
   // Guard: reclassify compound confirmations (confirmation + modification payload)
   // so field extraction runs and the edit is not silently dropped.
@@ -54,8 +107,8 @@ export async function routeMessageTurn(
       classification = {
         ...classification,
         turnType: "clarification_answer",
-        resolvedProposalId: undefined,
       };
+      delete writeTarget.resolvedProposalId;
     }
   }
 
@@ -86,8 +139,8 @@ export async function routeMessageTurn(
     turnType: classification.turnType,
     interpretation: writeInterpretation,
     priorPendingWriteOperation: priorOperation,
-    ...(classification.resolvedEntityIds[0] !== undefined
-      ? { currentTargetEntityId: classification.resolvedEntityIds[0] }
+    ...(writeTarget.targetEntityId !== undefined
+      ? { currentTargetEntityId: writeTarget.targetEntityId }
       : {}),
   });
 
@@ -95,6 +148,7 @@ export async function routeMessageTurn(
     classification,
     commitResult,
     routingContext: input,
+    ...writeTarget,
   });
 
   // Assemble the resolved PendingWriteOperation for any turn that advances or maintains
@@ -111,7 +165,11 @@ export async function routeMessageTurn(
       : undefined;
 
   // Build interpretation for backward compatibility
-  const interpretation = buildInterpretation(classification, commitResult);
+  const interpretation = buildInterpretation(
+    classification,
+    commitResult,
+    writeTarget,
+  );
 
   return routedTurnSchema.parse({
     interpretation,
@@ -150,6 +208,7 @@ function deriveConversationContext(recentTurns: ConversationTurn[]): string {
 function buildInterpretation(
   classification: TurnClassifierOutput,
   commitResult: WriteCommitOutput,
+  writeTarget: WriteTarget,
 ): TurnInterpretation {
   const allMissingFields = unique([
     ...commitResult.missingFields,
@@ -161,12 +220,16 @@ function buildInterpretation(
     needsClarification: commitResult.needsClarification,
   });
 
+  const resolvedEntityIds = writeTarget.targetEntityId
+    ? [writeTarget.targetEntityId]
+    : [];
+
   return {
     turnType: classification.turnType,
     confidence: classification.confidence,
-    resolvedEntityIds: classification.resolvedEntityIds,
-    ...(classification.resolvedProposalId
-      ? { resolvedProposalId: classification.resolvedProposalId }
+    resolvedEntityIds,
+    ...(writeTarget.resolvedProposalId
+      ? { resolvedProposalId: writeTarget.resolvedProposalId }
       : {}),
     ambiguity,
     ...(ambiguity !== "none"

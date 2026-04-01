@@ -14,6 +14,8 @@ export type DecideTurnPolicyInput = {
   classification: TurnClassifierOutput;
   commitResult: CommitPolicyOutput;
   routingContext: TurnRoutingInput;
+  targetEntityId?: string;
+  resolvedProposalId?: string;
 };
 
 type StructuredWriteReadiness =
@@ -36,7 +38,7 @@ export function decideTurnPolicy(
   input: DecideTurnPolicyInput,
 ): TurnPolicyDecision {
   const { classification, commitResult } = input;
-  const targetEntityId = classification.resolvedEntityIds[0];
+  const targetEntityId = input.targetEntityId;
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingFields: commitResult.missingFields,
@@ -65,7 +67,7 @@ export function decideTurnPolicy(
       };
     case "confirmation": {
       const proposalId =
-        classification.resolvedProposalId ??
+        input.resolvedProposalId ??
         resolveSingleActiveProposalId(
           input.routingContext.entityRegistry ?? [],
         );
@@ -167,7 +169,7 @@ function deriveStructuredWriteReadiness(
     const alreadyConfirmed = entityRegistry.some(
       (e) =>
         e.kind === "proposal_option" &&
-        e.id === classification.resolvedProposalId &&
+        e.id === input.resolvedProposalId &&
         e.status === "confirmed",
     );
 
@@ -181,9 +183,13 @@ function deriveStructuredWriteReadiness(
   }
 
   const consentRequirement = deriveConsentRequirement({
-    classification,
+    resolvedEntityIds: input.targetEntityId ? [input.targetEntityId] : [],
+    ...(input.resolvedProposalId
+      ? { resolvedProposalId: input.resolvedProposalId }
+      : {}),
     entityRegistry: input.routingContext.entityRegistry ?? [],
     resolvedFields: commitResult.resolvedFields,
+    turnType: classification.turnType,
   });
 
   if (consentRequirement.required) {

@@ -9,7 +9,11 @@ function t(hour: number, minute: number): TimeSpec {
   return { kind: "absolute", hour, minute };
 }
 
-import { containsModificationPayload, routeMessageTurn } from "./turn-router";
+import {
+  containsModificationPayload,
+  resolveWriteTarget,
+  routeMessageTurn,
+} from "./turn-router";
 
 vi.mock("./llm-classifier", () => ({
   classifyTurn: vi.fn(),
@@ -52,7 +56,6 @@ function mockClassification(output: Partial<TurnClassifierOutput>) {
   const full: TurnClassifierOutput = {
     turnType: "unknown",
     confidence: 0.5,
-    resolvedEntityIds: [],
     ...output,
   };
   mockClassifyTurn.mockResolvedValue(full);
@@ -100,7 +103,6 @@ describe("turn router", () => {
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
-      resolvedProposalId: "proposal-1",
     });
 
     const result = await routeMessageTurn({
@@ -152,7 +154,6 @@ describe("turn router", () => {
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
-      resolvedProposalId: "proposal-1",
     });
 
     const result = await routeMessageTurn({
@@ -327,7 +328,6 @@ describe("turn router", () => {
     mockClassification({
       turnType: "confirmation",
       confidence: 0.95,
-      resolvedProposalId: "proposal-1",
     });
     mockInterpretWriteTurn.mockResolvedValueOnce({
       operationKind: "plan",
@@ -374,7 +374,6 @@ describe("turn router", () => {
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
-      resolvedProposalId: "proposal-1",
     });
 
     const result = await routeMessageTurn({
@@ -484,6 +483,126 @@ describe("turn router", () => {
     expect(
       result.policy.resolvedOperation?.resolvedFields.scheduleFields?.day,
     ).toBeUndefined();
+  });
+});
+
+describe("resolveWriteTarget", () => {
+  it("resolves entity IDs from discourse state with deduplication", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "task-1",
+        currently_editable_entity_id: "task-1",
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "editing",
+      },
+      [],
+      "edit_request",
+    );
+
+    expect(result).toEqual({ targetEntityId: "task-1" });
+  });
+
+  it("resolves proposal for confirmation with single active proposal", () => {
+    const result = resolveWriteTarget(
+      null,
+      [
+        {
+          id: "proposal-1",
+          conversationId: "c-1",
+          kind: "proposal_option",
+          label: "Schedule at 3pm",
+          status: "active",
+          createdAt: "2026-03-20T16:00:00.000Z",
+          updatedAt: "2026-03-20T16:00:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "Schedule at 3pm?",
+            confirmationRequired: true,
+            targetEntityId: "task-1",
+            fieldSnapshot: {},
+          },
+        },
+      ],
+      "confirmation",
+    );
+
+    expect(result).toEqual({
+      targetEntityId: "task-1",
+      resolvedProposalId: "proposal-1",
+    });
+  });
+
+  it("overrides discourse state entity with proposal targetEntityId for confirmation", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "task-2",
+        currently_editable_entity_id: "task-2",
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "editing",
+      },
+      [
+        {
+          id: "proposal-1",
+          conversationId: "c-1",
+          kind: "proposal_option",
+          label: "Move it",
+          status: "active",
+          createdAt: "2026-03-20T16:00:00.000Z",
+          updatedAt: "2026-03-20T16:00:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "Move to 3pm?",
+            confirmationRequired: true,
+            targetEntityId: "task-1",
+            fieldSnapshot: {},
+          },
+        },
+      ],
+      "confirmation",
+    );
+
+    expect(result).toEqual({
+      targetEntityId: "task-1",
+      resolvedProposalId: "proposal-1",
+    });
+  });
+
+  it("returns empty result with no discourse state and no proposals", () => {
+    const result = resolveWriteTarget(null, [], "planning_request");
+
+    expect(result).toEqual({});
+  });
+
+  it("attaches resolvedProposalId for non-confirmation turns when single proposal exists", () => {
+    const result = resolveWriteTarget(
+      null,
+      [
+        {
+          id: "proposal-1",
+          conversationId: "c-1",
+          kind: "proposal_option",
+          label: "Schedule at 3pm",
+          status: "active",
+          createdAt: "2026-03-20T16:00:00.000Z",
+          updatedAt: "2026-03-20T16:00:00.000Z",
+          data: {
+            route: "conversation_then_mutation",
+            replyText: "Schedule at 3pm?",
+            confirmationRequired: true,
+            fieldSnapshot: {},
+          },
+        },
+      ],
+      "clarification_answer",
+    );
+
+    expect(result).toEqual({
+      resolvedProposalId: "proposal-1",
+    });
   });
 });
 
