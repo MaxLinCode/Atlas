@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildEntityContext,
+  renderEntityContext,
   type ConversationEntity,
   type Task,
 } from "./index";
@@ -199,5 +200,38 @@ describe("entity context", () => {
       id: "clarification-1",
       prompt: "What time should I schedule it?",
     });
+  });
+
+  it("renders deterministic prompt text with explicit empty sections", () => {
+    const rendered = renderEntityContext({
+      knownEntities: [
+        {
+          id: "task-1",
+          label: "Gym session",
+          expectedType: "task",
+          state: "scheduled",
+        },
+      ],
+      focusedEntityId: "task-1",
+      activeProposal: null,
+      openClarification: null,
+    });
+
+    expect(rendered).toBe(
+      'Known entities:\n- "Gym session" (task, scheduled) [id: task-1]\n\nCurrently focused: "Gym session" [id: task-1]\n\nNo active proposal.\n\nNo open clarification.',
+    );
+  });
+
+  it("renders an explicit no-known-entities line when the context is empty", () => {
+    expect(
+      renderEntityContext({
+        knownEntities: [],
+        focusedEntityId: null,
+        activeProposal: null,
+        openClarification: null,
+      }),
+    ).toBe(
+      "Known entities:\nNo known entities.\n\nNo focused entity.\n\nNo active proposal.\n\nNo open clarification.",
+    );
   });
 });

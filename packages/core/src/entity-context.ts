@@ -170,3 +170,59 @@ export function buildEntityContext(
     openClarification,
   };
 }
+
+export function renderEntityContext(context: EntityContext): string {
+  const lines = ["Known entities:"];
+
+  if (context.knownEntities.length === 0) {
+    lines.push("No known entities.");
+  } else {
+    for (const entity of context.knownEntities) {
+      lines.push(
+        `- "${entity.label}" (${entity.expectedType}, ${entity.state}) [id: ${entity.id}]`,
+      );
+    }
+  }
+
+  lines.push("");
+
+  if (context.focusedEntityId) {
+    const focusedEntity = context.knownEntities.find(
+      (entity) => entity.id === context.focusedEntityId,
+    );
+    lines.push(
+      focusedEntity
+        ? `Currently focused: "${focusedEntity.label}" [id: ${focusedEntity.id}]`
+        : "No focused entity.",
+    );
+  } else {
+    lines.push("No focused entity.");
+  }
+
+  lines.push("");
+
+  if (context.activeProposal) {
+    const missingFields =
+      context.activeProposal.missingFields &&
+      context.activeProposal.missingFields.length > 0
+        ? ` - still needs: ${context.activeProposal.missingFields.join(", ")}`
+        : "";
+    lines.push(
+      `Active proposal: "${context.activeProposal.summary}"${missingFields} [id: ${context.activeProposal.id}]`,
+    );
+  } else {
+    lines.push("No active proposal.");
+  }
+
+  lines.push("");
+
+  if (context.openClarification) {
+    lines.push(
+      `Open clarification: "${context.openClarification.prompt}" [id: ${context.openClarification.id}]`,
+    );
+  } else {
+    lines.push("No open clarification.");
+  }
+
+  return lines.join("\n");
+}
