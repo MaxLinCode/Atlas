@@ -145,13 +145,23 @@ export async function routeMessageTurn(
         unresolvedFields: [],
       };
 
+  // LLM-resolved targetRef takes priority over discourse-state entity lookup
+  const effectiveTargetEntityId =
+    writeInterpretation.targetRef?.entityId ?? writeTarget.targetEntityId;
+  const effectiveWriteTarget: WriteTarget = {
+    ...writeTarget,
+    ...(effectiveTargetEntityId
+      ? { targetEntityId: effectiveTargetEntityId }
+      : {}),
+  };
+
   // Policy layer: commit + route
   const commitResult = applyWriteCommit({
     turnType: classification.turnType,
     interpretation: writeInterpretation,
     priorPendingWriteOperation: priorOperation,
-    ...(writeTarget.targetEntityId !== undefined
-      ? { currentTargetEntityId: writeTarget.targetEntityId }
+    ...(effectiveTargetEntityId !== undefined
+      ? { currentTargetEntityId: effectiveTargetEntityId }
       : {}),
   });
 
@@ -159,7 +169,7 @@ export async function routeMessageTurn(
     classification,
     commitResult,
     routingContext: input,
-    ...writeTarget,
+    ...effectiveWriteTarget,
   });
 
   // Assemble the resolved PendingWriteOperation for any turn that advances or maintains
@@ -179,7 +189,7 @@ export async function routeMessageTurn(
   const interpretation = buildInterpretation(
     classification,
     commitResult,
-    writeTarget,
+    effectiveWriteTarget,
   );
 
   return routedTurnSchema.parse({
