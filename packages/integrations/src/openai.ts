@@ -330,7 +330,7 @@ export async function interpretWriteTurnWithResponses(
         content: [
           {
             type: "input_text",
-            text: JSON.stringify(buildWriteInterpretationPromptContext(context)),
+            text: buildWriteInterpretationPromptContext(context),
           },
         ],
       },
@@ -413,12 +413,24 @@ function buildSlotExtractorPromptContext(context: SlotExtractorInput) {
 function buildWriteInterpretationPromptContext(
   context: WriteInterpretationInput,
 ) {
-  return {
-    currentTurnText: context.currentTurnText,
-    turnType: context.turnType,
-    priorPendingWriteOperation: context.priorPendingWriteOperation ?? null,
-    conversationContext: context.conversationContext ?? null,
-  };
+  return [
+    "Current turn text:",
+    context.currentTurnText,
+    "",
+    "Turn type:",
+    context.turnType,
+    "",
+    "Prior pending write operation:",
+    context.priorPendingWriteOperation
+      ? JSON.stringify(context.priorPendingWriteOperation, null, 2)
+      : "None",
+    "",
+    "Conversation context:",
+    context.conversationContext ?? "None",
+    "",
+    "Entity context:",
+    context.entityContext ?? "None",
+  ].join("\n");
 }
 
 function buildTurnRoutingPromptContext(context: TurnRoutingInput) {

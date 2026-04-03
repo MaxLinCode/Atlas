@@ -4,6 +4,7 @@ import {
 } from "@atlas/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { interpretWriteTurnSystemPrompt } from "./prompts/interpret-write-turn";
 import {
   buildGoogleCalendarOAuthUrl,
   createGoogleCalendarAdapter,
@@ -1151,6 +1152,69 @@ describe("integrations", () => {
       ),
     ).rejects.toThrow(
       "Telegram editMessageText failed with status 400: Bad Request: message can't be edited.",
+    );
+  });
+
+  it("includes entityContext in the write interpretation prompt payload and prompt instructions", async () => {
+    const parse = vi.fn(async () => ({
+      output_parsed: {
+        operationKind: "edit",
+        actionDomain: "task",
+        targetRef: {
+          entityId: "task-1",
+          description: null,
+          entityKind: null,
+        },
+        taskName: null,
+        fields: {
+          scheduleFields: null,
+          taskFields: null,
+        },
+        confidence: {},
+        unresolvedFields: [],
+      },
+    }));
+
+    await interpretWriteTurnWithResponses(
+      {
+        currentTurnText: "Move gym to 5",
+        turnType: "edit_request",
+        entityContext:
+          'Known entities:\n- "Gym" (task, scheduled) [id: task-1]',
+      },
+      {
+        responses: {
+          parse,
+        },
+      },
+    );
+
+    expect(parse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.arrayContaining([
+          expect.objectContaining({
+            role: "system",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining(
+                  "Resolve entity references only against the provided entityContext.",
+                ),
+              }),
+            ]),
+          }),
+          expect.objectContaining({
+            role: "user",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining("Entity context:\nKnown entities:"),
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    );
+    expect(interpretWriteTurnSystemPrompt).toContain(
+      "Never invent an entity ID",
     );
   });
 });
