@@ -1,13 +1,16 @@
 import {
   applyWriteCommit,
+  buildEntityContext,
   type ConversationDiscourseState,
   type ConversationEntity,
   type ConversationTurn,
   createEmptyDiscourseState,
   deriveAmbiguity,
   type PendingWriteOperation,
+  renderEntityContext,
   type RoutedTurn,
   routedTurnSchema,
+  taskSchema,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
@@ -75,6 +78,7 @@ export async function routeMessageTurn(
 ): Promise<TurnRouterResult> {
   const discourseState = input.discourseState ?? createEmptyDiscourseState();
   const entityRegistry = input.entityRegistry ?? [];
+  const tasks = (input.tasks ?? []).map((task) => taskSchema.parse(task));
 
   // Pipeline A: classify intent
   let classification = await classifyTurn({
@@ -122,6 +126,13 @@ export async function routeMessageTurn(
         turnType: classification.turnType,
         priorPendingWriteOperation: priorOperation,
         conversationContext: deriveConversationContext(input.recentTurns),
+        entityContext: renderEntityContext(
+          buildEntityContext({
+            entityRegistry,
+            tasks,
+            discourseState,
+          }),
+        ),
       })
     : {
         operationKind: priorOperation?.operationKind ?? "plan",
