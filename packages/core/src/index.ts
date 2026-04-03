@@ -13,6 +13,7 @@ import {
 export * from "./ambiguity";
 export * from "./commit-policy";
 export * from "./discourse-state";
+export * from "./entity-context";
 export * from "./proposal-rules";
 export * from "./slot-normalizer";
 export * from "./synthesize-mutation-text";
@@ -904,6 +905,7 @@ export const turnRoutingInputSchema = z.object({
   summaryText: z.string().nullable().optional(),
   entityRegistry: z.array(conversationEntitySchema).optional().default([]),
   discourseState: conversationDiscourseStateSchema.nullable().optional(),
+  tasks: z.array(taskSchema).optional().default([]),
 });
 
 export const turnRoutingOutputSchema = z.object({
@@ -1052,6 +1054,7 @@ export const writeInterpretationInputSchema = z.object({
   turnType: turnInterpretationTypeSchema,
   priorPendingWriteOperation: pendingWriteOperationSchema.optional(),
   conversationContext: z.string().optional(),
+  entityContext: z.string().optional(),
 });
 
 export const rawWriteInterpretationSchema = z.object({
