@@ -14,6 +14,7 @@ export const interpretWriteTurnSystemPrompt = buildPromptSpec([
       "Infer the operation kind expressed by the user, extract any concrete write fields, and report uncertainty per field path.",
       "Describe what the user said in this turn. Do not decide whether Atlas should execute, clarify, or ask for consent.",
       "Use priorPendingWriteOperation only for continuity when the turn is a follow-up clarification or continuation.",
+      "Use entityContext to resolve references to known entities when the user points at existing work, proposals, reminders, or schedule blocks.",
     ],
   },
   {
@@ -41,6 +42,16 @@ export const interpretWriteTurnSystemPrompt = buildPromptSpec([
       "For scheduleFields.duration use { minutes: number }.",
       "When a bare number like '5' appears in a scheduling context, prefer 17:00 with lower confidence.",
       "When the user is vague like 'whenever' or 'you pick', do not guess. Put the field path in unresolvedFields.",
+    ],
+  },
+  {
+    title: "Entity Resolution",
+    lines: [
+      "Resolve entity references only against the provided entityContext.",
+      "If you identify a known entity, copy its exact [id: ...] value into targetRef.entityId.",
+      "Never invent an entity ID that is not present in entityContext.",
+      "When the user is introducing new work rather than referring to a known entity, return targetRef: null and populate taskName if they named the work.",
+      "If the turn continues a prior write without naming a new entity, you may leave targetRef null.",
     ],
   },
   {
