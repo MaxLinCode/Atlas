@@ -436,6 +436,107 @@ describe("turn router", () => {
     expect(mockInterpretWriteTurn).not.toHaveBeenCalled();
   });
 
+  it("prefers the interpreter targetRef entity over discourse focus for write turns", async () => {
+    mockClassification({
+      turnType: "edit_request",
+      confidence: 0.96,
+    });
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "edit",
+      actionDomain: "task",
+      targetRef: { entityId: "task-2" },
+      taskName: null,
+      fields: { scheduleFields: { time: t(11, 0) } },
+      sourceText: "Move weekly review to 11",
+      confidence: {
+        "scheduleFields.time": 0.95,
+      },
+      unresolvedFields: [],
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "Move weekly review to 11",
+      normalizedText: "Move weekly review to 11",
+      recentTurns: [],
+      tasks: [
+        {
+          id: "task-2",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Weekly review",
+          lifecycleState: "pending_schedule",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium",
+        },
+      ],
+      discourseState: {
+        focus_entity_id: "task-1",
+        currently_editable_entity_id: "task-1",
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "editing",
+      },
+    });
+
+    expect(result.interpretation.resolvedEntityIds).toEqual(["task-2"]);
+    expect(result.policy.targetEntityId).toBe("task-2");
+    expect(result.policy.resolvedOperation?.targetRef).toEqual({
+      entityId: "task-2",
+    });
+  });
+
+  it("falls back to resolveWriteTarget when the interpreter does not resolve an entity", async () => {
+    mockClassification({
+      turnType: "edit_request",
+      confidence: 0.96,
+    });
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "edit",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: null,
+      fields: { scheduleFields: { time: t(11, 0) } },
+      sourceText: "Move it to 11",
+      confidence: {
+        "scheduleFields.time": 0.95,
+      },
+      unresolvedFields: [],
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "Move it to 11",
+      normalizedText: "Move it to 11",
+      recentTurns: [],
+      discourseState: {
+        focus_entity_id: "task-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "editing",
+      },
+    });
+
+    expect(result.interpretation.resolvedEntityIds).toEqual(["task-1"]);
+    expect(result.policy.targetEntityId).toBe("task-1");
+    expect(result.policy.resolvedOperation?.targetRef).toEqual({
+      entityId: "task-1",
+    });
+  });
+
   it("clears prior committed fields when the interpreted workflow changes", async () => {
     mockClassification({
       turnType: "planning_request",

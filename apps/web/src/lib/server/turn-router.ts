@@ -1,13 +1,16 @@
 import {
   applyWriteCommit,
+  buildEntityContext,
   type ConversationDiscourseState,
   type ConversationEntity,
   type ConversationTurn,
   createEmptyDiscourseState,
   deriveAmbiguity,
   type PendingWriteOperation,
+  renderEntityContext,
   type RoutedTurn,
   routedTurnSchema,
+  taskSchema,
   type TurnAmbiguity,
   type TurnClassifierOutput,
   type TurnInterpretation,
@@ -75,6 +78,7 @@ export async function routeMessageTurn(
 ): Promise<TurnRouterResult> {
   const discourseState = input.discourseState ?? createEmptyDiscourseState();
   const entityRegistry = input.entityRegistry ?? [];
+  const tasks = (input.tasks ?? []).map((task) => taskSchema.parse(task));
 
   // Pipeline A: classify intent
   let classification = await classifyTurn({
@@ -122,6 +126,13 @@ export async function routeMessageTurn(
         turnType: classification.turnType,
         priorPendingWriteOperation: priorOperation,
         conversationContext: deriveConversationContext(input.recentTurns),
+        entityContext: renderEntityContext(
+          buildEntityContext({
+            entityRegistry,
+            tasks,
+            discourseState,
+          }),
+        ),
       })
     : {
         operationKind: priorOperation?.operationKind ?? "plan",
@@ -134,13 +145,23 @@ export async function routeMessageTurn(
         unresolvedFields: [],
       };
 
+  // LLM-resolved targetRef takes priority over discourse-state entity lookup
+  const effectiveTargetEntityId =
+    writeInterpretation.targetRef?.entityId ?? writeTarget.targetEntityId;
+  const effectiveWriteTarget: WriteTarget = {
+    ...writeTarget,
+    ...(effectiveTargetEntityId
+      ? { targetEntityId: effectiveTargetEntityId }
+      : {}),
+  };
+
   // Policy layer: commit + route
   const commitResult = applyWriteCommit({
     turnType: classification.turnType,
     interpretation: writeInterpretation,
     priorPendingWriteOperation: priorOperation,
-    ...(writeTarget.targetEntityId !== undefined
-      ? { currentTargetEntityId: writeTarget.targetEntityId }
+    ...(effectiveTargetEntityId !== undefined
+      ? { currentTargetEntityId: effectiveTargetEntityId }
       : {}),
   });
 
@@ -148,7 +169,7 @@ export async function routeMessageTurn(
     classification,
     commitResult,
     routingContext: input,
-    ...writeTarget,
+    ...effectiveWriteTarget,
   });
 
   // Assemble the resolved PendingWriteOperation for any turn that advances or maintains
@@ -168,7 +189,7 @@ export async function routeMessageTurn(
   const interpretation = buildInterpretation(
     classification,
     commitResult,
-    writeTarget,
+    effectiveWriteTarget,
   );
 
   return routedTurnSchema.parse({
