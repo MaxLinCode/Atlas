@@ -74,7 +74,7 @@ export function normalizeRawWriteInterpretation(
     taskName: raw.taskName,
     fields: resolvedFields,
     sourceText,
-    confidence: raw.confidence,
+    confidence: {},
     unresolvedFields: raw.unresolvedFields,
   };
 }

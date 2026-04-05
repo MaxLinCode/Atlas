@@ -161,7 +161,7 @@ function commitScheduleFields(input: {
       continue;
     }
 
-    const fieldConfidence = interpretation.confidence[fieldPath] ?? 0;
+    const fieldConfidence = interpretation.confidence[fieldPath] ?? 1;
     if (fieldConfidence < CONFIDENCE_THRESHOLD) {
       needsClarification.push(fieldPath);
       continue;
@@ -217,7 +217,7 @@ function commitTaskFields(input: {
       continue;
     }
 
-    const fieldConfidence = interpretation.confidence[fieldPath] ?? 0;
+    const fieldConfidence = interpretation.confidence[fieldPath] ?? 1;
     if (fieldConfidence < CONFIDENCE_THRESHOLD) {
       needsClarification.push(fieldPath);
       continue;
