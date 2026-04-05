@@ -1066,7 +1066,6 @@ export const rawWriteInterpretationSchema = z.object({
     scheduleFields: rawScheduleFieldsSchema.nullable(),
     taskFields: rawTaskFieldsSchema.nullable(),
   }),
-  confidence: z.record(z.string(), z.number().min(0).max(1)),
   unresolvedFields: z.array(z.string().min(1)),
 });
 
