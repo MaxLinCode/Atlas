@@ -18,11 +18,19 @@ export async function interpretWriteTurn(
     const parsed = rawWriteInterpretationSchema.safeParse(raw);
 
     if (!parsed.success) {
+      console.error("interpret_write_turn_parse_failed", {
+        zodError: parsed.error.format(),
+        rawOutput: raw,
+      });
       return fallbackInterpretation(input);
     }
 
     return normalizeRawWriteInterpretation(parsed.data, input.currentTurnText);
-  } catch {
+  } catch (err) {
+    console.error("interpret_write_turn_error", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return fallbackInterpretation(input);
   }
 }
