@@ -118,9 +118,14 @@ export async function routeMessageTurn(
 
   // Pipeline B: interpret write intent for write-capable turns only.
   const priorOperation = discourseState.pending_write_operation;
-  const writeInterpretation = WRITE_INTERPRETING_TURN_TYPES.has(
+  const shouldInterpretWrite = WRITE_INTERPRETING_TURN_TYPES.has(
     classification.turnType,
-  )
+  );
+  console.info("interpret_write_turn_gate", {
+    turnType: classification.turnType,
+    shouldInterpretWrite,
+  });
+  const writeInterpretation = shouldInterpretWrite
     ? await interpretWriteTurn({
         currentTurnText: input.normalizedText,
         turnType: classification.turnType,
