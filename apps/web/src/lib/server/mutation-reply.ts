@@ -1,41 +1,41 @@
-import type { ProcessedInboxResult } from "@atlas/db";
+import type { MutationResult } from "@atlas/core";
 
 const DEFAULT_TIME_ZONE = "America/Los_Angeles";
 
 export function renderMutationReply(
-  result: ProcessedInboxResult,
+  result: MutationResult,
   options: { timeZone?: string } = {},
 ): string {
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
 
   switch (result.outcome) {
-    case "planned": {
+    case "created": {
       return renderScheduledItemsReply({
         fallback: "I saved it.",
-        tasks: result.createdTasks,
+        tasks: result.tasks,
         scheduleBlocks: result.scheduleBlocks,
         timeZone,
       });
     }
 
-    case "scheduled_existing_tasks": {
+    case "scheduled": {
       return renderScheduledItemsReply({
         fallback: "I scheduled it.",
-        tasks: result.scheduledTasks,
+        tasks: result.tasks,
         scheduleBlocks: result.scheduleBlocks,
         timeZone,
       });
     }
 
-    case "updated_schedule": {
+    case "rescheduled": {
       return `Moved it to ${formatScheduledTime(result.updatedBlock.startAt, timeZone)}.`;
     }
 
-    case "completed_tasks":
-      return renderCompletedTasksReply(result.completedTasks);
+    case "completed":
+      return renderCompletedTasksReply(result.tasks);
 
-    case "archived_tasks":
-      return renderArchivedTasksReply(result.archivedTasks);
+    case "archived":
+      return renderArchivedTasksReply(result.tasks);
 
     case "needs_clarification":
       return result.followUpMessage;
