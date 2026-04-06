@@ -7,15 +7,9 @@ describe("mutation reply renderer", () => {
     const reply = renderMutationReply({
       outcome: "created",
       tasks: [
-        {
-          id: "task-1",
-          title: "Review launch checklist",
-        },
-        {
-          id: "task-2",
-          title: "Send client update",
-        },
-      ],
+        { id: "task-1", title: "Review launch checklist" },
+        { id: "task-2", title: "Send client update" },
+      ] as any,
       scheduleBlocks: [
         {
           id: "event-a",
@@ -77,12 +71,7 @@ describe("mutation reply renderer", () => {
   it("renders completed task replies from persisted outcomes", () => {
     const reply = renderMutationReply({
       outcome: "completed",
-      tasks: [
-        {
-          id: "task-1",
-          title: "Journaling session",
-        },
-      ],
+      tasks: [{ id: "task-1", title: "Journaling session" }] as any,
       followUpMessage: "",
     });
 
@@ -106,12 +95,7 @@ describe("mutation reply renderer", () => {
   it("renders archived task replies from persisted outcomes", () => {
     const reply = renderMutationReply({
       outcome: "archived",
-      tasks: [
-        {
-          id: "task-1",
-          title: "Journaling session",
-        },
-      ],
+      tasks: [{ id: "task-1", title: "Journaling session" }] as any,
       followUpMessage: "",
     });
 
