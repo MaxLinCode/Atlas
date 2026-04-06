@@ -1224,6 +1224,8 @@ export type CapturedTaskInput = {
   urgency: Task["urgency"];
 };
 
+export { type MutationResult } from "./mutation-result";
+
 export const isConfirmedMutationRecovered = (
   output: ConfirmedMutationRecoveryOutput,
 ): output is ConfirmedMutationRecoveryOutput & {
