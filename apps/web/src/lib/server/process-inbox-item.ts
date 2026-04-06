@@ -1,5 +1,4 @@
 import {
-  buildBusyScheduleBlocks,
   buildCapturedTask,
   buildInboxPlanningContext,
   buildScheduleAdjustment,
@@ -20,11 +19,19 @@ import {
   type ProcessedInboxResult,
 } from "@atlas/db";
 import {
-  type CalendarBusyPeriod,
-  type CalendarEventSnapshot,
   type ExternalCalendarAdapter,
   planInboxItemWithResponses,
 } from "@atlas/integrations";
+import {
+  buildRuntimeScheduleBlocks,
+  buildScheduleBlockFromCalendarEvent,
+  filterBusyPeriodsAgainstAtlasTasks,
+  getCurrentCalendarEvent,
+  logCalendarWriteAttempt,
+  logCalendarWriteFailure,
+  logCalendarWriteSuccess,
+  scheduleTaskWithCalendar,
+} from "./calendar-scheduling";
 import { resolveGoogleCalendarAdapter } from "./google-calendar";
 import { renderMutationReply } from "./mutation-reply";
 
@@ -40,8 +47,6 @@ export type ProcessInboxItemDependencies = {
   planner?: typeof planInboxItemWithResponses;
   calendar?: ExternalCalendarAdapter | null;
 };
-
-const CALENDAR_BUSY_LOOKAHEAD_DAYS = 14;
 
 export async function processInboxItem(
   input: ProcessInboxItemRequest,
@@ -386,11 +391,14 @@ async function applyExistingTaskScheduleActions(
 
   const existingTaskIds: string[] = [];
   const scheduleBlocks: ScheduleBlock[] = [];
-  let existingBlocks = await buildRuntimeScheduleBlocks(
-    input.context,
-    input.calendar,
-    input.planningContext.referenceTime,
-  );
+  let existingBlocks = await buildRuntimeScheduleBlocks({
+    scheduleBlocks: input.context.scheduleBlocks,
+    tasks: input.context.tasks,
+    userId: input.context.inboxItem.userId,
+    googleCalendarConnection: input.context.googleCalendarConnection,
+    calendar: input.calendar!,
+    referenceTime: input.planningContext.referenceTime,
+  });
 
   for (const action of createScheduleActions) {
     const task = resolveTaskReference(input.planningContext, action.taskRef);
@@ -487,11 +495,14 @@ async function applyMoveAction(
     );
   }
 
-  const existingBlocks = await buildRuntimeScheduleBlocks(
-    input.context,
-    input.calendar,
-    input.planningContext.referenceTime,
-  );
+  const existingBlocks = await buildRuntimeScheduleBlocks({
+    scheduleBlocks: input.context.scheduleBlocks,
+    tasks: input.context.tasks,
+    userId: input.context.inboxItem.userId,
+    googleCalendarConnection: input.context.googleCalendarConnection,
+    calendar: input.calendar!,
+    referenceTime: input.planningContext.referenceTime,
+  });
   const adjustment = buildScheduleAdjustment({
     block,
     userProfile: input.context.userProfile,
@@ -671,11 +682,14 @@ async function buildScheduleBlocksForCreatedTasks(
   calendar: ExternalCalendarAdapter,
 ) {
   const blocks: ScheduleBlock[] = [];
-  let existingBlocks = await buildRuntimeScheduleBlocks(
-    context,
+  let existingBlocks = await buildRuntimeScheduleBlocks({
+    scheduleBlocks: context.scheduleBlocks,
+    tasks: context.tasks,
+    userId: context.inboxItem.userId,
+    googleCalendarConnection: context.googleCalendarConnection,
     calendar,
-    requireInboxReferenceTime(context.inboxItem),
-  );
+    referenceTime: requireInboxReferenceTime(context.inboxItem),
+  });
 
   for (const action of createScheduleActions) {
     if (action.taskRef.kind !== "created_task") {
@@ -731,221 +745,6 @@ async function buildScheduleBlocksForCreatedTasks(
   return {
     blocks,
   };
-}
-
-async function scheduleTaskWithCalendar(input: {
-  calendar: ExternalCalendarAdapter;
-  task: Task;
-  selectedCalendarId: string | null;
-  proposedBlock: ScheduleBlock;
-}): Promise<ScheduleBlock> {
-  const currentEvent = await getCurrentCalendarEvent(
-    input.calendar,
-    input.task,
-  );
-  const operation = currentEvent ? "update" : "create";
-  const externalCalendarId =
-    currentEvent?.externalCalendarId ??
-    input.task.externalCalendarId ??
-    input.proposedBlock.externalCalendarId ??
-    input.selectedCalendarId;
-
-  logCalendarWriteAttempt({
-    operation,
-    taskId: input.task.id,
-    userId: input.task.userId,
-    externalCalendarEventId: currentEvent?.externalCalendarEventId ?? null,
-    externalCalendarId,
-    startAt: input.proposedBlock.startAt,
-    endAt: input.proposedBlock.endAt,
-  });
-
-  try {
-    const calendarEvent = currentEvent
-      ? await input.calendar.updateEvent({
-          externalCalendarEventId: currentEvent.externalCalendarEventId,
-          externalCalendarId: currentEvent.externalCalendarId,
-          title: input.task.title,
-          startAt: input.proposedBlock.startAt,
-          endAt: input.proposedBlock.endAt,
-        })
-      : await input.calendar.createEvent({
-          title: input.task.title,
-          startAt: input.proposedBlock.startAt,
-          endAt: input.proposedBlock.endAt,
-          externalCalendarId,
-        });
-
-    logCalendarWriteSuccess({
-      operation,
-      taskId: input.task.id,
-      userId: input.task.userId,
-      externalCalendarEventId: calendarEvent.externalCalendarEventId,
-      externalCalendarId: calendarEvent.externalCalendarId,
-      startAt: calendarEvent.scheduledStartAt,
-      endAt: calendarEvent.scheduledEndAt,
-    });
-
-    return buildScheduleBlockFromCalendarEvent({
-      taskId: input.proposedBlock.taskId,
-      userId: input.task.userId,
-      reason: input.proposedBlock.reason,
-      rescheduleCount: input.proposedBlock.rescheduleCount,
-      confidence: input.proposedBlock.confidence,
-      calendarEvent,
-    });
-  } catch (error) {
-    logCalendarWriteFailure({
-      operation,
-      taskId: input.task.id,
-      userId: input.task.userId,
-      externalCalendarEventId: currentEvent?.externalCalendarEventId ?? null,
-      externalCalendarId,
-      startAt: input.proposedBlock.startAt,
-      endAt: input.proposedBlock.endAt,
-      error,
-    });
-    throw error;
-  }
-}
-
-async function buildRuntimeScheduleBlocks(
-  context: ApplyPlanningResultInput["context"],
-  calendar: ExternalCalendarAdapter,
-  referenceTime: string,
-) {
-  const existingBlocks = [...context.scheduleBlocks];
-
-  if (!context.googleCalendarConnection) {
-    return existingBlocks;
-  }
-
-  const busyWindowStart = new Date(referenceTime);
-  const busyWindowEnd = new Date(
-    busyWindowStart.getTime() +
-      CALENDAR_BUSY_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000,
-  );
-
-  const busyPeriods = await calendar.listBusyPeriods({
-    startAt: busyWindowStart.toISOString(),
-    endAt: busyWindowEnd.toISOString(),
-    externalCalendarId: context.googleCalendarConnection.selectedCalendarId,
-  });
-
-  return [
-    ...existingBlocks,
-    ...buildBusyScheduleBlocks({
-      userId: context.inboxItem.userId,
-      periods: filterBusyPeriodsAgainstAtlasTasks(context.tasks, busyPeriods),
-    }),
-  ];
-}
-
-function filterBusyPeriodsAgainstAtlasTasks(
-  tasks: Task[],
-  busyPeriods: CalendarBusyPeriod[],
-) {
-  return busyPeriods.filter(
-    (period) =>
-      !tasks.some(
-        (task) =>
-          task.externalCalendarId === period.externalCalendarId &&
-          task.scheduledStartAt === period.startAt &&
-          task.scheduledEndAt === period.endAt,
-      ),
-  );
-}
-
-async function getCurrentCalendarEvent(
-  calendar: ExternalCalendarAdapter,
-  task: Task,
-) {
-  if (
-    task.externalCalendarEventId === null ||
-    task.externalCalendarId === null
-  ) {
-    return null;
-  }
-
-  return calendar.getEvent({
-    externalCalendarEventId: task.externalCalendarEventId,
-    externalCalendarId: task.externalCalendarId,
-  });
-}
-
-function buildScheduleBlockFromCalendarEvent(input: {
-  taskId: string;
-  userId: string;
-  reason: string;
-  rescheduleCount: number;
-  confidence: number;
-  calendarEvent: CalendarEventSnapshot;
-}): ScheduleBlock {
-  return {
-    id: input.calendarEvent.externalCalendarEventId,
-    userId: input.userId,
-    taskId: input.taskId,
-    startAt: input.calendarEvent.scheduledStartAt,
-    endAt: input.calendarEvent.scheduledEndAt,
-    confidence: input.confidence,
-    reason: input.reason,
-    rescheduleCount: input.rescheduleCount,
-    externalCalendarId: input.calendarEvent.externalCalendarId,
-  };
-}
-
-function logCalendarWriteAttempt(input: {
-  operation: "create" | "update";
-  taskId: string;
-  userId: string;
-  externalCalendarEventId: string | null;
-  externalCalendarId: string | null;
-  startAt: string;
-  endAt: string;
-}) {
-  console.info("calendar_write_attempt", input);
-}
-
-function logCalendarWriteSuccess(input: {
-  operation: "create" | "update";
-  taskId: string;
-  userId: string;
-  externalCalendarEventId: string;
-  externalCalendarId: string;
-  startAt: string;
-  endAt: string;
-}) {
-  console.info("calendar_write_succeeded", input);
-}
-
-function logCalendarWriteFailure(input: {
-  operation: "create" | "update";
-  taskId: string;
-  userId: string;
-  externalCalendarEventId: string | null;
-  externalCalendarId: string | null;
-  startAt: string;
-  endAt: string;
-  error: unknown;
-}) {
-  console.error("calendar_write_failed", {
-    operation: input.operation,
-    taskId: input.taskId,
-    userId: input.userId,
-    externalCalendarEventId: input.externalCalendarEventId,
-    externalCalendarId: input.externalCalendarId,
-    startAt: input.startAt,
-    endAt: input.endAt,
-    error:
-      input.error instanceof Error
-        ? {
-            name: input.error.name,
-            message: input.error.message,
-          }
-        : {
-            message: String(input.error),
-          },
-  });
 }
 
 function saveClarification(input: ApplyPlanningResultInput, reason: string) {
