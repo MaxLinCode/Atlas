@@ -13,6 +13,7 @@ import {
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
   confirmedMutationRecoveryOutputSchema,
+  conversationProposalOptionEntitySchema,
   conversationStateSnapshotSchema,
   createEmptyDiscourseState,
   detectTaskCalendarDrift,
@@ -1198,5 +1199,46 @@ describe("core package", () => {
         chatType: "private",
       },
     });
+  });
+});
+
+describe("proposal entity operationKind", () => {
+  it("accepts operationKind in proposal data", () => {
+    const entity = {
+      id: "ent-1",
+      conversationId: "conv-1",
+      kind: "proposal_option",
+      label: "Schedule gym",
+      status: "active",
+      createdAt: "2026-04-05T10:00:00Z",
+      updatedAt: "2026-04-05T10:00:00Z",
+      data: {
+        route: "conversation_then_mutation",
+        replyText: "Schedule gym at 5pm?",
+        fieldSnapshot: {},
+        operationKind: "plan",
+      },
+    };
+    const parsed = conversationProposalOptionEntitySchema.parse(entity);
+    expect(parsed.data.operationKind).toBe("plan");
+  });
+
+  it("allows proposal entity without operationKind for backwards compat", () => {
+    const entity = {
+      id: "ent-1",
+      conversationId: "conv-1",
+      kind: "proposal_option",
+      label: "Schedule gym",
+      status: "active",
+      createdAt: "2026-04-05T10:00:00Z",
+      updatedAt: "2026-04-05T10:00:00Z",
+      data: {
+        route: "conversation_then_mutation",
+        replyText: "Schedule gym at 5pm?",
+        fieldSnapshot: {},
+      },
+    };
+    const parsed = conversationProposalOptionEntitySchema.parse(entity);
+    expect(parsed.data.operationKind).toBeUndefined();
   });
 });

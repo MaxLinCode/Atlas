@@ -9,6 +9,7 @@ import {
   type PendingClarification,
   resolvePendingClarification,
   resolveReference,
+  resolvedFieldsSchema,
   updateDiscourseStateFromAssistantTurn,
   updateDiscourseStateFromUserTurn,
 } from "./discourse-state";
@@ -281,5 +282,22 @@ describe("discourse state", () => {
     ]);
     expect(cleaned.focus_entity_id).toBeNull();
     expect(cleaned.currently_editable_entity_id).toBe("taxes");
+  });
+});
+
+describe("resolvedFieldsSchema urgency", () => {
+  it("accepts urgency in taskFields", () => {
+    const result = resolvedFieldsSchema.parse({
+      taskFields: { urgency: "high" },
+    });
+    expect(result.taskFields?.urgency).toBe("high");
+  });
+
+  it("rejects invalid urgency value", () => {
+    expect(() =>
+      resolvedFieldsSchema.parse({
+        taskFields: { urgency: "critical" },
+      }),
+    ).toThrow();
   });
 });

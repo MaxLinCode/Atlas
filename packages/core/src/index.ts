@@ -829,6 +829,7 @@ export const conversationProposalOptionEntitySchema =
       originatingTurnText: z.string().min(1).nullable().optional(),
       missingFields: z.array(z.string().min(1)).optional(),
       fieldSnapshot: resolvedFieldsSchema,
+      operationKind: operationKindSchema.optional(),
     }),
   });
 
