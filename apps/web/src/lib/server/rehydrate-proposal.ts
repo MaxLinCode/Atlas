@@ -14,9 +14,9 @@ export function rehydratePendingWriteFromProposal(
   return {
     operationKind: data.operationKind,
     targetRef: {
-      entityId: data.targetEntityId ?? null,
+      entityId: data.targetEntityId ?? undefined,
       description: proposal.label,
-      entityKind: null,
+      entityKind: undefined,
     },
     resolvedFields: data.fieldSnapshot,
     missingFields: data.missingFields ?? [],

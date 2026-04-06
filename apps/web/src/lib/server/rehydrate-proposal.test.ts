@@ -14,7 +14,7 @@ describe("rehydratePendingWriteFromProposal", () => {
       route: "conversation_then_mutation" as const,
       replyText: "Schedule gym at 5pm?",
       fieldSnapshot: {
-        scheduleFields: { day: "2026-04-06", time: { hour: 17, minute: 0 }, duration: 60 },
+        scheduleFields: { day: "2026-04-06", time: { kind: "absolute" as const, hour: 17, minute: 0 }, duration: 60 },
         taskFields: { priority: "medium" },
       },
       targetEntityId: "task-123",
@@ -31,7 +31,7 @@ describe("rehydratePendingWriteFromProposal", () => {
     expect(result!.targetRef).toEqual({
       entityId: "task-123",
       description: "Schedule gym",
-      entityKind: null,
+      entityKind: undefined,
     });
     expect(result!.resolvedFields).toEqual(baseProposal.data.fieldSnapshot);
     expect(result!.originatingText).toBe("schedule gym tomorrow at 5pm");
@@ -56,9 +56,9 @@ describe("rehydratePendingWriteFromProposal", () => {
 
     expect(result).not.toBeNull();
     expect(result!.targetRef).toEqual({
-      entityId: null,
+      entityId: undefined,
       description: "Schedule gym",
-      entityKind: null,
+      entityKind: undefined,
     });
   });
 

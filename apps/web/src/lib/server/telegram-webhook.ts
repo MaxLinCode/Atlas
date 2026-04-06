@@ -1,17 +1,14 @@
 import {
+  buildDefaultUserProfile,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
-  type ConfirmedMutationRecoveryInput,
-  type ConfirmedMutationRecoveryOutput,
   type ConversationEntity,
   type ConversationTurn,
   getAppBaseUrl,
   getConfig,
   getTelegramAllowedUserIds,
-  isConfirmedMutationRecovered,
   isTelegramUserAllowed,
   normalizeTelegramUpdate,
-  synthesizeMutationText,
   type Task,
   telegramUpdateSchema,
 } from "@atlas/core";
@@ -36,7 +33,6 @@ import {
   type ConversationMemorySummaryInput,
   type ConversationMemorySummaryOutput,
   editTelegramMessage,
-  recoverConfirmedMutationWithResponses,
   sendTelegramChatAction,
   sendTelegramMessage,
   summarizeConversationMemoryWithResponses,
@@ -58,10 +54,8 @@ import {
   hasActiveGoogleCalendarConnection,
 } from "./google-calendar";
 import { renderMutationReply } from "./mutation-reply";
-import {
-  type ProcessInboxItemDependencies,
-  processInboxItem,
-} from "./process-inbox-item";
+import { type ProcessInboxItemDependencies } from "./process-inbox-item";
+import { executePendingWrite } from "./execute-pending-write";
 import { sendTelegramMessageWithPersistence } from "./telegram-webhook-transport";
 import {
   doesPolicyAllowWrites,
@@ -94,9 +88,6 @@ type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
   conversationMemorySummarizer?: (
     input: ConversationMemorySummaryInput,
   ) => Promise<ConversationMemorySummaryOutput>;
-  confirmedMutationRecoverer?: (
-    input: ConfirmedMutationRecoveryInput,
-  ) => Promise<ConfirmedMutationRecoveryOutput>;
   googleCalendarConnectionChecker?: (userId: string) => Promise<boolean>;
   googleCalendarConnectLinkBuilder?: (input: {
     baseUrl: string;
@@ -440,69 +431,24 @@ export async function handleTelegramWebhook(
     };
   }
 
-  if (routedWithContext.policy.action === "recover_and_execute") {
+  if (
+    routedWithContext.policy.action === "execute_mutation"
+  ) {
     console.info("turn_execution_branch", {
       userId: normalizedMessage.user.telegramUserId,
       action: routedWithContext.policy.action,
     });
-    const entityRegistry = conversationState?.entityRegistry ?? [];
-    const proposalEntity = entityRegistry.find(
-      (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
-        e.kind === "proposal_option" &&
-        e.id === routedWithContext.policy.targetProposalId,
-    );
 
-    const synthesis = synthesizeMutationText({
-      resolvedFields:
-        routedWithContext.policy.resolvedOperation?.resolvedFields ?? {},
-      targetEntityId: routedWithContext.policy.targetEntityId,
-      proposalEntity,
-      entityRegistry,
-    });
-    console.info("turn_recovery_result", {
-      userId: normalizedMessage.user.telegramUserId,
-      action: routedWithContext.policy.action,
-      outcome: synthesis.outcome,
-    });
+    await dependencies.primeProcessingStore?.(ingress.inboxItem);
 
-    if (synthesis.outcome === "insufficient_data") {
-      const clarificationMessage =
-        "I need a bit more detail to proceed. What would you like me to schedule?";
-
-      if (conversationState) {
-        await appendConversationTurn(
-          {
-            userId: normalizedMessage.user.telegramUserId,
-            role: "assistant",
-            text: clarificationMessage,
-          },
-          dependencies.conversationStateStore,
-        );
-        await saveConversationState(
-          {
-            userId: normalizedMessage.user.telegramUserId,
-            ...deriveConversationReplyState({
-              snapshot: conversationState,
-              policy: {
-                action: "ask_clarification",
-                resolvedOperation: routedWithContext.policy.resolvedOperation,
-              },
-              interpretation: routedWithContext.interpretation,
-              reply: clarificationMessage,
-              userTurnText: normalizedMessage.rawText,
-              summaryText: conversationState.conversation.summaryText,
-            }),
-          },
-          dependencies.conversationStateStore,
-        );
-      }
-
+    const resolvedOperation = routedWithContext.policy.resolvedOperation;
+    if (!resolvedOperation) {
       return replyWithText(
         {
           userId: normalizedMessage.user.telegramUserId,
           chatId: normalizedMessage.chatId,
           inboxItemId: ingress.inboxItem.id,
-          text: clarificationMessage,
+          text: "I need a bit more detail to proceed.",
         },
         {
           editor: dependencies.editor ?? editTelegramMessage,
@@ -518,32 +464,29 @@ export async function handleTelegramWebhook(
             inboxItem: ingress.inboxItem,
             turnRoute: compatibilityTurnRoute,
             routing: routedWithContext,
-            processing: {
-              outcome: "conversation_replied",
-              reply: clarificationMessage,
-            },
+            processing: { outcome: "needs_clarification" },
           },
         },
       );
     }
 
-    await dependencies.primeProcessingStore?.(ingress.inboxItem);
-
-    const processing = await processInboxItem(
-      {
-        inboxItemId: ingress.inboxItem.id,
-        planningInboxTextOverride: {
-          text: synthesis.text,
-        },
-      },
-      {
-        ...(dependencies.store ? { store: dependencies.store } : {}),
-        ...(dependencies.planner ? { planner: dependencies.planner } : {}),
-        ...(dependencies.calendar !== undefined
-          ? { calendar: dependencies.calendar }
-          : {}),
-      },
+    const executionStore = dependencies.store ?? getDefaultInboxProcessingStore();
+    const executionContext = await executionStore.loadContext(
+      ingress.inboxItem.id,
     );
+
+    const processing = await executePendingWrite({
+      pendingWriteOperation: resolvedOperation,
+      userId: normalizedMessage.user.telegramUserId,
+      tasks: executionContext?.tasks ?? [],
+      scheduleBlocks: executionContext?.scheduleBlocks ?? [],
+      userProfile: executionContext?.userProfile ?? buildDefaultUserProfile(normalizedMessage.user.telegramUserId),
+      calendar: dependencies.calendar ?? null,
+      googleCalendarConnection:
+        executionContext?.googleCalendarConnection ?? null,
+      store: executionStore,
+    });
+
     const outboundDelivery = await finalizeFollowUpMessage(
       {
         userId: normalizedMessage.user.telegramUserId,
@@ -606,83 +549,9 @@ export async function handleTelegramWebhook(
     };
   }
 
-  console.info("turn_execution_branch", {
-    userId: normalizedMessage.user.telegramUserId,
-    action: routedWithContext.policy.action,
-  });
-  await dependencies.primeProcessingStore?.(ingress.inboxItem);
-
-  const processing = await processInboxItem(
-    {
-      inboxItemId: ingress.inboxItem.id,
-    },
-    {
-      ...(dependencies.store ? { store: dependencies.store } : {}),
-      ...(dependencies.planner ? { planner: dependencies.planner } : {}),
-      ...(dependencies.calendar !== undefined
-        ? { calendar: dependencies.calendar }
-        : {}),
-    },
-  );
-  const outboundDelivery = await finalizeFollowUpMessage(
-    {
-      userId: normalizedMessage.user.telegramUserId,
-      chatId: normalizedMessage.chatId,
-      inboxItemId: ingress.inboxItem.id,
-      text: processing.followUpMessage,
-    },
-    {
-      editor: dependencies.editor ?? editTelegramMessage,
-      placeholderDelivery,
-      sender: dependencies.sender ?? sendTelegramMessage,
-      ...(dependencies.deliveryStore
-        ? { deliveryStore: dependencies.deliveryStore }
-        : {}),
-    },
-  );
-  const followUpContinuation = await maybeSendOutstandingFollowUpContinuation(
-    {
-      userId: normalizedMessage.user.telegramUserId,
-      chatId: normalizedMessage.chatId,
-      inboxItemId: ingress.inboxItem.id,
-    },
-    dependencies,
-  );
-
-  if (conversationState) {
-    await appendConversationTurn(
-      {
-        userId: normalizedMessage.user.telegramUserId,
-        role: "assistant",
-        text: processing.followUpMessage,
-      },
-      dependencies.conversationStateStore,
-    );
-    await saveConversationState(
-      {
-        userId: normalizedMessage.user.telegramUserId,
-        ...deriveMutationState({
-          snapshot: conversationState,
-          processing,
-        }),
-      },
-      dependencies.conversationStateStore,
-    );
-  }
-
   return {
-    status: 200,
-    body: {
-      accepted: true,
-      idempotencyKey,
-      ingestion: normalizedMessage,
-      inboxItem: ingress.inboxItem,
-      turnRoute: compatibilityTurnRoute,
-      routing: routedWithContext,
-      processing,
-      outboundDelivery,
-      followUpContinuation,
-    },
+    status: 500,
+    body: { accepted: false, error: "unhandled_policy_action" },
   };
 }
 
@@ -1043,23 +912,11 @@ async function tryHandleFollowUpReply(
 
   const directStore = dependencies.store ?? getDefaultInboxProcessingStore();
   await dependencies.primeProcessingStore?.(input.inboxItem);
-  const plannerRun = {
-    userId: input.inboxItem.userId,
-    inboxItemId: input.inboxItem.id,
-    version: "followup-direct-v1",
-    modelInput: {
-      source: "followup_reply",
-      text: input.normalizedMessage.normalizedText,
-    },
-    modelOutput: parsed,
-    confidence: 1,
-  };
 
   if (parsed.kind === "done") {
     const processing = await directStore.saveTaskCompletionResult({
       inboxItemId: input.inboxItem.id,
       confidence: 1,
-      plannerRun,
       taskIds: selectedTasks.map((task) => task.id),
       followUpMessage: "",
     });
@@ -1089,7 +946,6 @@ async function tryHandleFollowUpReply(
     const processing = await directStore.saveTaskArchiveResult({
       inboxItemId: input.inboxItem.id,
       confidence: 1,
-      plannerRun,
       taskIds: selectedTasks.map((task) => task.id),
       followUpMessage: "",
     });
@@ -1119,7 +975,6 @@ async function tryHandleFollowUpReply(
     const processing = await directStore.saveNeedsClarificationResult({
       inboxItemId: input.inboxItem.id,
       confidence: 1,
-      plannerRun,
       reason: "Follow-up reply needs explicit reschedule or archive decision.",
       followUpMessage:
         "Noted. Tell me when you want to reschedule it, or say archive.",
@@ -1364,8 +1219,6 @@ function getCompatibilityTurnRouteFromPolicy(
       return "conversation_then_mutation" as const;
     case "execute_mutation":
       return "mutation" as const;
-    case "recover_and_execute":
-      return "confirmed_mutation" as const;
   }
 }
 
@@ -1376,11 +1229,6 @@ function buildImmediateRouteFeedback(
     case "execute_mutation":
       return {
         text: "Checking your schedule",
-        chatAction: "typing",
-      };
-    case "recover_and_execute":
-      return {
-        text: "Applying that",
         chatAction: "typing",
       };
     case "reply_only":
