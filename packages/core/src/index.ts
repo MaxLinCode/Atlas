@@ -817,14 +817,9 @@ export const conversationProposalOptionEntitySchema =
           "ask_clarification",
           "present_proposal",
           "execute_mutation",
-          "recover_and_execute",
         ])
         .optional(),
       targetEntityId: z.string().min(1).nullable().optional(),
-      mutationInputSource: z
-        .enum(["direct_user_turn", "recovered_proposal"])
-        .nullable()
-        .optional(),
       confirmationRequired: z.boolean().optional(),
       originatingTurnText: z.string().min(1).nullable().optional(),
       missingFields: z.array(z.string().min(1)).optional(),
@@ -942,7 +937,6 @@ export const turnPolicyActionSchema = z.enum([
   "ask_clarification",
   "present_proposal",
   "execute_mutation",
-  "recover_and_execute",
 ]);
 
 export const turnPolicyDecisionSchema = z.object({
@@ -953,9 +947,6 @@ export const turnPolicyDecisionSchema = z.object({
   useMutationPipeline: z.boolean(),
   targetEntityId: z.string().min(1).optional(),
   targetProposalId: z.string().min(1).optional(),
-  mutationInputSource: z
-    .enum(["direct_user_turn", "recovered_proposal"])
-    .optional(),
   clarificationSlots: z.array(z.string().min(1)).optional(),
   resolvedOperation: pendingWriteOperationSchema.optional(),
 });
