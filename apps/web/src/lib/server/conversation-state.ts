@@ -6,6 +6,7 @@ import {
   type ConversationStateSnapshot,
   createEmptyDiscourseState,
   getActivePendingClarifications,
+  type MutationResult,
   type PendingClarification,
   type PresentedItem,
   type ScheduleBlock,
@@ -15,7 +16,6 @@ import {
   type TurnPolicyDecision,
   updateDiscourseStateFromAssistantTurn,
 } from "@atlas/core";
-import type { ProcessedInboxResult } from "@atlas/db";
 
 type DeriveConversationReplyStateInput = {
   snapshot: ConversationStateSnapshot;
@@ -37,7 +37,7 @@ type DeriveConversationReplyStateInput = {
 
 type DeriveMutationStateInput = {
   snapshot: ConversationStateSnapshot;
-  processing: ProcessedInboxResult;
+  processing: MutationResult;
   occurredAt?: string;
 };
 
@@ -324,29 +324,24 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
   };
 }
 
-function selectTasks(processing: ProcessedInboxResult): Task[] {
+function selectTasks(processing: MutationResult): Task[] {
   switch (processing.outcome) {
-    case "planned":
-      return processing.createdTasks;
-    case "scheduled_existing_tasks":
-      return processing.scheduledTasks;
-    case "completed_tasks":
-      return processing.completedTasks;
-    case "archived_tasks":
-      return processing.archivedTasks;
+    case "created":
+    case "scheduled":
+    case "completed":
+    case "archived":
+      return processing.tasks;
     default:
       return [];
   }
 }
 
-function selectScheduleBlocks(
-  processing: ProcessedInboxResult,
-): ScheduleBlock[] {
+function selectScheduleBlocks(processing: MutationResult): ScheduleBlock[] {
   switch (processing.outcome) {
-    case "planned":
-    case "scheduled_existing_tasks":
+    case "created":
+    case "scheduled":
       return processing.scheduleBlocks;
-    case "updated_schedule":
+    case "rescheduled":
       return [processing.updatedBlock];
     default:
       return [];
@@ -355,7 +350,7 @@ function selectScheduleBlocks(
 
 function findTaskTitleForBlock(
   block: ScheduleBlock,
-  processing: ProcessedInboxResult,
+  processing: MutationResult,
 ) {
   return (
     selectTasks(processing).find((task) => task.id === block.taskId)?.title ??
