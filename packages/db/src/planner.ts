@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import type { InboxItem, ScheduleBlock, Task, UserProfile } from "@atlas/core";
+import type {
+  InboxItem,
+  MutationResult,
+  ScheduleBlock,
+  Task,
+  UserProfile,
+} from "@atlas/core";
 import {
   buildDefaultUserProfile,
   buildScheduleBlocksFromTasks,
@@ -38,102 +44,50 @@ export type DraftTaskForPersistence = {
   task: Omit<Task, "id">;
 };
 
-export type ProcessedInboxResult =
-  | {
-      outcome: "planned";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      createdTasks: Task[];
-      scheduleBlocks: ScheduleBlock[];
-      followUpMessage: string;
-    }
-  | {
-      outcome: "scheduled_existing_tasks";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      scheduledTasks: Task[];
-      scheduleBlocks: ScheduleBlock[];
-      followUpMessage: string;
-    }
-  | {
-      outcome: "updated_schedule";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      updatedBlock: ScheduleBlock;
-      followUpMessage: string;
-    }
-  | {
-      outcome: "completed_tasks";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      completedTasks: Task[];
-      followUpMessage: string;
-    }
-  | {
-      outcome: "archived_tasks";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      archivedTasks: Task[];
-      followUpMessage: string;
-    }
-  | {
-      outcome: "needs_clarification";
-      inboxItem: InboxItem;
-      plannerRun: PersistedPlannerRun;
-      reason: string;
-      followUpMessage: string;
-    };
-
 export interface InboxProcessingStore {
   loadContext(inboxItemId: string): Promise<InboxProcessingContext | null>;
   markInboxProcessing(inboxItemId: string): Promise<void>;
   saveTaskCaptureResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     tasks: DraftTaskForPersistence[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveScheduleAdjustmentResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     blockId: string;
     newStartAt: string;
     newEndAt: string;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveScheduleRequestResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveTaskCompletionResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveTaskArchiveResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveNeedsClarificationResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult>;
+  }): Promise<MutationResult>;
   saveFailedPlannerRun(input: {
     inboxItemId: string;
     plannerRun: Omit<PersistedPlannerRun, "id">;
@@ -252,12 +206,10 @@ class InMemoryInboxProcessingStore
   async saveTaskCaptureResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     tasks: DraftTaskForPersistence[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
-    const inboxItem = this.requireInboxItem(input.inboxItemId);
+  }): Promise<MutationResult> {
     const aliasToCreatedTaskId = new Map<string, string>();
     const createdTasks = input.tasks.map(({ alias, task }) => {
       const createdTask: StoredTask = {
@@ -294,19 +246,16 @@ class InMemoryInboxProcessingStore
       return persistedTask;
     });
 
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    const inboxItem = this.requireInboxItem(input.inboxItemId);
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "planned" as const,
       linkedTaskIds,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
-      outcome: "planned",
-      inboxItem: updatedInbox,
-      plannerRun,
-      createdTasks: persistedCreatedTasks,
+      outcome: "created",
+      tasks: persistedCreatedTasks,
       scheduleBlocks: remappedBlocks,
       followUpMessage: input.followUpMessage,
     };
@@ -315,13 +264,12 @@ class InMemoryInboxProcessingStore
   async saveScheduleAdjustmentResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     blockId: string;
     newStartAt: string;
     newEndAt: string;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const task = Array.from(this.tasksById.values()).find(
       (candidate) => candidate.externalCalendarEventId === input.blockId,
@@ -345,17 +293,13 @@ class InMemoryInboxProcessingStore
       this.tasksById.set(task.id, updatedTask);
     }
 
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "planned" as const,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
-      outcome: "updated_schedule",
-      inboxItem: updatedInbox,
-      plannerRun,
+      outcome: "rescheduled",
       updatedBlock: {
         id: input.blockId,
         userId: task?.userId ?? inboxItem.userId,
@@ -374,11 +318,10 @@ class InMemoryInboxProcessingStore
   async saveScheduleRequestResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const scheduledTasks: Task[] = [];
 
@@ -418,19 +361,15 @@ class InMemoryInboxProcessingStore
       }
     }
 
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "planned" as const,
       linkedTaskIds: input.taskIds,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
-      outcome: "scheduled_existing_tasks",
-      inboxItem: updatedInbox,
-      plannerRun,
-      scheduledTasks,
+      outcome: "scheduled",
+      tasks: scheduledTasks,
       scheduleBlocks: scheduledBlocks,
       followUpMessage: input.followUpMessage,
     };
@@ -439,22 +378,17 @@ class InMemoryInboxProcessingStore
   async saveNeedsClarificationResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "needs_clarification" as const,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
       outcome: "needs_clarification",
-      inboxItem: updatedInbox,
-      plannerRun,
       reason: input.reason,
       followUpMessage: input.followUpMessage,
     };
@@ -463,10 +397,9 @@ class InMemoryInboxProcessingStore
   async saveTaskCompletionResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const completedAt = new Date().toISOString();
     const completedTasks = input.taskIds.flatMap((taskId) => {
@@ -494,19 +427,15 @@ class InMemoryInboxProcessingStore
       return [updatedTask];
     });
 
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "planned" as const,
       linkedTaskIds: input.taskIds,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
-      outcome: "completed_tasks",
-      inboxItem: updatedInbox,
-      plannerRun,
-      completedTasks,
+      outcome: "completed",
+      tasks: completedTasks,
       followUpMessage: input.followUpMessage,
     };
   }
@@ -514,10 +443,9 @@ class InMemoryInboxProcessingStore
   async saveTaskArchiveResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     const inboxItem = this.requireInboxItem(input.inboxItemId);
     const archivedAt = new Date().toISOString();
     const archivedTasks = input.taskIds.flatMap((taskId) => {
@@ -545,19 +473,15 @@ class InMemoryInboxProcessingStore
       return [updatedTask];
     });
 
-    const plannerRun = this.insertPlannerRun(input.plannerRun);
-    const updatedInbox = {
+    this.inboxItemsById.set(input.inboxItemId, {
       ...inboxItem,
       processingStatus: "planned" as const,
       linkedTaskIds: input.taskIds,
-    };
-    this.inboxItemsById.set(input.inboxItemId, updatedInbox);
+    });
 
     return {
-      outcome: "archived_tasks",
-      inboxItem: updatedInbox,
-      plannerRun,
-      archivedTasks,
+      outcome: "archived",
+      tasks: archivedTasks,
       followUpMessage: input.followUpMessage,
     };
   }
@@ -845,13 +769,12 @@ export class PostgresInboxProcessingStore
   async saveTaskCaptureResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     tasks: DraftTaskForPersistence[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
-      const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
+      await this.loadInboxItemWithin(tx, input.inboxItemId);
       const aliasToCreatedTaskId = new Map<string, string>();
       const createdTasks = await tx
         .insert(tasks)
@@ -930,10 +853,6 @@ export class PostgresInboxProcessingStore
           .where(eq(tasks.id, createdTask.id));
       }
 
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
       const linkedTaskIds = createdTasks.map((task) => task.id);
 
       await tx
@@ -945,14 +864,8 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "planned" as const,
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "planned",
-          linkedTaskIds,
-        },
-        plannerRun,
-        createdTasks: createdTasks.map((task) => ({
+        outcome: "created" as const,
+        tasks: createdTasks.map((task) => ({
           id: task.id,
           userId: task.userId,
           sourceInboxItemId: task.sourceInboxItemId,
@@ -1002,15 +915,14 @@ export class PostgresInboxProcessingStore
   async saveScheduleAdjustmentResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     blockId: string;
     newStartAt: string;
     newEndAt: string;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
-      const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
+      await this.loadInboxItemWithin(tx, input.inboxItemId);
       const [existingTask] = await tx
         .select()
         .from(tasks)
@@ -1038,11 +950,6 @@ export class PostgresInboxProcessingStore
         throw new Error(`Schedule block ${input.blockId} not found.`);
       }
 
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
-
       await tx
         .update(inboxItems)
         .set({
@@ -1051,12 +958,7 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "updated_schedule",
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "planned",
-        },
-        plannerRun,
+        outcome: "rescheduled" as const,
         updatedBlock: {
           id: input.blockId,
           userId: existingTask.userId,
@@ -1076,11 +978,10 @@ export class PostgresInboxProcessingStore
   async saveScheduleRequestResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     scheduleBlocks: ScheduleBlock[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
       const existingTasksRows = input.taskIds.length
@@ -1155,11 +1056,6 @@ export class PostgresInboxProcessingStore
           createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
-
       await tx
         .update(inboxItems)
         .set({
@@ -1169,14 +1065,8 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "scheduled_existing_tasks",
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "planned",
-          linkedTaskIds: input.taskIds,
-        },
-        plannerRun,
-        scheduledTasks,
+        outcome: "scheduled" as const,
+        tasks: scheduledTasks,
         scheduleBlocks: input.scheduleBlocks,
         followUpMessage: input.followUpMessage,
       };
@@ -1186,16 +1076,11 @@ export class PostgresInboxProcessingStore
   async saveNeedsClarificationResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     reason: string;
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
-      const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
+      await this.loadInboxItemWithin(tx, input.inboxItemId);
 
       await tx
         .update(inboxItems)
@@ -1205,12 +1090,7 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "needs_clarification",
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "needs_clarification",
-        },
-        plannerRun,
+        outcome: "needs_clarification" as const,
         reason: input.reason,
         followUpMessage: input.followUpMessage,
       };
@@ -1220,10 +1100,9 @@ export class PostgresInboxProcessingStore
   async saveTaskCompletionResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
       const completedAt = new Date();
@@ -1281,11 +1160,6 @@ export class PostgresInboxProcessingStore
           createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
-
       await tx
         .update(inboxItems)
         .set({
@@ -1295,14 +1169,8 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "completed_tasks",
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "planned",
-          linkedTaskIds: input.taskIds,
-        },
-        plannerRun,
-        completedTasks,
+        outcome: "completed" as const,
+        tasks: completedTasks,
         followUpMessage: input.followUpMessage,
       };
     });
@@ -1311,10 +1179,9 @@ export class PostgresInboxProcessingStore
   async saveTaskArchiveResult(input: {
     inboxItemId: string;
     confidence: number;
-    plannerRun: Omit<PersistedPlannerRun, "id">;
     taskIds: string[];
     followUpMessage: string;
-  }): Promise<ProcessedInboxResult> {
+  }): Promise<MutationResult> {
     return this.db.transaction(async (tx) => {
       const inboxItem = await this.loadInboxItemWithin(tx, input.inboxItemId);
       const archivedAt = new Date();
@@ -1372,11 +1239,6 @@ export class PostgresInboxProcessingStore
           createdAt: task.createdAt.toISOString(),
         }));
 
-      const plannerRun = await this.insertPlannerRunWithin(
-        tx,
-        input.plannerRun,
-      );
-
       await tx
         .update(inboxItems)
         .set({
@@ -1386,14 +1248,8 @@ export class PostgresInboxProcessingStore
         .where(eq(inboxItems.id, input.inboxItemId));
 
       return {
-        outcome: "archived_tasks",
-        inboxItem: {
-          ...inboxItem,
-          processingStatus: "planned",
-          linkedTaskIds: input.taskIds,
-        },
-        plannerRun,
-        archivedTasks,
+        outcome: "archived" as const,
+        tasks: archivedTasks,
         followUpMessage: input.followUpMessage,
       };
     });
