@@ -230,7 +230,8 @@ function commitTaskFields(input: {
       continue;
     }
 
-    committedTaskFields[fieldKey] = value;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (committedTaskFields as any)[fieldKey] = value;
     committedFieldPaths.push(fieldPath);
   }
 }

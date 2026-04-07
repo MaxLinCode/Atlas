@@ -53,7 +53,6 @@ import {
   hasActiveGoogleCalendarConnection,
 } from "./google-calendar";
 import { renderMutationReply } from "./mutation-reply";
-import { type ProcessInboxItemDependencies } from "./process-inbox-item";
 import { executePendingWrite } from "./execute-pending-write";
 import { sendTelegramMessageWithPersistence } from "./telegram-webhook-transport";
 import {
@@ -69,7 +68,10 @@ type WebhookResult = {
   body: Record<string, unknown>;
 };
 
-type TelegramWebhookDependencies = ProcessInboxItemDependencies & {
+type TelegramWebhookDependencies = {
+  store?: import("@atlas/db").InboxProcessingStore;
+  calendar?: import("@atlas/integrations").ExternalCalendarAdapter | null;
+} & {
   ingressStore?: IncomingTelegramIngressStore;
   deliveryStore?: OutgoingTelegramDeliveryStore;
   primeProcessingStore?: (

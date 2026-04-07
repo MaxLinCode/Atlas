@@ -1,7 +1,6 @@
 import {
   buildCapturedTask,
   type ConversationEntity,
-  type InboxPlanningOutput,
   type PendingWriteOperation,
   type RoutedTurn,
   type TurnInterpretationType,
@@ -44,7 +43,6 @@ const {
   classifyTurnWithResponsesMock,
   summarizeConversationMemoryWithResponsesMock,
   respondToConversationTurnWithResponsesMock,
-  recoverConfirmedMutationWithResponsesMock,
   interpretWriteTurnWithResponsesMock,
 } = vi.hoisted(() => ({
   editTelegramMessageMock: vi.fn(),
@@ -54,7 +52,6 @@ const {
   classifyTurnWithResponsesMock: vi.fn(),
   summarizeConversationMemoryWithResponsesMock: vi.fn(),
   respondToConversationTurnWithResponsesMock: vi.fn(),
-  recoverConfirmedMutationWithResponsesMock: vi.fn(),
   interpretWriteTurnWithResponsesMock: vi.fn(),
 }));
 
@@ -66,41 +63,9 @@ vi.mock("@atlas/integrations", async () => {
   return {
     ...actual,
     getDefaultCalendarAdapter: () => actual.getDefaultCalendarAdapter(),
-    planInboxItemWithResponses: async () => ({
-      confidence: 0.9,
-      summary: "Captured and scheduled Review launch checklist.",
-      actions: [
-        {
-          type: "create_task",
-          alias: "new_task_1",
-          title: "Review launch checklist",
-          priority: "medium",
-          urgency: "medium",
-        },
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "created_task",
-            alias: "new_task_1",
-          },
-          scheduleConstraint: {
-            dayReference: null,
-            weekday: null,
-            weekOffset: null,
-            explicitHour: 9,
-            minute: 0,
-            preferredWindow: null,
-            sourceText: "default next slot",
-          },
-          reason: "Schedule the new task in the next slot.",
-        },
-      ],
-    }),
     editTelegramMessage: editTelegramMessageMock,
     respondToConversationTurnWithResponses:
       respondToConversationTurnWithResponsesMock,
-    recoverConfirmedMutationWithResponses:
-      recoverConfirmedMutationWithResponsesMock,
     classifyTurnWithResponses: classifyTurnWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
     interpretWriteTurnWithResponses: interpretWriteTurnWithResponsesMock,
@@ -349,7 +314,6 @@ beforeEach(async () => {
   classifyTurnWithResponsesMock.mockReset();
   summarizeConversationMemoryWithResponsesMock.mockReset();
   respondToConversationTurnWithResponsesMock.mockReset();
-  recoverConfirmedMutationWithResponsesMock.mockReset();
   interpretWriteTurnWithResponsesMock.mockReset();
   interpretWriteTurnWithResponsesMock.mockResolvedValue({
     operationKind: "plan",
@@ -384,12 +348,6 @@ beforeEach(async () => {
   });
   respondToConversationTurnWithResponsesMock.mockResolvedValue({
     reply: "Mocked conversation reply.",
-  });
-  recoverConfirmedMutationWithResponsesMock.mockResolvedValue({
-    outcome: "needs_clarification",
-    recoveredText: null,
-    reason: "Mocked recovery fallback.",
-    userReplyMessage: "Could you clarify what you want me to change?",
   });
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,
@@ -1147,38 +1105,6 @@ describe("telegram webhook route", () => {
       missingFields: ["time"],
       replyText: "Would you like me to schedule it at 3pm?",
     });
-    const planner = vi.fn(
-      async (): Promise<InboxPlanningOutput> => ({
-        confidence: 0.9,
-        summary: "Scheduled the dentist reminder for 3pm.",
-        actions: [
-          {
-            type: "create_task",
-            alias: "new_task_1",
-            title: "Dentist reminder",
-            priority: "medium",
-            urgency: "medium",
-          },
-          {
-            type: "create_schedule_block",
-            taskRef: {
-              kind: "created_task",
-              alias: "new_task_1",
-            },
-            scheduleConstraint: {
-              dayReference: null,
-              weekday: null,
-              weekOffset: null,
-              explicitHour: 15,
-              minute: 0,
-              preferredWindow: null,
-              sourceText: "at 3pm",
-            },
-            reason: "The user confirmed the proposed 3pm slot.",
-          },
-        ],
-      }),
-    );
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -1203,7 +1129,6 @@ describe("telegram webhook route", () => {
         store: getDefaultInboxProcessingStore(),
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary:
             "The assistant proposed a concrete 3pm schedule and the user is now confirming it.",
@@ -1237,7 +1162,6 @@ describe("telegram webhook route", () => {
         outcome: "created",
       },
     });
-    expect(planner).not.toHaveBeenCalled();
     expect(listTasksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
@@ -1259,30 +1183,6 @@ describe("telegram webhook route", () => {
       proposalId: "proposal-1",
       originatingTurnText: "Move the scheduled review block 1 hour later",
     });
-    const planner = vi.fn(
-      async (): Promise<InboxPlanningOutput> => ({
-        confidence: 0.88,
-        summary: "Moved the scheduled review block one hour later.",
-        actions: [
-          {
-            type: "move_schedule_block",
-            blockRef: {
-              alias: "schedule_block_1",
-            },
-            scheduleConstraint: {
-              dayReference: null,
-              weekday: null,
-              weekOffset: null,
-              explicitHour: 16,
-              minute: 0,
-              preferredWindow: null,
-              sourceText: "1 hour later",
-            },
-            reason: "The user asked to push it 1 hour later.",
-          },
-        ],
-      }),
-    );
 
     seedInboxItemForProcessingTests({
       id: "inbox-existing",
@@ -1344,7 +1244,6 @@ describe("telegram webhook route", () => {
         store: getDefaultInboxProcessingStore(),
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary:
             "The recent exchange includes one concrete proposal to move the existing review block one hour later.",
@@ -1379,13 +1278,11 @@ describe("telegram webhook route", () => {
         outcome: "needs_clarification",
       },
     });
-    expect(planner).not.toHaveBeenCalled();
   });
 
   it("completes a recent task from a confirmed mutation recovery turn", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    // Seed the task directly instead of relying on the old planner flow
     const store = getDefaultInboxProcessingStore();
     seedInboxItemForProcessingTests({
       id: "inbox-seed-journal",
@@ -1490,8 +1387,6 @@ describe("telegram webhook route", () => {
 
   it("falls back to clarification when confirmed mutation recovery is ambiguous", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
-    const planner = vi.fn();
-
     const response = await handleTelegramWebhook(
       buildRequest({
         update_id: 55,
@@ -1514,7 +1409,6 @@ describe("telegram webhook route", () => {
       {
         store: getDefaultInboxProcessingStore(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary: "There were multiple possible recent proposals.",
         }),
@@ -1536,7 +1430,6 @@ describe("telegram webhook route", () => {
         outcome: "needs_clarification",
       },
     });
-    expect(planner).not.toHaveBeenCalled();
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({

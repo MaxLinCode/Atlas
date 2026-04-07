@@ -16,7 +16,6 @@ export * from "./discourse-state";
 export * from "./entity-context";
 export * from "./proposal-rules";
 export * from "./slot-normalizer";
-export * from "./synthesize-mutation-text";
 export * from "./telegram";
 export * from "./time-spec";
 export * from "./write-commit";
@@ -611,153 +610,6 @@ export const scheduleConstraintResponseFormatSchema = z.object({
   sourceText: z.string().min(1),
 });
 
-export const taskReferenceSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("created_task"),
-    alias: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal("existing_task"),
-    alias: z.string().min(1),
-  }),
-]);
-
-export const scheduleBlockReferenceSchema = z.object({
-  alias: z.string().min(1),
-});
-
-export const createTaskPlanningActionSchema = z.object({
-  type: z.literal("create_task"),
-  alias: z.string().min(1),
-  title: z.string().min(1),
-  priority: z.enum(["low", "medium", "high"]),
-  urgency: z.enum(["low", "medium", "high"]),
-});
-
-export const createScheduleBlockPlanningActionSchema = z.object({
-  type: z.literal("create_schedule_block"),
-  taskRef: taskReferenceSchema,
-  scheduleConstraint: scheduleConstraintSchema.nullable(),
-  reason: z.string().min(1),
-});
-
-export const createScheduleBlockPlanningActionResponseFormatSchema = z.object({
-  type: z.literal("create_schedule_block"),
-  taskRef: z
-    .object({
-      kind: z.enum(["created_task", "existing_task"]),
-      alias: z.string().min(1),
-    })
-    .nullable()
-    .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
-    .nullable()
-    .optional(),
-  reason: z.string().min(1).nullable().optional(),
-});
-
-export const moveScheduleBlockPlanningActionSchema = z.object({
-  type: z.literal("move_schedule_block"),
-  blockRef: scheduleBlockReferenceSchema,
-  scheduleConstraint: scheduleConstraintSchema.nullable(),
-  reason: z.string().min(1),
-});
-
-export const moveScheduleBlockPlanningActionResponseFormatSchema = z.object({
-  type: z.literal("move_schedule_block"),
-  blockRef: z
-    .object({
-      alias: z.string().min(1),
-    })
-    .nullable()
-    .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
-    .nullable()
-    .optional(),
-  reason: z.string().min(1).nullable().optional(),
-});
-
-export const completeTaskPlanningActionSchema = z.object({
-  type: z.literal("complete_task"),
-  taskRef: taskReferenceSchema,
-  reason: z.string().min(1),
-});
-
-export const clarifyPlanningActionSchema = z.object({
-  type: z.literal("clarify"),
-  reason: z.string().min(1),
-});
-
-export const planningActionSchema = z.discriminatedUnion("type", [
-  createTaskPlanningActionSchema,
-  createScheduleBlockPlanningActionSchema,
-  moveScheduleBlockPlanningActionSchema,
-  completeTaskPlanningActionSchema,
-  clarifyPlanningActionSchema,
-]);
-
-export const planningActionResponseFormatSchema = z.object({
-  type: z.enum([
-    "create_task",
-    "create_schedule_block",
-    "move_schedule_block",
-    "complete_task",
-    "clarify",
-  ]),
-  alias: z.string().min(1).nullable().optional(),
-  title: z.string().min(1).nullable().optional(),
-  priority: z.enum(["low", "medium", "high"]).nullable().optional(),
-  urgency: z.enum(["low", "medium", "high"]).nullable().optional(),
-  taskRef: z
-    .object({
-      kind: z.enum(["created_task", "existing_task"]),
-      alias: z.string().min(1),
-    })
-    .nullable()
-    .optional(),
-  blockRef: z
-    .object({
-      alias: z.string().min(1),
-    })
-    .nullable()
-    .optional(),
-  scheduleConstraint: scheduleConstraintResponseFormatSchema
-    .nullable()
-    .optional(),
-  reason: z.string().min(1).nullable().optional(),
-});
-
-export const inboxPlanningOutputSchema = z.object({
-  confidence: z.number().min(0).max(1),
-  summary: z.string().min(1),
-  actions: z.array(planningActionSchema).min(1),
-});
-
-export const inboxPlanningResponseFormatSchema = z.object({
-  confidence: z.number().min(0).max(1),
-  summary: z.string().min(1),
-  actions: z.array(planningActionResponseFormatSchema).min(1),
-});
-
-export const inboxPlanningTaskContextSchema = z.object({
-  alias: z.string().min(1),
-  task: taskSchema,
-});
-
-export const inboxPlanningScheduleBlockContextSchema = z.object({
-  alias: z.string().min(1),
-  scheduleBlock: scheduleBlockSchema,
-  taskTitle: z.string().min(1),
-});
-
-export const inboxPlanningContextSchema = z.object({
-  inboxItem: inboxItemSchema,
-  userProfile: userProfileSchema,
-  tasks: z.array(inboxPlanningTaskContextSchema),
-  scheduleBlocks: z.array(inboxPlanningScheduleBlockContextSchema),
-  referenceTime: z.string().datetime(),
-});
-
 export const conversationTurnSchema = z.object({
   role: z.enum(["user", "assistant"]),
   text: z.string().min(1),
@@ -1090,40 +942,6 @@ export const turnClassifierOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
-export const confirmedMutationRecoveryInputSchema = z.object({
-  rawText: z.string().min(1),
-  normalizedText: z.string().min(1),
-  recentTurns: z.array(conversationTurnSchema),
-  memorySummary: z.string().nullable(),
-  entityRegistry: z.array(conversationEntitySchema).optional().default([]),
-  discourseState: conversationDiscourseStateSchema.nullable().optional(),
-});
-
-export const confirmedMutationRecoveryResponseFormatSchema = z.object({
-  outcome: z.enum(["recovered", "needs_clarification"]),
-  recoveredText: z.string().nullable(),
-  reason: z.string().min(1),
-  userReplyMessage: z.string().min(1),
-});
-
-export const confirmedMutationRecoveryOutputSchema = z.discriminatedUnion(
-  "outcome",
-  [
-    z.object({
-      outcome: z.literal("recovered"),
-      recoveredText: z.string().min(1),
-      reason: z.string().min(1),
-      userReplyMessage: z.string().min(1),
-    }),
-    z.object({
-      outcome: z.literal("needs_clarification"),
-      recoveredText: z.null(),
-      reason: z.string().min(1),
-      userReplyMessage: z.string().min(1),
-    }),
-  ],
-);
-
 export const scheduleProposalInputSchema = z.object({
   userId: z.string(),
   openTasks: z.array(taskSchema),
@@ -1160,13 +978,6 @@ export type TaskCandidate = z.infer<typeof taskCandidateSchema>;
 export type UserProfile = z.infer<typeof userProfileSchema>;
 export type CalendarBusyPeriod = z.infer<typeof calendarBusyPeriodSchema>;
 export type TaskCalendarDrift = z.infer<typeof taskCalendarDriftSchema>;
-export type PlanningAction = z.infer<typeof planningActionSchema>;
-export type InboxPlanningOutput = z.infer<typeof inboxPlanningOutputSchema>;
-export type TaskReference = z.infer<typeof taskReferenceSchema>;
-export type ScheduleBlockReference = z.infer<
-  typeof scheduleBlockReferenceSchema
->;
-export type InboxPlanningContext = z.infer<typeof inboxPlanningContextSchema>;
 export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
 export type ConversationEntity = z.infer<typeof conversationEntitySchema>;
 export type ConversationRecordMode = z.infer<
@@ -1202,12 +1013,6 @@ export type TurnClassifierResponse = z.infer<
   typeof turnClassifierResponseSchema
 >;
 export type TurnClassifierOutput = z.infer<typeof turnClassifierOutputSchema>;
-export type ConfirmedMutationRecoveryInput = z.input<
-  typeof confirmedMutationRecoveryInputSchema
->;
-export type ConfirmedMutationRecoveryOutput = z.infer<
-  typeof confirmedMutationRecoveryOutputSchema
->;
 export type CapturedTaskInput = {
   userId: string;
   inboxItemId: string;
@@ -1217,17 +1022,6 @@ export type CapturedTaskInput = {
 };
 
 export { type MutationResult } from "./mutation-result";
-
-export const isConfirmedMutationRecovered = (
-  output: ConfirmedMutationRecoveryOutput,
-): output is ConfirmedMutationRecoveryOutput & {
-  outcome: "recovered";
-  recoveredText: string;
-} => {
-  return (
-    output.outcome === "recovered" && typeof output.recoveredText === "string"
-  );
-};
 
 const DEFAULT_USER_PROFILE: Omit<UserProfile, "userId"> = {
   timezone: "America/Los_Angeles",
@@ -1275,57 +1069,6 @@ export function buildCapturedTask(
       priority: input.priority,
       urgency: input.urgency,
     });
-}
-
-export function buildInboxPlanningContext(input: {
-  inboxItem: InboxItem;
-  userProfile: UserProfile;
-  tasks: Task[];
-  scheduleBlocks?: ScheduleBlock[];
-  referenceTime: string;
-}): InboxPlanningContext {
-  const scheduleBlocks =
-    input.scheduleBlocks ?? buildScheduleBlocksFromTasks(input.tasks);
-
-  return inboxPlanningContextSchema.parse({
-    inboxItem: input.inboxItem,
-    userProfile: input.userProfile,
-    tasks: input.tasks.map((task, index) => ({
-      alias: `existing_task_${index + 1}`,
-      task,
-    })),
-    scheduleBlocks: scheduleBlocks.map((scheduleBlock, index) => ({
-      alias: `schedule_block_${index + 1}`,
-      scheduleBlock,
-      taskTitle:
-        input.tasks.find((task) => task.id === scheduleBlock.taskId)?.title ??
-        "Scheduled task",
-    })),
-    referenceTime: input.referenceTime,
-  });
-}
-
-export function resolveTaskReference(
-  context: InboxPlanningContext,
-  reference: TaskReference,
-  createdTaskAliases: Map<string, Task> = new Map(),
-) {
-  if (reference.kind === "created_task") {
-    return createdTaskAliases.get(reference.alias) ?? null;
-  }
-
-  const match = context.tasks.find((item) => item.alias === reference.alias);
-  return match?.task ?? null;
-}
-
-export function resolveScheduleBlockReference(
-  context: InboxPlanningContext,
-  reference: ScheduleBlockReference,
-) {
-  const match = context.scheduleBlocks.find(
-    (item) => item.alias === reference.alias,
-  );
-  return match?.scheduleBlock ?? null;
 }
 
 export async function buildScheduleProposal(input: ScheduleProposalInput) {
@@ -1718,10 +1461,6 @@ function hasBlockConflict(
     const blockEnd = Date.parse(block.endAt);
     return start.getTime() < blockEnd && end.getTime() > blockStart;
   });
-}
-
-export async function processInboxItem(input: unknown) {
-  return inboxPlanningOutputSchema.parse(input);
 }
 
 export async function replanTask(input: unknown) {
