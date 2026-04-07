@@ -1,10 +1,11 @@
-import type {
-  ConversationEntity,
-  InboxPlanningOutput,
-  PendingWriteOperation,
-  RoutedTurn,
-  TurnInterpretationType,
-  TurnPolicyAction,
+import {
+  buildCapturedTask,
+  type ConversationEntity,
+  type InboxPlanningOutput,
+  type PendingWriteOperation,
+  type RoutedTurn,
+  type TurnInterpretationType,
+  type TurnPolicyAction,
 } from "@atlas/core";
 
 import {
@@ -1030,6 +1031,20 @@ describe("telegram webhook route", () => {
           buildRoutedTurn({
             turnType: "planning_request",
             action: "execute_mutation",
+            resolvedOperation: {
+              operationKind: "plan",
+              targetRef: null,
+              resolvedFields: {
+                scheduleFields: {
+                  time: { kind: "absolute" as const, hour: 14, minute: 0 },
+                  day: "tomorrow",
+                  duration: 30,
+                },
+              },
+              missingFields: [],
+              originatingText: "Review launch checklist",
+              startedAt: new Date().toISOString(),
+            },
           }),
       },
     );
@@ -1039,14 +1054,13 @@ describe("telegram webhook route", () => {
       accepted: true,
       turnRoute: "mutation",
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
       outboundDelivery: {
         status: "edited",
         attempts: 1,
       },
     });
-    expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
@@ -1116,7 +1130,7 @@ describe("telegram webhook route", () => {
         },
       },
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
     });
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
@@ -1220,29 +1234,21 @@ describe("telegram webhook route", () => {
       accepted: true,
       turnRoute: "mutation",
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
     });
-    expect(planner).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inboxItem: expect.objectContaining({
-          rawText: "Schedule the dentist reminder at 3pm",
-          normalizedText: "Schedule the dentist reminder at 3pm",
-        }),
-      }),
-    );
-    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(planner).not.toHaveBeenCalled();
     expect(listTasksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
-      text: "Applying that",
+      text: "Checking your schedule",
     });
     expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         chatId: "999",
         messageId: 88,
-        text: expect.stringContaining("Scheduled 'Dentist reminder'"),
+        text: expect.stringContaining("Scheduled '"),
       }),
     );
   });
@@ -1379,61 +1385,37 @@ describe("telegram webhook route", () => {
   it("completes a recent task from a confirmed mutation recovery turn", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    await handleTelegramWebhook(
-      buildRequest({
-        update_id: 56,
-        message: {
-          message_id: 21,
-          date: 1_700_000_014,
-          text: "Journaling session",
-          chat: {
-            id: 999,
-            type: "private",
-          },
-          from: {
-            id: 123,
-            is_bot: false,
-            first_name: "Max",
-            last_name: "Lin",
-          },
+    // Seed the task directly instead of relying on the old planner flow
+    const store = getDefaultInboxProcessingStore();
+    seedInboxItemForProcessingTests({
+      id: "inbox-seed-journal",
+      userId: "123",
+      sourceEventId: "event-seed-journal",
+      rawText: "Journaling session",
+      normalizedText: "Journaling session",
+      processingStatus: "received",
+      linkedTaskIds: [],
+    });
+    await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-seed-journal",
+      confidence: 1,
+      tasks: [
+        {
+          alias: "new_task_1",
+          task: buildCapturedTask({
+            userId: "123",
+            inboxItemId: "inbox-seed-journal",
+            title: "Journaling session",
+            priority: "medium",
+            urgency: "medium",
+          }),
         },
-      }),
-      {
-        store: getDefaultInboxProcessingStore(),
-        calendar: getDefaultCalendarAdapter(),
-        primeProcessingStore: seedInboxItemForProcessingTests,
-        planner: async (): Promise<InboxPlanningOutput> => ({
-          confidence: 0.9,
-          summary: "Scheduled Journaling session.",
-          actions: [
-            {
-              type: "create_task",
-              alias: "new_task_1",
-              title: "Journaling session",
-              priority: "medium",
-              urgency: "medium",
-            },
-            {
-              type: "create_schedule_block",
-              taskRef: {
-                kind: "created_task",
-                alias: "new_task_1",
-              },
-              scheduleConstraint: {
-                dayReference: null,
-                weekday: null,
-                weekOffset: null,
-                explicitHour: 9,
-                minute: 0,
-                preferredWindow: null,
-                sourceText: "default next slot",
-              },
-              reason: "Schedule the new task in the next slot.",
-            },
-          ],
-        }),
-      },
-    );
+      ],
+      scheduleBlocks: [],
+      followUpMessage: "Captured Journaling session.",
+    });
+
+    const seededTaskId = listTasksForTests()[0]!.id;
     sendTelegramMessageMock.mockClear();
     editTelegramMessageMock.mockClear();
 
@@ -1462,23 +1444,9 @@ describe("telegram webhook route", () => {
         },
       }),
       {
-        store: getDefaultInboxProcessingStore(),
+        store,
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner: async (): Promise<InboxPlanningOutput> => ({
-          confidence: 0.92,
-          summary: "Marked the journaling session as done.",
-          actions: [
-            {
-              type: "complete_task",
-              taskRef: {
-                kind: "existing_task",
-                alias: "existing_task_1",
-              },
-              reason: "The user said the journaling session is done.",
-            },
-          ],
-        }),
         turnRouter: async () =>
           buildRoutedTurn({
             turnType: "confirmation",
@@ -1486,7 +1454,7 @@ describe("telegram webhook route", () => {
             resolvedProposalId: "proposal-1",
             resolvedOperation: {
               operationKind: "complete",
-              targetRef: { entityId: undefined, description: "Journaling session", entityKind: undefined },
+              targetRef: { entityId: seededTaskId, description: "Journaling session" },
               resolvedFields: {},
               missingFields: [],
               originatingText: "Mark journaling as done",
@@ -2177,7 +2145,7 @@ describe("telegram webhook route", () => {
     expect(response.body).toMatchObject({
       accepted: true,
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
       outboundDelivery: {
         status: "failed",

@@ -513,14 +513,16 @@ export async function handleTelegramWebhook(
     );
 
     if (conversationState) {
-      await appendConversationTurn(
-        {
-          userId: normalizedMessage.user.telegramUserId,
-          role: "assistant",
-          text: processing.followUpMessage,
-        },
-        dependencies.conversationStateStore,
-      );
+      if (processing.followUpMessage) {
+        await appendConversationTurn(
+          {
+            userId: normalizedMessage.user.telegramUserId,
+            role: "assistant",
+            text: processing.followUpMessage,
+          },
+          dependencies.conversationStateStore,
+        );
+      }
       await saveConversationState(
         {
           userId: normalizedMessage.user.telegramUserId,

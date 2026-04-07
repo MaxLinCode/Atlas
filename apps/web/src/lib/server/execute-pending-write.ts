@@ -192,12 +192,16 @@ async function executeCreateNew(
     }
   }
 
+  const followUpMessage = scheduleBlocks.length > 0
+    ? `Scheduled '${title}'.`
+    : `Captured '${title}'.`;
+
   return input.store.saveTaskCaptureResult({
     inboxItemId: input.inboxItemId,
     confidence: 1.0,
     tasks: [{ alias: "draft", task }],
     scheduleBlocks,
-    followUpMessage: "",
+    followUpMessage,
   });
 }
 
@@ -291,7 +295,7 @@ async function executeScheduleExisting(
     confidence: 1.0,
     taskIds: [targetTask.id],
     scheduleBlocks: [scheduled],
-    followUpMessage: "",
+    followUpMessage: `Scheduled '${targetTask.title}'.`,
   });
 }
 
@@ -391,7 +395,7 @@ async function executeReschedule(
     newStartAt: adjustment.newStartAt,
     newEndAt: adjustment.newEndAt,
     reason: adjustment.reason,
-    followUpMessage: "",
+    followUpMessage: `Rescheduled '${targetTask?.title ?? "task"}'.`,
   });
 }
 
@@ -437,7 +441,7 @@ async function executeComplete(
     inboxItemId: input.inboxItemId,
     confidence: 1.0,
     taskIds: [targetTaskId],
-    followUpMessage: "",
+    followUpMessage: `Marked '${targetTask.title}' as done.`,
   });
 }
 
@@ -483,6 +487,6 @@ async function executeArchive(
     inboxItemId: input.inboxItemId,
     confidence: 1.0,
     taskIds: [targetTaskId],
-    followUpMessage: "",
+    followUpMessage: `Archived '${targetTask.title}'.`,
   });
 }
