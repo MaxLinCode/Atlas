@@ -101,7 +101,6 @@ export function deriveConversationReplyState(
           replyText: input.reply,
           policyAction: input.policy.action,
           targetEntityId: input.interpretation.resolvedEntityIds[0] ?? null,
-          mutationInputSource: null,
           confirmationRequired: true,
           originatingTurnText: input.userTurnText,
           missingFields: input.policy.clarificationSlots,
