@@ -2,7 +2,6 @@ import {
   buildDefaultUserProfile,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
-  type ConversationEntity,
   type ConversationTurn,
   getAppBaseUrl,
   getConfig,
@@ -477,6 +476,7 @@ export async function handleTelegramWebhook(
 
     const processing = await executePendingWrite({
       pendingWriteOperation: resolvedOperation,
+      inboxItemId: ingress.inboxItem.id,
       userId: normalizedMessage.user.telegramUserId,
       tasks: executionContext?.tasks ?? [],
       scheduleBlocks: executionContext?.scheduleBlocks ?? [],

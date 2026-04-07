@@ -25,6 +25,7 @@ import {
 
 export type ExecutePendingWriteInput = {
   pendingWriteOperation: PendingWriteOperation;
+  inboxItemId: string;
   userId: string;
   tasks: Task[];
   scheduleBlocks: ScheduleBlock[];
@@ -137,7 +138,7 @@ async function executeCreateNew(
 
   const task = buildCapturedTask({
     userId: input.userId,
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     title,
     priority,
     urgency,
@@ -192,7 +193,7 @@ async function executeCreateNew(
   }
 
   return input.store.saveTaskCaptureResult({
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     confidence: 1.0,
     tasks: [{ alias: "draft", task }],
     scheduleBlocks,
@@ -286,7 +287,7 @@ async function executeScheduleExisting(
   });
 
   return input.store.saveScheduleRequestResult({
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     confidence: 1.0,
     taskIds: [targetTask.id],
     scheduleBlocks: [scheduled],
@@ -384,7 +385,7 @@ async function executeReschedule(
   });
 
   return input.store.saveScheduleAdjustmentResult({
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     confidence: 1.0,
     blockId: adjustment.blockId,
     newStartAt: adjustment.newStartAt,
@@ -433,7 +434,7 @@ async function executeComplete(
   }
 
   return input.store.saveTaskCompletionResult({
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     confidence: 1.0,
     taskIds: [targetTaskId],
     followUpMessage: "",
@@ -479,7 +480,7 @@ async function executeArchive(
   }
 
   return input.store.saveTaskArchiveResult({
-    inboxItemId: `exec:${op.startedAt}`,
+    inboxItemId: input.inboxItemId,
     confidence: 1.0,
     taskIds: [targetTaskId],
     followUpMessage: "",

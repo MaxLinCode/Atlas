@@ -28,6 +28,7 @@ function makeInput(
       originatingText: "schedule gym tomorrow at 5pm",
       startedAt: "2026-04-05T10:00:00.000Z",
     },
+    inboxItemId: "test-inbox-item",
     userId: "user-1",
     tasks: [] as any[],
     scheduleBlocks: [] as any[],
