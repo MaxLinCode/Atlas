@@ -1,10 +1,10 @@
-import type {
-  ConversationEntity,
-  InboxPlanningOutput,
-  PendingWriteOperation,
-  RoutedTurn,
-  TurnInterpretationType,
-  TurnPolicyAction,
+import {
+  buildCapturedTask,
+  type ConversationEntity,
+  type PendingWriteOperation,
+  type RoutedTurn,
+  type TurnInterpretationType,
+  type TurnPolicyAction,
 } from "@atlas/core";
 
 import {
@@ -43,7 +43,6 @@ const {
   classifyTurnWithResponsesMock,
   summarizeConversationMemoryWithResponsesMock,
   respondToConversationTurnWithResponsesMock,
-  recoverConfirmedMutationWithResponsesMock,
   interpretWriteTurnWithResponsesMock,
 } = vi.hoisted(() => ({
   editTelegramMessageMock: vi.fn(),
@@ -53,7 +52,6 @@ const {
   classifyTurnWithResponsesMock: vi.fn(),
   summarizeConversationMemoryWithResponsesMock: vi.fn(),
   respondToConversationTurnWithResponsesMock: vi.fn(),
-  recoverConfirmedMutationWithResponsesMock: vi.fn(),
   interpretWriteTurnWithResponsesMock: vi.fn(),
 }));
 
@@ -65,41 +63,9 @@ vi.mock("@atlas/integrations", async () => {
   return {
     ...actual,
     getDefaultCalendarAdapter: () => actual.getDefaultCalendarAdapter(),
-    planInboxItemWithResponses: async () => ({
-      confidence: 0.9,
-      summary: "Captured and scheduled Review launch checklist.",
-      actions: [
-        {
-          type: "create_task",
-          alias: "new_task_1",
-          title: "Review launch checklist",
-          priority: "medium",
-          urgency: "medium",
-        },
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "created_task",
-            alias: "new_task_1",
-          },
-          scheduleConstraint: {
-            dayReference: null,
-            weekday: null,
-            weekOffset: null,
-            explicitHour: 9,
-            minute: 0,
-            preferredWindow: null,
-            sourceText: "default next slot",
-          },
-          reason: "Schedule the new task in the next slot.",
-        },
-      ],
-    }),
     editTelegramMessage: editTelegramMessageMock,
     respondToConversationTurnWithResponses:
       respondToConversationTurnWithResponsesMock,
-    recoverConfirmedMutationWithResponses:
-      recoverConfirmedMutationWithResponsesMock,
     classifyTurnWithResponses: classifyTurnWithResponsesMock,
     routeTurnWithResponses: routeTurnWithResponsesMock,
     interpretWriteTurnWithResponses: interpretWriteTurnWithResponsesMock,
@@ -167,21 +133,12 @@ function buildRoutedTurn(input: {
     policy: {
       action: input.action,
       reason: "test",
-      requiresWrite:
-        input.action === "execute_mutation" ||
-        input.action === "recover_and_execute",
+      requiresWrite: input.action === "execute_mutation",
       requiresConfirmation: input.action === "present_proposal",
-      useMutationPipeline:
-        input.action === "execute_mutation" ||
-        input.action === "recover_and_execute",
+      useMutationPipeline: input.action === "execute_mutation",
       ...(input.resolvedProposalId
         ? { targetProposalId: input.resolvedProposalId }
         : {}),
-      ...(input.action === "recover_and_execute"
-        ? { mutationInputSource: "recovered_proposal" as const }
-        : input.action === "execute_mutation"
-          ? { mutationInputSource: "direct_user_turn" as const }
-          : {}),
       ...(input.clarificationSlots
         ? { clarificationSlots: input.clarificationSlots }
         : {}),
@@ -247,15 +204,6 @@ async function seedOutstandingFollowUpBundle(titles: string[]) {
   await store.saveTaskCaptureResult({
     inboxItemId: "inbox-seed",
     confidence: 1,
-    plannerRun: {
-      id: "ignored",
-      userId: "123",
-      inboxItemId: "inbox-seed",
-      version: "test",
-      modelInput: {},
-      modelOutput: {},
-      confidence: 1,
-    } as never,
     tasks: titles.map((title, index) => ({
       alias: `task_${index + 1}`,
       task: {
@@ -366,7 +314,6 @@ beforeEach(async () => {
   classifyTurnWithResponsesMock.mockReset();
   summarizeConversationMemoryWithResponsesMock.mockReset();
   respondToConversationTurnWithResponsesMock.mockReset();
-  recoverConfirmedMutationWithResponsesMock.mockReset();
   interpretWriteTurnWithResponsesMock.mockReset();
   interpretWriteTurnWithResponsesMock.mockResolvedValue({
     operationKind: "plan",
@@ -401,12 +348,6 @@ beforeEach(async () => {
   });
   respondToConversationTurnWithResponsesMock.mockResolvedValue({
     reply: "Mocked conversation reply.",
-  });
-  recoverConfirmedMutationWithResponsesMock.mockResolvedValue({
-    outcome: "needs_clarification",
-    recoveredText: null,
-    reason: "Mocked recovery fallback.",
-    userReplyMessage: "Could you clarify what you want me to change?",
   });
   sendTelegramMessageMock.mockResolvedValue({
     ok: true,
@@ -545,7 +486,7 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(
       (response.body as { processing: { outcome: string } }).processing.outcome,
-    ).toBe("completed_tasks");
+    ).toBe("completed");
     expect(listTasksForTests()[0]).toMatchObject({
       lifecycleState: "done",
     });
@@ -576,7 +517,7 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(
       (response.body as { processing: { outcome: string } }).processing.outcome,
-    ).toBe("completed_tasks");
+    ).toBe("completed");
     expect(
       listTasksForTests().find((task) => task.id === taskIds[0]),
     ).toMatchObject({
@@ -614,7 +555,7 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(
       (response.body as { processing: { outcome: string } }).processing.outcome,
-    ).toBe("archived_tasks");
+    ).toBe("archived");
     expect(
       listTasksForTests().find((task) => task.id === taskIds[0]),
     ).toMatchObject({
@@ -1048,6 +989,20 @@ describe("telegram webhook route", () => {
           buildRoutedTurn({
             turnType: "planning_request",
             action: "execute_mutation",
+            resolvedOperation: {
+              operationKind: "plan",
+              targetRef: null,
+              resolvedFields: {
+                scheduleFields: {
+                  time: { kind: "absolute" as const, hour: 14, minute: 0 },
+                  day: "tomorrow",
+                  duration: 30,
+                },
+              },
+              missingFields: [],
+              originatingText: "Review launch checklist",
+              startedAt: new Date().toISOString(),
+            },
           }),
       },
     );
@@ -1057,14 +1012,13 @@ describe("telegram webhook route", () => {
       accepted: true,
       turnRoute: "mutation",
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
       outboundDelivery: {
         status: "edited",
         attempts: 1,
       },
     });
-    expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(listScheduleBlocksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
@@ -1134,7 +1088,7 @@ describe("telegram webhook route", () => {
         },
       },
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
     });
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
@@ -1151,38 +1105,6 @@ describe("telegram webhook route", () => {
       missingFields: ["time"],
       replyText: "Would you like me to schedule it at 3pm?",
     });
-    const planner = vi.fn(
-      async (): Promise<InboxPlanningOutput> => ({
-        confidence: 0.9,
-        summary: "Scheduled the dentist reminder for 3pm.",
-        actions: [
-          {
-            type: "create_task",
-            alias: "new_task_1",
-            title: "Dentist reminder",
-            priority: "medium",
-            urgency: "medium",
-          },
-          {
-            type: "create_schedule_block",
-            taskRef: {
-              kind: "created_task",
-              alias: "new_task_1",
-            },
-            scheduleConstraint: {
-              dayReference: null,
-              weekday: null,
-              weekOffset: null,
-              explicitHour: 15,
-              minute: 0,
-              preferredWindow: null,
-              sourceText: "at 3pm",
-            },
-            reason: "The user confirmed the proposed 3pm slot.",
-          },
-        ],
-      }),
-    );
 
     const response = await handleTelegramWebhook(
       buildRequest({
@@ -1207,7 +1129,6 @@ describe("telegram webhook route", () => {
         store: getDefaultInboxProcessingStore(),
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary:
             "The assistant proposed a concrete 3pm schedule and the user is now confirming it.",
@@ -1215,7 +1136,7 @@ describe("telegram webhook route", () => {
         turnRouter: async () =>
           buildRoutedTurn({
             turnType: "confirmation",
-            action: "recover_and_execute",
+            action: "execute_mutation",
             resolvedProposalId: "proposal-1",
             resolvedOperation: {
               operationKind: "plan",
@@ -1236,31 +1157,22 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       accepted: true,
-      turnRoute: "confirmed_mutation",
+      turnRoute: "mutation",
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
     });
-    expect(planner).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inboxItem: expect.objectContaining({
-          rawText: "Schedule the dentist reminder at 3pm",
-          normalizedText: "Schedule the dentist reminder at 3pm",
-        }),
-      }),
-    );
-    expect(listPlannerRunsForTests()).toHaveLength(1);
     expect(listTasksForTests()).toHaveLength(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(1);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
-      text: "Applying that",
+      text: "Checking your schedule",
     });
     expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         chatId: "999",
         messageId: 88,
-        text: expect.stringContaining("Scheduled 'Dentist reminder'"),
+        text: expect.stringContaining("Scheduled '"),
       }),
     );
   });
@@ -1271,30 +1183,6 @@ describe("telegram webhook route", () => {
       proposalId: "proposal-1",
       originatingTurnText: "Move the scheduled review block 1 hour later",
     });
-    const planner = vi.fn(
-      async (): Promise<InboxPlanningOutput> => ({
-        confidence: 0.88,
-        summary: "Moved the scheduled review block one hour later.",
-        actions: [
-          {
-            type: "move_schedule_block",
-            blockRef: {
-              alias: "schedule_block_1",
-            },
-            scheduleConstraint: {
-              dayReference: null,
-              weekday: null,
-              weekOffset: null,
-              explicitHour: 16,
-              minute: 0,
-              preferredWindow: null,
-              sourceText: "1 hour later",
-            },
-            reason: "The user asked to push it 1 hour later.",
-          },
-        ],
-      }),
-    );
 
     seedInboxItemForProcessingTests({
       id: "inbox-existing",
@@ -1356,7 +1244,6 @@ describe("telegram webhook route", () => {
         store: getDefaultInboxProcessingStore(),
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary:
             "The recent exchange includes one concrete proposal to move the existing review block one hour later.",
@@ -1364,8 +1251,21 @@ describe("telegram webhook route", () => {
         turnRouter: async () =>
           buildRoutedTurn({
             turnType: "confirmation",
-            action: "recover_and_execute",
+            action: "execute_mutation",
             resolvedProposalId: "proposal-1",
+            resolvedOperation: {
+              operationKind: "reschedule",
+              targetRef: null,
+              resolvedFields: {
+                scheduleFields: {
+                  time: { kind: "absolute", hour: 16, minute: 0 },
+                },
+              },
+              missingFields: [],
+              originatingText:
+                "Move the scheduled review block 1 hour later",
+              startedAt: new Date().toISOString(),
+            },
           }),
       },
     );
@@ -1373,85 +1273,46 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       accepted: true,
-      turnRoute: "confirmed_mutation",
+      turnRoute: "mutation",
       processing: {
-        outcome: "updated_schedule",
+        outcome: "needs_clarification",
       },
     });
-    expect(planner).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inboxItem: expect.objectContaining({
-          rawText: "Move the scheduled review block 1 hour later",
-        }),
-      }),
-    );
-    expect(editTelegramMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chatId: "999",
-        messageId: 88,
-        text: expect.stringContaining("Moved it to"),
-      }),
-    );
   });
 
   it("completes a recent task from a confirmed mutation recovery turn", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
 
-    await handleTelegramWebhook(
-      buildRequest({
-        update_id: 56,
-        message: {
-          message_id: 21,
-          date: 1_700_000_014,
-          text: "Journaling session",
-          chat: {
-            id: 999,
-            type: "private",
-          },
-          from: {
-            id: 123,
-            is_bot: false,
-            first_name: "Max",
-            last_name: "Lin",
-          },
+    const store = getDefaultInboxProcessingStore();
+    seedInboxItemForProcessingTests({
+      id: "inbox-seed-journal",
+      userId: "123",
+      sourceEventId: "event-seed-journal",
+      rawText: "Journaling session",
+      normalizedText: "Journaling session",
+      processingStatus: "received",
+      linkedTaskIds: [],
+    });
+    await store.saveTaskCaptureResult({
+      inboxItemId: "inbox-seed-journal",
+      confidence: 1,
+      tasks: [
+        {
+          alias: "new_task_1",
+          task: buildCapturedTask({
+            userId: "123",
+            inboxItemId: "inbox-seed-journal",
+            title: "Journaling session",
+            priority: "medium",
+            urgency: "medium",
+          }),
         },
-      }),
-      {
-        store: getDefaultInboxProcessingStore(),
-        calendar: getDefaultCalendarAdapter(),
-        primeProcessingStore: seedInboxItemForProcessingTests,
-        planner: async (): Promise<InboxPlanningOutput> => ({
-          confidence: 0.9,
-          summary: "Scheduled Journaling session.",
-          actions: [
-            {
-              type: "create_task",
-              alias: "new_task_1",
-              title: "Journaling session",
-              priority: "medium",
-              urgency: "medium",
-            },
-            {
-              type: "create_schedule_block",
-              taskRef: {
-                kind: "created_task",
-                alias: "new_task_1",
-              },
-              scheduleConstraint: {
-                dayReference: null,
-                weekday: null,
-                weekOffset: null,
-                explicitHour: 9,
-                minute: 0,
-                preferredWindow: null,
-                sourceText: "default next slot",
-              },
-              reason: "Schedule the new task in the next slot.",
-            },
-          ],
-        }),
-      },
-    );
+      ],
+      scheduleBlocks: [],
+      followUpMessage: "Captured Journaling session.",
+    });
+
+    const seededTaskId = listTasksForTests()[0]!.id;
     sendTelegramMessageMock.mockClear();
     editTelegramMessageMock.mockClear();
 
@@ -1480,28 +1341,22 @@ describe("telegram webhook route", () => {
         },
       }),
       {
-        store: getDefaultInboxProcessingStore(),
+        store,
         calendar: getDefaultCalendarAdapter(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner: async (): Promise<InboxPlanningOutput> => ({
-          confidence: 0.92,
-          summary: "Marked the journaling session as done.",
-          actions: [
-            {
-              type: "complete_task",
-              taskRef: {
-                kind: "existing_task",
-                alias: "existing_task_1",
-              },
-              reason: "The user said the journaling session is done.",
-            },
-          ],
-        }),
         turnRouter: async () =>
           buildRoutedTurn({
             turnType: "confirmation",
-            action: "recover_and_execute",
+            action: "execute_mutation",
             resolvedProposalId: "proposal-1",
+            resolvedOperation: {
+              operationKind: "complete",
+              targetRef: { entityId: seededTaskId, description: "Journaling session" },
+              resolvedFields: {},
+              missingFields: [],
+              originatingText: "Mark journaling as done",
+              startedAt: new Date().toISOString(),
+            },
           }),
       },
     );
@@ -1509,9 +1364,9 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       accepted: true,
-      turnRoute: "confirmed_mutation",
+      turnRoute: "mutation",
       processing: {
-        outcome: "completed_tasks",
+        outcome: "completed",
       },
     });
     expect(listTasksForTests()).toHaveLength(1);
@@ -1532,8 +1387,6 @@ describe("telegram webhook route", () => {
 
   it("falls back to clarification when confirmed mutation recovery is ambiguous", async () => {
     process.env.TELEGRAM_WEBHOOK_SECRET = "test-webhook-secret";
-    const planner = vi.fn();
-
     const response = await handleTelegramWebhook(
       buildRequest({
         update_id: 55,
@@ -1556,15 +1409,15 @@ describe("telegram webhook route", () => {
       {
         store: getDefaultInboxProcessingStore(),
         primeProcessingStore: seedInboxItemForProcessingTests,
-        planner,
         conversationMemorySummarizer: async () => ({
           summary: "There were multiple possible recent proposals.",
         }),
         turnRouter: async () =>
           buildRoutedTurn({
             turnType: "confirmation",
-            action: "recover_and_execute",
+            action: "execute_mutation",
             resolvedProposalId: "proposal-nonexistent",
+            // No resolvedOperation — simulates ambiguous/failed proposal rehydration
           }),
       },
     );
@@ -1572,26 +1425,22 @@ describe("telegram webhook route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       accepted: true,
-      turnRoute: "confirmed_mutation",
+      turnRoute: "mutation",
       processing: {
-        outcome: "conversation_replied",
-        reply:
-          "I need a bit more detail to proceed. What would you like me to schedule?",
+        outcome: "needs_clarification",
       },
     });
-    expect(planner).not.toHaveBeenCalled();
-    expect(listPlannerRunsForTests()).toHaveLength(0);
     expect(listTasksForTests()).toHaveLength(0);
     expect(listScheduleBlocksForTests()).toHaveLength(0);
     expect(sendTelegramMessageMock).toHaveBeenCalledWith({
       chatId: "999",
-      text: "Applying that",
+      text: "Checking your schedule",
     });
     expect(editTelegramMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         chatId: "999",
         messageId: 88,
-        text: "I need a bit more detail to proceed. What would you like me to schedule?",
+        text: "I need a bit more detail to proceed.",
       }),
     );
   });
@@ -2189,7 +2038,7 @@ describe("telegram webhook route", () => {
     expect(response.body).toMatchObject({
       accepted: true,
       processing: {
-        outcome: "planned",
+        outcome: "created",
       },
       outboundDelivery: {
         status: "failed",

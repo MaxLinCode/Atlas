@@ -112,6 +112,7 @@ export const resolvedFieldsSchema = z.object({
   taskFields: z
     .object({
       priority: z.string().optional(),
+      urgency: z.enum(["low", "medium", "high"]).optional(),
       label: z.string().optional(),
       sourceText: z.string().optional(),
     })

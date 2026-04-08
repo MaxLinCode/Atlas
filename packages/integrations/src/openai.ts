@@ -1,17 +1,9 @@
 import {
-  type ConfirmedMutationRecoveryInput,
-  type ConfirmedMutationRecoveryOutput,
   type RawWriteInterpretation,
-  confirmedMutationRecoveryInputSchema,
-  confirmedMutationRecoveryOutputSchema,
-  confirmedMutationRecoveryResponseFormatSchema,
   conversationDiscourseStateSchema,
   conversationEntitySchema,
   conversationTurnSchema,
   getConfig,
-  inboxPlanningContextSchema,
-  inboxPlanningOutputSchema,
-  inboxPlanningResponseFormatSchema,
   type RawSlotExtraction,
   rawSlotExtractionSchema,
   rawWriteInterpretationSchema,
@@ -20,7 +12,6 @@ import {
   type TurnClassifierInput,
   type TurnClassifierResponse,
   type TurnRoutingInput,
-  type TurnRoutingOutput,
   turnClassifierInputSchema,
   turnClassifierResponseSchema,
   turnRoutingInputSchema,
@@ -31,11 +22,9 @@ import {
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
-import { confirmedMutationRecoverySystemPrompt } from "./prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "./prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "./prompts/conversation-response";
 import { interpretWriteTurnSystemPrompt } from "./prompts/interpret-write-turn";
-import { inboxPlannerSystemPrompt } from "./prompts/planner";
 import { slotExtractorSystemPrompt } from "./prompts/slot-extractor";
 import { turnClassifierSystemPrompt } from "./prompts/turn-classifier";
 import { turnRouterSystemPrompt } from "./prompts/turn-router";
@@ -98,49 +87,6 @@ export function createOpenAIClient() {
   return new OpenAI({ apiKey: config.OPENAI_API_KEY });
 }
 
-export async function planInboxItemWithResponses(
-  input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient(),
-) {
-  const context = inboxPlanningContextSchema.parse(input);
-
-  const response = await client.responses.parse({
-    model: DEFAULT_INBOX_PLANNER_MODEL,
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text: inboxPlannerSystemPrompt,
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: JSON.stringify(context),
-          },
-        ],
-      },
-    ],
-    text: {
-      format: zodTextFormat(
-        inboxPlanningResponseFormatSchema,
-        "atlas_inbox_planning_output",
-      ),
-    },
-  });
-
-  return inboxPlanningOutputSchema.parse(
-    normalizePlanningOutput(
-      inboxPlanningResponseFormatSchema.parse(response.output_parsed),
-    ),
-  );
-}
-
 export async function routeTurnWithResponses(
   input: unknown,
   client: OpenAIResponsesClient = createOpenAIClient(),
@@ -178,53 +124,6 @@ export async function routeTurnWithResponses(
   });
 
   return turnRoutingOutputSchema.parse(response.output_parsed);
-}
-
-export async function recoverConfirmedMutationWithResponses(
-  input: unknown,
-  client: OpenAIResponsesClient = createOpenAIClient(),
-) {
-  const context = confirmedMutationRecoveryInputSchema.parse(input);
-
-  const response = await client.responses.parse({
-    model: DEFAULT_CONFIRMED_MUTATION_RECOVERY_MODEL,
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text: confirmedMutationRecoverySystemPrompt,
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: JSON.stringify(
-              buildConfirmedMutationRecoveryPromptContext(context),
-            ),
-          },
-        ],
-      },
-    ],
-    text: {
-      format: zodTextFormat(
-        confirmedMutationRecoveryResponseFormatSchema,
-        "atlas_confirmed_mutation_recovery_output",
-      ),
-    },
-  });
-
-  return confirmedMutationRecoveryOutputSchema.parse(
-    normalizeConfirmedMutationRecoveryOutput(
-      confirmedMutationRecoveryResponseFormatSchema.parse(
-        response.output_parsed,
-      ),
-    ),
-  );
 }
 
 export async function respondToConversationTurnWithResponses(
@@ -443,18 +342,6 @@ function buildTurnRoutingPromptContext(context: TurnRoutingInput) {
   };
 }
 
-function buildConfirmedMutationRecoveryPromptContext(
-  context: ConfirmedMutationRecoveryInput,
-) {
-  return {
-    rawText: context.rawText,
-    recentTurns: context.recentTurns,
-    memorySummary: context.memorySummary,
-    entityRegistry: context.entityRegistry ?? [],
-    discourseState: context.discourseState ?? null,
-  };
-}
-
 function buildConversationResponsePromptContext(
   context: ConversationResponseInput,
 ) {
@@ -506,81 +393,4 @@ export async function summarizeConversationMemoryWithResponses(
   });
 
   return conversationMemorySummaryOutputSchema.parse(response.output_parsed);
-}
-
-function normalizeConfirmedMutationRecoveryOutput(
-  output: z.infer<typeof confirmedMutationRecoveryResponseFormatSchema>,
-) {
-  if (output.outcome === "needs_clarification") {
-    return {
-      ...output,
-      recoveredText: null,
-    };
-  }
-
-  if (!output.recoveredText?.trim()) {
-    return {
-      outcome: "needs_clarification" as const,
-      recoveredText: null,
-      reason: output.reason,
-      userReplyMessage: output.userReplyMessage,
-    };
-  }
-
-  return output;
-}
-
-function normalizePlanningOutput(
-  output: z.infer<typeof inboxPlanningResponseFormatSchema>,
-) {
-  return {
-    confidence: output.confidence,
-    summary: output.summary,
-    actions: output.actions.map((action) => {
-      switch (action.type) {
-        case "create_task":
-          if (!action.alias || !action.title) {
-            return {
-              type: "clarify" as const,
-              reason: "Model returned an incomplete create_task action.",
-            };
-          }
-
-          return {
-            type: action.type,
-            alias: action.alias,
-            title: action.title,
-            priority: action.priority ?? "medium",
-            urgency: action.urgency ?? "medium",
-          };
-        case "create_schedule_block":
-          return {
-            type: action.type,
-            taskRef: action.taskRef,
-            scheduleConstraint: action.scheduleConstraint ?? null,
-            reason: action.reason,
-          };
-        case "move_schedule_block":
-          return {
-            type: action.type,
-            blockRef: action.blockRef,
-            scheduleConstraint: action.scheduleConstraint ?? null,
-            reason: action.reason,
-          };
-        case "complete_task":
-          return {
-            type: action.type,
-            taskRef: action.taskRef,
-            reason: action.reason,
-          };
-        case "clarify":
-          return {
-            type: action.type,
-            reason: action.reason,
-          };
-        default:
-          throw new Error(`Unhandled action type`);
-      }
-    }),
-  };
 }

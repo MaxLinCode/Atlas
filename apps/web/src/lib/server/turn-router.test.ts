@@ -94,7 +94,6 @@ describe("turn router", () => {
       },
       policy: {
         action: "execute_mutation",
-        mutationInputSource: "direct_user_turn",
       },
     });
   });
@@ -130,7 +129,7 @@ describe("turn router", () => {
             confirmationRequired: true,
             originatingTurnText: "Schedule dentist reminder tomorrow",
             targetEntityId: null,
-            mutationInputSource: null,
+            operationKind: "plan" as const,
             fieldSnapshot: {},
           },
         },
@@ -143,14 +142,13 @@ describe("turn router", () => {
         resolvedProposalId: "proposal-1",
       },
       policy: {
-        action: "recover_and_execute",
+        action: "execute_mutation",
         targetProposalId: "proposal-1",
-        mutationInputSource: "recovered_proposal",
       },
     });
   });
 
-  it("routes punctuated consent on an active proposal to recover-and-execute", async () => {
+  it("routes punctuated consent on an active proposal to execute_mutation", async () => {
     mockClassification({
       turnType: "confirmation",
       confidence: 0.97,
@@ -181,7 +179,7 @@ describe("turn router", () => {
             confirmationRequired: true,
             originatingTurnText: "Schedule Malaysia trip planning at 5pm",
             targetEntityId: null,
-            mutationInputSource: null,
+            operationKind: "plan" as const,
             fieldSnapshot: {},
           },
         },
@@ -194,7 +192,7 @@ describe("turn router", () => {
         resolvedProposalId: "proposal-1",
       },
       policy: {
-        action: "recover_and_execute",
+        action: "execute_mutation",
         targetProposalId: "proposal-1",
       },
     });
@@ -358,7 +356,6 @@ describe("turn router", () => {
             replyText: "Would you like me to schedule it at 3pm?",
             confirmationRequired: true,
             targetEntityId: null,
-            mutationInputSource: null,
             fieldSnapshot: {},
           },
         },
@@ -367,7 +364,7 @@ describe("turn router", () => {
 
     expect(result.interpretation.turnType).toBe("clarification_answer");
     expect(result.interpretation.resolvedProposalId).toBeUndefined();
-    expect(result.policy.action).not.toBe("recover_and_execute");
+    expect(result.policy.action).toBe("ask_clarification");
   });
 
   it("does not reclassify pure confirmation with active proposal", async () => {
@@ -394,7 +391,7 @@ describe("turn router", () => {
             replyText: "Would you like me to schedule it at 3pm?",
             confirmationRequired: true,
             targetEntityId: null,
-            mutationInputSource: null,
+            operationKind: "plan" as const,
             fieldSnapshot: {},
           },
         },
@@ -402,7 +399,7 @@ describe("turn router", () => {
     });
 
     expect(result.interpretation.turnType).toBe("confirmation");
-    expect(result.policy.action).toBe("recover_and_execute");
+    expect(result.policy.action).toBe("execute_mutation");
   });
 
   it("does not reclassify compound confirmation without active proposal context", async () => {

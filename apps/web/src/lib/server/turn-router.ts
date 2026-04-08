@@ -293,7 +293,7 @@ function unique(values: string[]) {
 }
 
 export function doesPolicyAllowWrites(action: TurnPolicyAction) {
-  return action === "execute_mutation" || action === "recover_and_execute";
+  return action === "execute_mutation";
 }
 
 export function getConversationRouteForPolicy(

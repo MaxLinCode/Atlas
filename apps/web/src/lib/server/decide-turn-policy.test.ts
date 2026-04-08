@@ -140,7 +140,6 @@ describe("decideTurnPolicy", () => {
       ),
     ).toMatchObject({
       action: "execute_mutation",
-      mutationInputSource: "direct_user_turn",
     });
   });
 
@@ -172,6 +171,7 @@ describe("decideTurnPolicy", () => {
                   replyText: "Would you like me to schedule it at 3pm?",
                   confirmationRequired: true,
                   fieldSnapshot: {},
+                  operationKind: "plan",
                 },
               },
             ],
@@ -179,8 +179,9 @@ describe("decideTurnPolicy", () => {
         ),
       ),
     ).toMatchObject({
-      action: "recover_and_execute",
+      action: "execute_mutation",
       targetProposalId: "proposal-1",
+      resolvedOperation: expect.objectContaining({ operationKind: "plan" }),
     });
   });
 
@@ -212,6 +213,7 @@ describe("decideTurnPolicy", () => {
                   replyText: "Would you like me to schedule it at 3pm?",
                   confirmationRequired: true,
                   fieldSnapshot: {},
+                  operationKind: "plan",
                 },
               },
             ],
@@ -219,9 +221,9 @@ describe("decideTurnPolicy", () => {
         ),
       ),
     ).toMatchObject({
-      action: "recover_and_execute",
+      action: "execute_mutation",
       targetProposalId: "proposal-1",
-      mutationInputSource: "recovered_proposal",
+      resolvedOperation: expect.objectContaining({ operationKind: "plan" }),
     });
   });
 
@@ -255,6 +257,7 @@ describe("decideTurnPolicy", () => {
                   confirmationRequired: true,
                   targetEntityId: "task-1",
                   fieldSnapshot: {},
+                  operationKind: "plan",
                 },
               },
             ],
@@ -262,9 +265,9 @@ describe("decideTurnPolicy", () => {
         ),
       ),
     ).toMatchObject({
-      action: "recover_and_execute",
+      action: "execute_mutation",
       targetProposalId: "proposal-1",
-      mutationInputSource: "recovered_proposal",
+      resolvedOperation: expect.objectContaining({ operationKind: "plan" }),
     });
   });
 
@@ -460,7 +463,6 @@ describe("decideTurnPolicy", () => {
       ),
     ).toMatchObject({
       action: "execute_mutation",
-      mutationInputSource: "direct_user_turn",
     });
   });
 
@@ -548,7 +550,6 @@ describe("decideTurnPolicy", () => {
       ),
     ).toMatchObject({
       action: "execute_mutation",
-      mutationInputSource: "direct_user_turn",
     });
   });
 

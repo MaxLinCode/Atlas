@@ -340,14 +340,6 @@ describe("db package", () => {
     await store.saveTaskCaptureResult({
       inboxItemId: "inbox-1",
       confidence: 1,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-1",
-        version: "test",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 1,
-      },
       tasks: [
         {
           alias: "task_1",
@@ -566,14 +558,6 @@ describe("db package", () => {
     const result = await store.saveTaskCaptureResult({
       inboxItemId: "inbox-1",
       confidence: 0.88,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-1",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.88,
-      },
       tasks: [
         {
           alias: "new_task_1",
@@ -615,8 +599,7 @@ describe("db package", () => {
       followUpMessage: "Captured and scheduled Review launch checklist.",
     });
 
-    expect(result.outcome).toBe("planned");
-    expect(listPlannerRunsForTests()).toHaveLength(1);
+    expect(result.outcome).toBe("created");
     expect(listTasksForTests()[0]).toMatchObject({
       lifecycleState: "scheduled",
       externalCalendarEventId: "event-1",
@@ -657,14 +640,6 @@ describe("db package", () => {
     await store.saveTaskCaptureResult({
       inboxItemId: "inbox-create",
       confidence: 0.88,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-create",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.88,
-      },
       tasks: [
         {
           alias: "new_task_1",
@@ -708,14 +683,6 @@ describe("db package", () => {
     await store.saveScheduleRequestResult({
       inboxItemId: "inbox-first-schedule",
       confidence: 0.9,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-first-schedule",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.9,
-      },
       taskIds: [createdTask!.id],
       scheduleBlocks: [
         {
@@ -756,14 +723,6 @@ describe("db package", () => {
     await store.saveTaskCaptureResult({
       inboxItemId: "inbox-create-scheduled",
       confidence: 0.88,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-create-scheduled",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.88,
-      },
       tasks: [
         {
           alias: "new_task_1",
@@ -819,14 +778,6 @@ describe("db package", () => {
     await store.saveScheduleRequestResult({
       inboxItemId: "inbox-reschedule-existing",
       confidence: 0.9,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-reschedule-existing",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.9,
-      },
       taskIds: [scheduledTask!.id],
       scheduleBlocks: [
         {
@@ -870,14 +821,6 @@ describe("db package", () => {
     const result = await store.saveTaskCaptureResult({
       inboxItemId: "inbox-parity",
       confidence: 0.91,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-parity",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.91,
-      },
       tasks: [
         {
           alias: "new_task_1",

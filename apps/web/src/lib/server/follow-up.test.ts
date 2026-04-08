@@ -33,15 +33,6 @@ async function seedScheduledTasks(
   await store.saveTaskCaptureResult({
     inboxItemId,
     confidence: 1,
-    plannerRun: {
-      id: "ignored",
-      userId: "123",
-      inboxItemId,
-      version: "test",
-      modelInput: {},
-      modelOutput: {},
-      confidence: 1,
-    } as never,
     tasks: titles.map((title, index) => ({
       alias: `${inboxItemId}_task_${index + 1}`,
       task: {

@@ -1,9 +1,9 @@
 import type {
   ConversationStateSnapshot,
+  MutationResult,
   PendingWriteOperation,
   TimeSpec,
 } from "@atlas/core";
-import type { ProcessedInboxResult } from "@atlas/db";
 import { describe, expect, it } from "vitest";
 
 function t(hour: number, minute: number): TimeSpec {
@@ -371,27 +371,9 @@ describe("deriveMutationState", () => {
       mode: "clarifying",
     };
 
-    const processing: ProcessedInboxResult = {
-      outcome: "planned",
-      inboxItem: {
-        id: "inbox-1",
-        userId: "user-1",
-        rawText: "schedule malaysia trip planning",
-        normalizedText: "schedule malaysia trip planning",
-        processingStatus: "planned",
-        linkedTaskIds: ["task-1"],
-        createdAt: "2026-03-22T16:00:00.000Z",
-      },
-      plannerRun: {
-        id: "run-1",
-        userId: "user-1",
-        inboxItemId: "inbox-1",
-        version: "test",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.92,
-      },
-      createdTasks: [
+    const processing: MutationResult = {
+      outcome: "created",
+      tasks: [
         {
           id: "task-1",
           userId: "user-1",
@@ -449,27 +431,9 @@ describe("deriveMutationState", () => {
       }),
     };
 
-    const processing: ProcessedInboxResult = {
-      outcome: "planned",
-      inboxItem: {
-        id: "inbox-1",
-        userId: "user-1",
-        rawText: "schedule gym",
-        normalizedText: "schedule gym",
-        processingStatus: "planned",
-        linkedTaskIds: ["task-1"],
-        createdAt: "2026-03-22T16:00:00.000Z",
-      },
-      plannerRun: {
-        id: "run-1",
-        userId: "user-1",
-        inboxItemId: "inbox-1",
-        version: "test",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.92,
-      },
-      createdTasks: [
+    const processing: MutationResult = {
+      outcome: "created",
+      tasks: [
         {
           id: "task-1",
           userId: "user-1",
@@ -528,26 +492,8 @@ describe("deriveMutationState", () => {
       pending_write_operation: op,
     };
 
-    const processing: ProcessedInboxResult = {
+    const processing: MutationResult = {
       outcome: "needs_clarification",
-      inboxItem: {
-        id: "inbox-1",
-        userId: "user-1",
-        rawText: "schedule gym tomorrow",
-        normalizedText: "schedule gym tomorrow",
-        processingStatus: "needs_clarification",
-        linkedTaskIds: [],
-        createdAt: "2026-03-22T16:00:00.000Z",
-      },
-      plannerRun: {
-        id: "run-1",
-        userId: "user-1",
-        inboxItemId: "inbox-1",
-        version: "test",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.5,
-      },
       reason: "time",
       followUpMessage: "What time should I schedule the gym?",
     };

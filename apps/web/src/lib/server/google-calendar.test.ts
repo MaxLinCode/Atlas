@@ -434,14 +434,6 @@ describe("google calendar app services", () => {
     await inboxStore.saveTaskCaptureResult({
       inboxItemId: "inbox-1",
       confidence: 0.9,
-      plannerRun: {
-        userId: "123",
-        inboxItemId: "inbox-1",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.9,
-      },
       tasks: [
         {
           alias: "new_task_1",
@@ -571,14 +563,6 @@ describe("google calendar app services", () => {
     await getDefaultInboxProcessingStore().saveTaskCaptureResult({
       inboxItemId: "inbox-2",
       confidence: 0.9,
-      plannerRun: {
-        userId: "456",
-        inboxItemId: "inbox-2",
-        version: "test-v1",
-        modelInput: {},
-        modelOutput: {},
-        confidence: 0.9,
-      },
       tasks: [
         {
           alias: "new_task_1",

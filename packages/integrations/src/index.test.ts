@@ -1,7 +1,4 @@
-import {
-  buildDefaultUserProfile,
-  buildTelegramFollowUpIdempotencyKey,
-} from "@atlas/core";
+import { buildTelegramFollowUpIdempotencyKey } from "@atlas/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { interpretWriteTurnSystemPrompt } from "./prompts/interpret-write-turn";
@@ -13,8 +10,6 @@ import {
   fetchGoogleCalendarIdentity,
   getDefaultCalendarAdapter,
   interpretWriteTurnWithResponses,
-  planInboxItemWithResponses,
-  recoverConfirmedMutationWithResponses,
   refreshGoogleOAuthToken,
   resetCalendarAdapterForTests,
   respondToConversationTurnWithResponses,
@@ -413,148 +408,6 @@ describe("integrations", () => {
     });
   });
 
-  it("parses structured inbox planning output from the Responses API client", async () => {
-    const result = await planInboxItemWithResponses(
-      {
-        inboxItem: {
-          id: "inbox-1",
-          userId: "123",
-          sourceEventId: "event-1",
-          rawText: "Submit taxes tomorrow at 3pm",
-          normalizedText: "Submit taxes tomorrow at 3pm",
-          processingStatus: "received",
-          linkedTaskIds: [],
-          createdAt: "2026-03-13T08:00:00.000Z",
-        },
-        userProfile: buildDefaultUserProfile("123"),
-        tasks: [],
-        scheduleBlocks: [],
-        referenceTime: "2026-03-13T08:00:00.000Z",
-      },
-      {
-        responses: {
-          parse: async () => ({
-            output_parsed: {
-              confidence: 0.91,
-              summary: "Create and schedule a tax task.",
-              actions: [
-                {
-                  type: "create_task",
-                  alias: "new_task_1",
-                  title: "Submit taxes",
-                  priority: "medium",
-                  urgency: "high",
-                },
-                {
-                  type: "create_schedule_block",
-                  taskRef: {
-                    kind: "created_task",
-                    alias: "new_task_1",
-                  },
-                  scheduleConstraint: {
-                    dayReference: "tomorrow",
-                    weekday: null,
-                    weekOffset: null,
-                    explicitHour: 15,
-                    minute: 0,
-                    preferredWindow: null,
-                    sourceText: "tomorrow at 3pm",
-                  },
-                  reason: "The user asked for tomorrow at 3pm.",
-                },
-              ],
-            },
-          }),
-        },
-      },
-    );
-
-    expect(result.actions).toHaveLength(2);
-    expect(result.actions[0]?.type).toBe("create_task");
-  });
-
-  it("rejects malformed structured Responses API output", async () => {
-    await expect(
-      planInboxItemWithResponses(
-        {
-          inboxItem: {
-            id: "inbox-1",
-            userId: "123",
-            sourceEventId: "event-1",
-            rawText: "Move it to 3pm",
-            normalizedText: "Move it to 3pm",
-            processingStatus: "received",
-            linkedTaskIds: [],
-          },
-          userProfile: buildDefaultUserProfile("123"),
-          tasks: [],
-          scheduleBlocks: [],
-        },
-        {
-          responses: {
-            parse: async () => ({
-              output_parsed: {
-                confidence: 2,
-                summary: "Bad output",
-                actions: [],
-              },
-            }),
-          },
-        },
-      ),
-    ).rejects.toThrow();
-  });
-
-  it("defaults missing create_task priority and urgency to medium", async () => {
-    const result = await planInboxItemWithResponses(
-      {
-        inboxItem: {
-          id: "inbox-1",
-          userId: "123",
-          sourceEventId: "event-1",
-          rawText: "Schedule a tax task",
-          normalizedText: "Schedule a tax task",
-          processingStatus: "received",
-          linkedTaskIds: [],
-          createdAt: "2026-03-13T08:00:00.000Z",
-        },
-        userProfile: buildDefaultUserProfile("123"),
-        tasks: [],
-        scheduleBlocks: [],
-        referenceTime: "2026-03-13T08:00:00.000Z",
-      },
-      {
-        responses: {
-          parse: async () => ({
-            output_parsed: {
-              confidence: 0.91,
-              summary: "Create and schedule a tax task.",
-              actions: [
-                {
-                  type: "create_task",
-                  alias: "new_task_1",
-                  title: "Submit taxes",
-                  priority: null,
-                  urgency: null,
-                },
-              ],
-            },
-          }),
-        },
-      },
-    );
-
-    expect(result.actions).toEqual([
-      {
-        type: "create_task",
-        alias: "new_task_1",
-        title: "Submit taxes",
-        priority: "medium",
-        urgency: "medium",
-      },
-    ]);
-  });
-
   it("parses structured turn routing output from the Responses API client", async () => {
     const result = await routeTurnWithResponses(
       {
@@ -696,76 +549,6 @@ describe("integrations", () => {
     );
 
     expect(result.route).toBe("confirmed_mutation");
-  });
-
-  it("parses structured confirmed mutation recovery output from the Responses API client", async () => {
-    const result = await recoverConfirmedMutationWithResponses(
-      {
-        rawText: "Yes",
-        normalizedText: "Yes",
-        recentTurns: [
-          {
-            role: "assistant",
-            text: "Would you like me to schedule the dentist reminder at 3pm?",
-            createdAt: "2026-03-17T16:00:00.000Z",
-          },
-          {
-            role: "user",
-            text: "Yes",
-            createdAt: "2026-03-17T16:01:00.000Z",
-          },
-        ],
-        memorySummary:
-          "The recent exchange contains a concrete 3pm proposal for the dentist reminder.",
-      },
-      {
-        responses: {
-          parse: async () => ({
-            output_parsed: {
-              outcome: "recovered",
-              recoveredText: "Schedule the dentist reminder at 3pm.",
-              reason: "The user confirmed the recent concrete proposal.",
-              userReplyMessage: "Got it - dentest reminder scheduled at 3pm.",
-            },
-          }),
-        },
-      },
-    );
-
-    expect(result).toMatchObject({
-      outcome: "recovered",
-      recoveredText: "Schedule the dentist reminder at 3pm.",
-    });
-  });
-
-  it("rejects malformed confirmed mutation recovery output", async () => {
-    await expect(
-      recoverConfirmedMutationWithResponses(
-        {
-          rawText: "Friday works",
-          normalizedText: "Friday works",
-          recentTurns: [
-            {
-              role: "assistant",
-              text: "I can move it to Friday at 3pm.",
-              createdAt: "2026-03-17T16:00:00.000Z",
-            },
-          ],
-          memorySummary: "The recent exchange includes a Friday proposal.",
-        },
-        {
-          responses: {
-            parse: async () => ({
-              output_parsed: {
-                outcome: "recovered",
-                recoveredText: null,
-                reason: "Missing recovered text.",
-              },
-            }),
-          },
-        },
-      ),
-    ).rejects.toThrow();
   });
 
   it("parses structured conversation response output from the Responses API client", async () => {

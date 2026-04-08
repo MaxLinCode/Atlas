@@ -6,31 +6,25 @@ import {
   buildCapturedTask,
   buildDefaultUserProfile,
   buildGoogleCalendarLinkToken,
-  buildInboxPlanningContext,
   buildScheduleAdjustment,
   buildScheduleBlocksFromTasks,
   buildScheduleProposal,
   buildTelegramFollowUpIdempotencyKey,
   buildTelegramWebhookIdempotencyKey,
-  confirmedMutationRecoveryOutputSchema,
+  conversationProposalOptionEntitySchema,
   conversationStateSnapshotSchema,
   createEmptyDiscourseState,
   detectTaskCalendarDrift,
   getConfig,
   getGoogleCalendarOAuthConfig,
   getTelegramAllowedUserIds,
-  inboxPlanningOutputSchema,
   isTaskFollowupDue,
   isTaskFollowupReminderDue,
   isTelegramUserAllowed,
   normalizeTelegramText,
   normalizeTelegramUpdate,
-  processInboxItem,
-  resolveScheduleBlockReference,
-  resolveTaskReference,
   scheduleBlockSchema,
   taskSchema,
-  turnRoutingOutputSchema,
   userProfileSchema,
   verifyGoogleCalendarLinkToken,
 } from "./index";
@@ -249,56 +243,6 @@ describe("core package", () => {
     expect(result.success).toBe(false);
   });
 
-  it("builds planning context aliases from task-backed current commitments", () => {
-    const task = taskSchema.parse({
-      id: "task-1",
-      userId: "123",
-      sourceInboxItemId: "inbox-0",
-      lastInboxItemId: "inbox-0",
-      title: "Review launch checklist",
-      lifecycleState: "scheduled",
-      externalCalendarEventId: "event-1",
-      externalCalendarId: "primary",
-      scheduledStartAt: "2026-03-13T17:00:00.000Z",
-      scheduledEndAt: "2026-03-13T18:00:00.000Z",
-      calendarSyncStatus: "in_sync",
-      calendarSyncUpdatedAt: null,
-      rescheduleCount: 0,
-      lastFollowupAt: null,
-      completedAt: null,
-      archivedAt: null,
-      priority: "medium",
-      urgency: "medium",
-    });
-    const context = buildInboxPlanningContext({
-      inboxItem: {
-        id: "inbox-1",
-        userId: "123",
-        sourceEventId: "event-1",
-        rawText: "move it to 3pm",
-        normalizedText: "move it to 3pm",
-        processingStatus: "received",
-        linkedTaskIds: [],
-      },
-      userProfile: buildDefaultUserProfile("123"),
-      tasks: [task],
-      referenceTime: "2026-03-14T16:00:00.000Z",
-    });
-
-    expect(context.tasks[0]?.alias).toBe("existing_task_1");
-    expect(context.scheduleBlocks[0]?.alias).toBe("schedule_block_1");
-    expect(
-      resolveTaskReference(context, {
-        kind: "existing_task",
-        alias: "existing_task_1",
-      })?.id,
-    ).toBe("task-1");
-    expect(
-      resolveScheduleBlockReference(context, { alias: "schedule_block_1" })?.id,
-    ).toBe("event-1");
-    expect(buildScheduleBlocksFromTasks([task])).toHaveLength(1);
-  });
-
   it("builds busy blocks from external calendar busy periods", () => {
     expect(
       buildBusyScheduleBlocks({
@@ -384,125 +328,6 @@ describe("core package", () => {
     expect(buildScheduleBlocksFromTasks([task])).toEqual([]);
   });
 
-  it("accepts contract-shaped planning outputs", async () => {
-    const result = await processInboxItem({
-      confidence: 0.9,
-      summary: "Create and schedule a task.",
-      actions: [
-        {
-          type: "create_task",
-          alias: "new_task_1",
-          title: "Submit taxes",
-          priority: "medium",
-          urgency: "high",
-        },
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "created_task",
-            alias: "new_task_1",
-          },
-          scheduleConstraint: {
-            dayReference: "tomorrow",
-            weekday: null,
-            weekOffset: null,
-            explicitHour: 15,
-            minute: 0,
-            preferredWindow: null,
-            sourceText: "tomorrow at 3pm",
-          },
-          reason: "The user requested tomorrow at 3pm.",
-        },
-      ],
-    });
-
-    expect(result.actions).toHaveLength(2);
-  });
-
-  it("accepts completion actions for existing tasks", async () => {
-    const result = await processInboxItem({
-      confidence: 0.9,
-      summary: "Mark the journaling session as done.",
-      actions: [
-        {
-          type: "complete_task",
-          taskRef: {
-            kind: "existing_task",
-            alias: "existing_task_1",
-          },
-          reason: "The user said the journaling session is done.",
-        },
-      ],
-    });
-
-    expect(result.actions).toHaveLength(1);
-    expect(result.actions[0]).toMatchObject({
-      type: "complete_task",
-    });
-  });
-
-  it("rejects malformed structured outputs at the contract boundary", () => {
-    const result = inboxPlanningOutputSchema.safeParse({
-      confidence: 1.5,
-      summary: "Bad result",
-      actions: [],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts confirmed_mutation as a valid turn route and parses recovery outputs", () => {
-    const routeResult = turnRoutingOutputSchema.safeParse({
-      route: "confirmed_mutation",
-      reason: "The user confirmed one recent concrete proposal.",
-    });
-    const recoveryResult = confirmedMutationRecoveryOutputSchema.safeParse({
-      outcome: "recovered",
-      recoveredText: "Schedule the dentist reminder at 3pm.",
-      reason: "The user confirmed the recent concrete proposal.",
-      userReplyMessage:
-        "Got it - I've added the dentist reminder to your schedule for today at 3pm.",
-    });
-
-    expect(routeResult.success).toBe(true);
-    expect(recoveryResult.success).toBe(true);
-  });
-
-  it("accepts null schedule constraints for delegated slot choice", () => {
-    const result = inboxPlanningOutputSchema.safeParse({
-      confidence: 0.82,
-      summary: "Schedule the task using the next reasonable opening.",
-      actions: [
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "existing_task",
-            alias: "existing_task_1",
-          },
-          scheduleConstraint: null,
-          reason: "The user asked Atlas to choose the time.",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts needs_clarification recovery outputs", () => {
-    const clarificationResult = confirmedMutationRecoveryOutputSchema.safeParse(
-      {
-        outcome: "needs_clarification",
-        recoveredText: null,
-        reason:
-          "I found two recent proposals for the user. User request is ambiguous.",
-        userReplyMessage:
-          "I found two recent proposals. Which one do you want me to apply?",
-      },
-    );
-
-    expect(clarificationResult.success).toBe(true);
-  });
-
   it("builds a valid schedule proposal for pending tasks", async () => {
     const result = await buildScheduleProposal({
       userId: "user_1",
@@ -544,35 +369,6 @@ describe("core package", () => {
     });
 
     expect(result.inserts[0]?.startAt).toBe("2026-03-14T22:00:00.000Z");
-  });
-
-  it("accepts relative-minute schedule constraints", () => {
-    const result = inboxPlanningOutputSchema.safeParse({
-      confidence: 0.9,
-      summary: "Schedule car maintenance in 15 minutes.",
-      actions: [
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "existing_task",
-            alias: "existing_task_1",
-          },
-          scheduleConstraint: {
-            dayReference: null,
-            weekday: null,
-            weekOffset: null,
-            relativeMinutes: 15,
-            explicitHour: null,
-            minute: null,
-            preferredWindow: null,
-            sourceText: "in like 15 min",
-          },
-          reason: "The user asked for a relative start time.",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(true);
   });
 
   it("builds schedule proposals from relative-minute requests", async () => {
@@ -930,35 +726,6 @@ describe("core package", () => {
     expect(result.inserts[0]?.startAt).toBe("2026-03-20T17:00:00.000Z");
   });
 
-  it("rejects weekday scheduling without a weekday value", () => {
-    const result = inboxPlanningOutputSchema.safeParse({
-      confidence: 0.9,
-      summary: "Bad schedule constraint",
-      actions: [
-        {
-          type: "create_schedule_block",
-          taskRef: {
-            kind: "existing_task",
-            alias: "existing_task_1",
-          },
-          scheduleConstraint: {
-            dayReference: "weekday",
-            weekday: null,
-            weekOffset: null,
-            relativeMinutes: null,
-            explicitHour: 10,
-            minute: 0,
-            preferredWindow: null,
-            sourceText: "Friday at 10am",
-          },
-          reason: "Invalid weekday constraint.",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
   it("resolves next weekday scheduling with a week offset", async () => {
     const profile = buildDefaultUserProfile("user_1");
     profile.timezone = "America/Los_Angeles";
@@ -1198,5 +965,46 @@ describe("core package", () => {
         chatType: "private",
       },
     });
+  });
+});
+
+describe("proposal entity operationKind", () => {
+  it("accepts operationKind in proposal data", () => {
+    const entity = {
+      id: "ent-1",
+      conversationId: "conv-1",
+      kind: "proposal_option",
+      label: "Schedule gym",
+      status: "active",
+      createdAt: "2026-04-05T10:00:00Z",
+      updatedAt: "2026-04-05T10:00:00Z",
+      data: {
+        route: "conversation_then_mutation",
+        replyText: "Schedule gym at 5pm?",
+        fieldSnapshot: {},
+        operationKind: "plan",
+      },
+    };
+    const parsed = conversationProposalOptionEntitySchema.parse(entity);
+    expect(parsed.data.operationKind).toBe("plan");
+  });
+
+  it("allows proposal entity without operationKind for backwards compat", () => {
+    const entity = {
+      id: "ent-1",
+      conversationId: "conv-1",
+      kind: "proposal_option",
+      label: "Schedule gym",
+      status: "active",
+      createdAt: "2026-04-05T10:00:00Z",
+      updatedAt: "2026-04-05T10:00:00Z",
+      data: {
+        route: "conversation_then_mutation",
+        replyText: "Schedule gym at 5pm?",
+        fieldSnapshot: {},
+      },
+    };
+    const parsed = conversationProposalOptionEntitySchema.parse(entity);
+    expect(parsed.data.operationKind).toBeUndefined();
   });
 });

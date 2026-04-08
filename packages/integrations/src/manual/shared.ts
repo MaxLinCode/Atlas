@@ -1,10 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { confirmedMutationRecoverySystemPrompt } from "../prompts/confirmed-mutation-recovery";
 import { conversationMemorySummarySystemPrompt } from "../prompts/conversation-memory-summary";
 import { conversationResponseSystemPrompt } from "../prompts/conversation-response";
-import { inboxPlannerSystemPrompt } from "../prompts/planner";
 import { turnRouterSystemPrompt } from "../prompts/turn-router";
 
 export type EvalCaseResult = {
@@ -33,10 +31,8 @@ export type EvalReport = {
 };
 
 const SUITE_PROMPTS: Record<string, string> = {
-  planner: inboxPlannerSystemPrompt,
   "turn-router": turnRouterSystemPrompt,
   "router-confirmation": turnRouterSystemPrompt,
-  "confirmed-mutation-recovery": confirmedMutationRecoverySystemPrompt,
   "conversation-context": [
     "Conversation Response Prompt:",
     conversationResponseSystemPrompt,

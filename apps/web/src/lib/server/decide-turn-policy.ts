@@ -9,6 +9,7 @@ import {
   type TurnPolicyDecision,
   type TurnRoutingInput,
 } from "@atlas/core";
+import { rehydratePendingWriteFromProposal } from "./rehydrate-proposal";
 
 export type DecideTurnPolicyInput = {
   classification: TurnClassifierOutput;
@@ -73,16 +74,28 @@ export function decideTurnPolicy(
         );
 
       if (proposalId) {
-        return {
-          action: "recover_and_execute",
-          reason: "The turn confirms one recoverable pending proposal.",
-          requiresWrite: true,
-          requiresConfirmation: false,
-          useMutationPipeline: true,
-          ...(targetEntityId ? { targetEntityId } : {}),
-          targetProposalId: proposalId,
-          mutationInputSource: "recovered_proposal",
-        };
+        const proposalEntity = (input.routingContext.entityRegistry ?? []).find(
+          (e) => e.kind === "proposal_option" && e.id === proposalId,
+        );
+
+        if (proposalEntity && proposalEntity.kind === "proposal_option") {
+          const rehydrated = rehydratePendingWriteFromProposal(proposalEntity);
+
+          if (rehydrated) {
+            return {
+              action: "execute_mutation",
+              reason: "The turn confirms one recoverable pending proposal.",
+              requiresWrite: true,
+              requiresConfirmation: false,
+              useMutationPipeline: true,
+              targetProposalId: proposalId,
+              ...(proposalEntity.data.targetEntityId
+                ? { targetEntityId: proposalEntity.data.targetEntityId }
+                : {}),
+              resolvedOperation: rehydrated,
+            };
+          }
+        }
       }
 
       return {
@@ -258,7 +271,6 @@ function buildPolicyFromStructuredReadiness(
         requiresConfirmation: false,
         useMutationPipeline: true,
         ...(targetEntityId ? { targetEntityId } : {}),
-        mutationInputSource: "direct_user_turn",
       };
   }
 }
