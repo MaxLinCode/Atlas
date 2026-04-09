@@ -2,6 +2,7 @@ import {
   type CommitPolicyOutput,
   containsWriteVerb,
   type ConversationEntity,
+  conversationEntitySchema,
   deriveAmbiguity,
   deriveConsentRequirement,
   type TurnAmbiguity,
@@ -39,6 +40,9 @@ export function decideTurnPolicy(
 ): TurnPolicyDecision {
   const { classification, commitResult } = input;
   const targetEntityId = input.targetEntityId;
+  const entityRegistry = (input.routingContext.entityRegistry ?? []).map((e) =>
+    conversationEntitySchema.parse(e),
+  );
   const ambiguity = deriveAmbiguity({
     classifierConfidence: classification.confidence,
     missingFields: commitResult.missingFields,
@@ -69,7 +73,7 @@ export function decideTurnPolicy(
       const proposalId =
         input.resolvedProposalId ??
         resolveSingleActiveProposalId(
-          input.routingContext.entityRegistry ?? [],
+          entityRegistry,
         );
 
       if (proposalId) {
@@ -165,8 +169,10 @@ function deriveStructuredWriteReadiness(
   }
 
   if (classification.turnType === "clarification_answer") {
-    const entityRegistry = input.routingContext.entityRegistry ?? [];
-    const alreadyConfirmed = entityRegistry.some(
+    const parsedRegistry = (input.routingContext.entityRegistry ?? []).map((e) =>
+      conversationEntitySchema.parse(e),
+    );
+    const alreadyConfirmed = parsedRegistry.some(
       (e) =>
         e.kind === "proposal_option" &&
         e.id === input.resolvedProposalId &&
@@ -187,7 +193,9 @@ function deriveStructuredWriteReadiness(
     ...(input.resolvedProposalId
       ? { resolvedProposalId: input.resolvedProposalId }
       : {}),
-    entityRegistry: input.routingContext.entityRegistry ?? [],
+    entityRegistry: (input.routingContext.entityRegistry ?? []).map((e) =>
+      conversationEntitySchema.parse(e),
+    ),
     resolvedFields: commitResult.resolvedFields,
     turnType: classification.turnType,
   });

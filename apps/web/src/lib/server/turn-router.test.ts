@@ -678,6 +678,120 @@ describe("resolveWriteTarget", () => {
     expect(result).toEqual({});
   });
 
+  it("uses parentTargetRef from open clarification instead of focus_entity_id for clarification_answer", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [
+          {
+            id: "clar-1",
+            slot: "scheduleFields.time",
+            question: "What time?",
+            status: "pending",
+            createdAt: "2026-04-09T10:00:00.000Z",
+            createdTurnId: "assistant:1",
+            parentTargetRef: { entityId: "task-1" },
+          },
+        ],
+        mode: "clarifying",
+      },
+      [
+        {
+          id: "clar-1",
+          conversationId: "c-1",
+          kind: "clarification",
+          label: "What time?",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            prompt: "What time?",
+            reason: "scheduleFields.time",
+            open: true,
+            parentTargetRef: { entityId: "task-1" },
+          },
+        },
+      ],
+      "clarification_answer",
+    );
+
+    expect(result.targetEntityId).toBe("task-1");
+  });
+
+  it("returns no targetEntityId when clarification parentTargetRef is null (new plan)", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [
+          {
+            id: "clar-1",
+            slot: "scheduleFields.time",
+            question: "What time?",
+            status: "pending",
+            createdAt: "2026-04-09T10:00:00.000Z",
+            createdTurnId: "assistant:1",
+            parentTargetRef: null,
+          },
+        ],
+        mode: "clarifying",
+      },
+      [
+        {
+          id: "clar-1",
+          conversationId: "c-1",
+          kind: "clarification",
+          label: "What time?",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            prompt: "What time?",
+            reason: "scheduleFields.time",
+            open: true,
+            parentTargetRef: null,
+          },
+        },
+      ],
+      "clarification_answer",
+    );
+
+    expect(result.targetEntityId).toBeUndefined();
+  });
+
+  it("does not use clarification parentTargetRef for non-clarification_answer turns", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "task-2",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [
+          {
+            id: "clar-1",
+            slot: "scheduleFields.time",
+            question: "What time?",
+            status: "pending",
+            createdAt: "2026-04-09T10:00:00.000Z",
+            createdTurnId: "assistant:1",
+            parentTargetRef: { entityId: "task-1" },
+          },
+        ],
+        mode: "clarifying",
+      },
+      [],
+      "edit_request",
+    );
+
+    // For non-clarification_answer, should use normal focus_entity_id path
+    expect(result.targetEntityId).toBe("task-2");
+  });
+
   it("attaches resolvedProposalId for non-confirmation turns when single proposal exists", () => {
     const result = resolveWriteTarget(
       null,

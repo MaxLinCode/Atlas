@@ -2,7 +2,9 @@ import {
   applyWriteCommit,
   buildEntityContext,
   type ConversationDiscourseState,
+  conversationDiscourseStateSchema,
   type ConversationEntity,
+  conversationEntitySchema,
   type ConversationTurn,
   createEmptyDiscourseState,
   deriveAmbiguity,
@@ -39,6 +41,32 @@ export function resolveWriteTarget(
   entityRegistry: ConversationEntity[],
   turnType: TurnInterpretationType,
 ): WriteTarget {
+  // For clarification answers, resolve target from the open clarification's parentTargetRef
+  // instead of focus_entity_id (which may point at the clarification entity itself).
+  if (turnType === "clarification_answer" && discourseState) {
+    const openClarification = discourseState.pending_clarifications.find(
+      (c) => c.status === "pending",
+    );
+    if (openClarification) {
+      const parentEntityId =
+        openClarification.parentTargetRef?.entityId ?? undefined;
+      const activeProposals = entityRegistry.filter(
+        (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
+          e.kind === "proposal_option" &&
+          (e.status === "active" || e.status === "presented"),
+      );
+      const singleProposal =
+        activeProposals.length === 1 ? activeProposals[0] : null;
+
+      return {
+        ...(parentEntityId ? { targetEntityId: parentEntityId } : {}),
+        ...(singleProposal
+          ? { resolvedProposalId: singleProposal.id }
+          : {}),
+      };
+    }
+  }
+
   const resolvedEntityIds = compactResolvedEntityIds([
     discourseState?.currently_editable_entity_id ?? null,
     discourseState?.focus_entity_id ?? null,
@@ -76,8 +104,12 @@ function compactResolvedEntityIds(entityIds: Array<string | null>) {
 export async function routeMessageTurn(
   input: TurnRouterInput,
 ): Promise<TurnRouterResult> {
-  const discourseState = input.discourseState ?? createEmptyDiscourseState();
-  const entityRegistry = input.entityRegistry ?? [];
+  const discourseState = input.discourseState
+    ? conversationDiscourseStateSchema.parse(input.discourseState)
+    : createEmptyDiscourseState();
+  const entityRegistry = (input.entityRegistry ?? []).map((e) =>
+    conversationEntitySchema.parse(e),
+  );
   const tasks = (input.tasks ?? []).map((task) => taskSchema.parse(task));
 
   // Pipeline A: classify intent
