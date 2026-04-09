@@ -154,6 +154,7 @@ describe("deriveConversationReplyState", () => {
           prompt: "What time should I schedule it?",
           reason: "time",
           open: true,
+          parentTargetRef: null,
         },
       },
     ];
@@ -171,6 +172,7 @@ describe("deriveConversationReplyState", () => {
 
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1",
+          parentTargetRef: null,
         },
       ],
       mode: "clarifying",
@@ -276,6 +278,7 @@ describe("deriveConversationReplyState", () => {
           prompt: "What time should I schedule it?",
           reason: "time",
           open: true,
+          parentTargetRef: null,
         },
       },
     ];
@@ -292,6 +295,7 @@ describe("deriveConversationReplyState", () => {
           status: "pending",
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1",
+          parentTargetRef: null,
         },
       ],
       mode: "clarifying",
@@ -331,6 +335,153 @@ describe("deriveConversationReplyState", () => {
       ]),
     );
   });
+
+  it("sets parentTargetRef on clarification entity from resolvedOperation targetRef", () => {
+    const op = buildPendingWriteOperation({
+      targetRef: { entityId: "task-1" },
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
+
+    const clarEntity = result.entityRegistry.find(
+      (e) => e.kind === "clarification",
+    );
+    expect(clarEntity).toBeDefined();
+    expect(clarEntity!.data.parentTargetRef).toEqual({
+      entityId: "task-1",
+    });
+  });
+
+  it("sets parentTargetRef to null on clarification entity for new plans", () => {
+    const op = buildPendingWriteOperation({
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:05:00.000Z",
+    });
+
+    const clarEntity = result.entityRegistry.find(
+      (e) => e.kind === "clarification",
+    );
+    expect(clarEntity).toBeDefined();
+    expect(clarEntity!.data.parentTargetRef).toBeNull();
+  });
+
+  it("closes prior open clarification when a new one is created", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "clar-old",
+        conversationId: "conversation-1",
+        kind: "clarification",
+        label: "Need a time",
+        status: "active",
+        createdAt: "2026-03-22T16:01:00.000Z",
+        updatedAt: "2026-03-22T16:01:00.000Z",
+        data: {
+          prompt: "What time?",
+          reason: "scheduleFields.time",
+          open: true,
+          parentTargetRef: null,
+        },
+      },
+    ];
+    snapshot.discourseState = {
+      focus_entity_id: "clar-old",
+      currently_editable_entity_id: null,
+      last_user_mentioned_entity_ids: [],
+      last_presented_items: [],
+      pending_clarifications: [
+        {
+          id: "clar-old",
+          slot: "scheduleFields.time",
+          question: "What time?",
+          status: "pending",
+          createdAt: "2026-03-22T16:01:00.000Z",
+          createdTurnId: "assistant:1",
+          parentTargetRef: null,
+        },
+      ],
+      mode: "clarifying",
+    };
+
+    const op = buildPendingWriteOperation({
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.duration"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.duration"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.8,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.duration"],
+      },
+      reply: "Got it, 5pm. How long should it be?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-03-22T16:06:00.000Z",
+    });
+
+    const oldClar = result.entityRegistry.find((e) => e.id === "clar-old");
+    expect(oldClar).toMatchObject({
+      status: "resolved",
+      data: expect.objectContaining({ open: false }),
+    });
+
+    const newClars = result.entityRegistry.filter(
+      (e) => e.kind === "clarification" && e.data.open === true,
+    );
+    expect(newClars).toHaveLength(1);
+    expect(newClars[0]!.data).toMatchObject({ reason: "scheduleFields.duration" });
+  });
 });
 
 describe("deriveMutationState", () => {
@@ -349,6 +500,7 @@ describe("deriveMutationState", () => {
           prompt: "What time should I schedule it?",
           reason: "time",
           open: true,
+          parentTargetRef: null,
         },
       },
     ];
@@ -366,6 +518,7 @@ describe("deriveMutationState", () => {
 
           createdAt: "2026-03-22T16:01:00.000Z",
           createdTurnId: "assistant:1",
+          parentTargetRef: null,
         },
       ],
       mode: "clarifying",

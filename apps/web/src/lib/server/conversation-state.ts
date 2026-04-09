@@ -129,6 +129,23 @@ export function deriveConversationReplyState(
       );
     }
 
+    const parentTargetRef =
+      input.policy.resolvedOperation?.targetRef ?? null;
+
+    // Close any prior open clarifications (one-open-per-workflow)
+    for (let i = 0; i < entityRegistry.length; i++) {
+      const entity = entityRegistry[i]!;
+      if (entity.kind === "clarification" && entity.data.open) {
+        entityRegistry[i] = {
+          ...entity,
+          status: "resolved" as const,
+          updatedAt: occurredAt,
+          data: { ...entity.data, open: false },
+        };
+        resolvedClarificationIds.push(entity.id);
+      }
+    }
+
     const clarificationEntity = buildConversationEntity(
       input.snapshot.conversation.id,
       {
@@ -141,6 +158,7 @@ export function deriveConversationReplyState(
           prompt: input.reply,
           reason: clarificationSlot,
           open: true,
+          parentTargetRef,
         },
       },
     );
@@ -153,6 +171,7 @@ export function deriveConversationReplyState(
       status: "pending",
       createdAt: occurredAt,
       createdTurnId: `assistant:${occurredAt}`,
+      parentTargetRef,
     });
     nextFocusEntityId ??= clarificationEntity.id;
   }
@@ -277,6 +296,7 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
           prompt: input.processing.followUpMessage,
           reason: input.processing.reason,
           open: true,
+          parentTargetRef: null,
         },
       },
     );
@@ -290,6 +310,7 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
       status: "pending",
       createdAt: occurredAt,
       createdTurnId: `assistant:${occurredAt}`,
+      parentTargetRef: null,
     });
   }
 
