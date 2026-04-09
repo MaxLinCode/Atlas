@@ -32,6 +32,16 @@ export const presentedItemSchema = z.discriminatedUnion("type", [
   presentedOptionSchema,
 ]);
 
+export const targetRefSchema = z
+  .object({
+    entityId: z.string().optional(),
+    description: z.string().optional(),
+    entityKind: z.string().optional(),
+  })
+  .nullable();
+
+export type TargetRef = z.infer<typeof targetRefSchema>;
+
 export const pendingClarificationSchema = z.object({
   id: z.string().min(1),
   entityId: z.string().min(1).optional(),
@@ -41,6 +51,7 @@ export const pendingClarificationSchema = z.object({
   createdAt: z.string().datetime(),
   createdTurnId: z.string().min(1),
   priority: z.number().int().optional(),
+  parentTargetRef: targetRefSchema.optional().default(null),
 });
 
 export const absoluteTimeSpecSchema = z.object({
@@ -90,16 +101,6 @@ export const operationKindSchema = z.enum([
 ]);
 
 export type OperationKind = z.infer<typeof operationKindSchema>;
-
-export const targetRefSchema = z
-  .object({
-    entityId: z.string().optional(),
-    description: z.string().optional(),
-    entityKind: z.string().optional(),
-  })
-  .nullable();
-
-export type TargetRef = z.infer<typeof targetRefSchema>;
 
 export const resolvedFieldsSchema = z.object({
   scheduleFields: z

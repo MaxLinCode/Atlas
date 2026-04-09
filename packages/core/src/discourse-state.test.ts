@@ -21,6 +21,7 @@ function buildClarification(
     status: "pending",
     createdAt: "2026-03-22T10:00:00.000Z",
     createdTurnId: "assistant:turn-1",
+    parentTargetRef: null,
     ...input,
   };
 }
