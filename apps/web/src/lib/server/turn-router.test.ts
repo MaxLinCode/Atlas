@@ -678,6 +678,139 @@ describe("resolveWriteTarget", () => {
     expect(result).toEqual({});
   });
 
+  it("follows parentTargetRef from entity registry when focus points at a clarification", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "clarifying",
+      },
+      [
+        {
+          id: "clar-1",
+          conversationId: "c-1",
+          kind: "clarification",
+          label: "What time?",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            prompt: "What time?",
+            reason: "scheduleFields.time",
+            open: true,
+            parentTargetRef: { entityId: "task-1" },
+          },
+        },
+      ],
+      "clarification_answer",
+    );
+
+    expect(result.targetEntityId).toBe("task-1");
+  });
+
+  it("follows parentTargetRef regardless of turn type", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "clarifying",
+      },
+      [
+        {
+          id: "clar-1",
+          conversationId: "c-1",
+          kind: "clarification",
+          label: "What time?",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            prompt: "What time?",
+            reason: "scheduleFields.time",
+            open: true,
+            parentTargetRef: { entityId: "task-1" },
+          },
+        },
+      ],
+      "edit_request",
+    );
+
+    expect(result.targetEntityId).toBe("task-1");
+  });
+
+  it("uses candidate ID as-is when entity has no parentTargetRef", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "task-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "planning",
+      },
+      [
+        {
+          id: "task-1",
+          conversationId: "c-1",
+          kind: "task",
+          label: "Gym",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            taskId: "t-1",
+            title: "Gym",
+            lifecycleState: "scheduled",
+            scheduledStartAt: null,
+            scheduledEndAt: null,
+          },
+        },
+      ],
+      "edit_request",
+    );
+
+    expect(result.targetEntityId).toBe("task-1");
+  });
+
+  it("returns no targetEntityId when parentTargetRef is null (new plan)", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "clar-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "clarifying",
+      },
+      [
+        {
+          id: "clar-1",
+          conversationId: "c-1",
+          kind: "clarification",
+          label: "What time?",
+          status: "active",
+          createdAt: "2026-04-09T10:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+          data: {
+            prompt: "What time?",
+            reason: "scheduleFields.time",
+            open: true,
+            parentTargetRef: null,
+          },
+        },
+      ],
+      "clarification_answer",
+    );
+
+    expect(result.targetEntityId).toBeUndefined();
+  });
+
   it("attaches resolvedProposalId for non-confirmation turns when single proposal exists", () => {
     const result = resolveWriteTarget(
       null,

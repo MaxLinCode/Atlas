@@ -44,6 +44,22 @@ export function resolveWriteTarget(
     discourseState?.focus_entity_id ?? null,
   ]);
 
+  // Generic parent ref resolution: if the candidate entity has a
+  // parentTargetRef, follow it to the actual write target.
+  if (resolvedEntityIds[0]) {
+    const entity = entityRegistry.find((e) => e.id === resolvedEntityIds[0]);
+    if (entity && "parentTargetRef" in entity.data) {
+      const parentId = (
+        entity.data as { parentTargetRef: { entityId: string } | null }
+      ).parentTargetRef?.entityId;
+      if (parentId) {
+        resolvedEntityIds[0] = parentId;
+      } else {
+        resolvedEntityIds.shift();
+      }
+    }
+  }
+
   const activeProposals = entityRegistry.filter(
     (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>
       e.kind === "proposal_option" &&
