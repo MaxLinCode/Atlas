@@ -418,7 +418,7 @@ describe("deriveConversationReplyState", () => {
       last_user_mentioned_entity_ids: [],
       last_presented_items: [],
       pending_clarifications: [
-        { id: "clar-old", slot: "scheduleFields.time", question: "What time?", status: "pending", createdAt: "2026-03-22T16:01:00.000Z", createdTurnId: "assistant:1", parentTargetRef: null },
+        { id: "clar-old", slot: "scheduleFields.time", question: "What time?", status: "pending", createdAt: "2026-03-22T16:01:00.000Z", createdTurnId: "assistant:1" },
       ],
       mode: "clarifying",
     };

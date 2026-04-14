@@ -778,7 +778,7 @@ describe("resolveWriteTarget", () => {
     expect(result.targetEntityId).toBe("task-1");
   });
 
-  it("returns no targetEntityId when parentTargetRef is null (new plan)", () => {
+  it("uses entity's own ID when parentTargetRef is null", () => {
     const result = resolveWriteTarget(
       {
         focus_entity_id: "clar-1",
@@ -808,7 +808,7 @@ describe("resolveWriteTarget", () => {
       "clarification_answer",
     );
 
-    expect(result.targetEntityId).toBeUndefined();
+    expect(result.targetEntityId).toBe("clar-1");
   });
 
   it("attaches resolvedProposalId for non-confirmation turns when single proposal exists", () => {

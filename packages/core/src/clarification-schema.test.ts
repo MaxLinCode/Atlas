@@ -28,11 +28,12 @@ describe("clarification parentTargetRef schema", () => {
     expect(entity.data.parentTargetRef).toEqual({ entityId: "task-1" });
   });
 
-  it("defaults parentTargetRef to null when omitted (backward compat)", () => {
-    const entity = conversationClarificationEntitySchema.parse({
-      ...baseClarification,
-      data: { prompt: "What time?", reason: "scheduleFields.time", open: true },
-    });
-    expect(entity.data.parentTargetRef).toBeNull();
+  it("rejects clarification entity without parentTargetRef", () => {
+    expect(() =>
+      conversationClarificationEntitySchema.parse({
+        ...baseClarification,
+        data: { prompt: "What time?", reason: "scheduleFields.time", open: true },
+      }),
+    ).toThrow();
   });
 });
