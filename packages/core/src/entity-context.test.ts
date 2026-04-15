@@ -93,6 +93,7 @@ describe("entity context", () => {
             prompt: "What time should I schedule it?",
             reason: null,
             open: true,
+            parentTargetRef: null,
           },
         }),
         buildEntity({
@@ -154,6 +155,7 @@ describe("entity context", () => {
             prompt: "Closed clarification",
             reason: null,
             open: false,
+            parentTargetRef: null,
           },
         }),
       ],

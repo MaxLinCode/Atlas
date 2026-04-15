@@ -34,6 +34,16 @@ export type WriteTarget = {
   resolvedProposalId?: string;
 };
 
+/** Extract the parent entity ID from entity kinds that carry a parentTargetRef. */
+function getParentEntityId(entity: ConversationEntity): string | undefined {
+  switch (entity.kind) {
+    case "clarification":
+      return entity.data.parentTargetRef?.entityId;
+    default:
+      return undefined;
+  }
+}
+
 export function resolveWriteTarget(
   discourseState: ConversationDiscourseState | null,
   entityRegistry: ConversationEntity[],
@@ -43,6 +53,19 @@ export function resolveWriteTarget(
     discourseState?.currently_editable_entity_id ?? null,
     discourseState?.focus_entity_id ?? null,
   ]);
+
+  // Generic parent ref resolution: if the candidate entity carries a
+  // non-null parentTargetRef, follow it to the actual write target.
+  // A null parentTargetRef means the entity itself is the target.
+  if (resolvedEntityIds[0]) {
+    const entity = entityRegistry.find((e) => e.id === resolvedEntityIds[0]);
+    if (entity) {
+      const parentId = getParentEntityId(entity);
+      if (parentId) {
+        resolvedEntityIds[0] = parentId;
+      }
+    }
+  }
 
   const activeProposals = entityRegistry.filter(
     (e): e is Extract<ConversationEntity, { kind: "proposal_option" }> =>

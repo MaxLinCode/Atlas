@@ -700,6 +700,7 @@ export const conversationClarificationEntitySchema =
       prompt: z.string().min(1),
       reason: z.string().min(1).nullable(),
       open: z.boolean(),
+      parentTargetRef: targetRefSchema,
     }),
   });
 
