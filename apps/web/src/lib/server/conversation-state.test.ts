@@ -212,7 +212,7 @@ describe("deriveConversationReplyState", () => {
     expect(result.discourseState?.mode).toBe("confirming");
   });
 
-  it("persists pending_write_operation when resolvedOperation is provided", () => {
+  it("persists pending_write_operation with patched targetRef when draft is created", () => {
     const op = buildPendingWriteOperation({
       resolvedFields: { scheduleFields: { day: "tomorrow" } },
       missingFields: ["scheduleFields.time"],
@@ -238,7 +238,12 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
-    expect(result.discourseState?.pending_write_operation).toEqual(op);
+    const draftEntity = result.entityRegistry.find((e) => e.kind === "draft_task");
+    expect(draftEntity).toBeDefined();
+    expect(result.discourseState?.pending_write_operation).toEqual({
+      ...op,
+      targetRef: { entityId: draftEntity!.id },
+    });
   });
 
   it("does not set pending_write_operation when resolvedOperation is absent", () => {
@@ -366,7 +371,7 @@ describe("deriveConversationReplyState", () => {
     expect(clarEntity!.data.parentTargetRef).toEqual({ entityId: "task-1" });
   });
 
-  it("sets parentTargetRef to null on clarification entity for new plans", () => {
+  it("sets parentTargetRef to draft entity on clarification for new plans", () => {
     const op = buildPendingWriteOperation({
       targetRef: null,
       resolvedFields: { scheduleFields: { day: "tomorrow" } },
@@ -393,9 +398,11 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
+    const draftEntity = result.entityRegistry.find((e) => e.kind === "draft_task");
     const clarEntity = result.entityRegistry.find((e) => e.kind === "clarification");
+    expect(draftEntity).toBeDefined();
     expect(clarEntity).toBeDefined();
-    expect(clarEntity!.data.parentTargetRef).toBeNull();
+    expect(clarEntity!.data.parentTargetRef).toEqual({ entityId: draftEntity!.id });
   });
 
   it("closes prior open clarification when a new one is created", () => {
@@ -460,6 +467,250 @@ describe("deriveConversationReplyState", () => {
     );
     expect(newClars).toHaveLength(1);
     expect(newClars[0]!.data).toMatchObject({ reason: "scheduleFields.duration" });
+  });
+
+  it("creates a draft_task entity when operationKind is plan and targetRef is null", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeDefined();
+    expect(draftEntity!.status).toBe("active");
+    expect(draftEntity!.data).toMatchObject({
+      operationKind: "plan",
+      taskName: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      originatingText: "schedule gym tomorrow",
+    });
+  });
+
+  it("sets parentTargetRef on clarification to draft entity for new plans", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    const clarEntity = result.entityRegistry.find(
+      (e) => e.kind === "clarification",
+    );
+
+    expect(draftEntity).toBeDefined();
+    expect(clarEntity).toBeDefined();
+    expect(clarEntity!.data.parentTargetRef).toEqual({
+      entityId: draftEntity!.id,
+    });
+  });
+
+  it("patches pending_write_operation targetRef to draft entity ID for new plans", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeDefined();
+    expect(result.discourseState?.pending_write_operation?.targetRef).toEqual({
+      entityId: draftEntity!.id,
+    });
+  });
+
+  it("updates existing draft_task instead of creating a new one on subsequent turns", () => {
+    const snapshot = buildSnapshot();
+    const existingDraft = {
+      id: "draft-1",
+      conversationId: "conversation-1",
+      kind: "draft_task" as const,
+      label: "schedule gym tomorrow",
+      status: "active" as const,
+      createdAt: "2026-04-16T10:00:00.000Z",
+      updatedAt: "2026-04-16T10:00:00.000Z",
+      data: {
+        operationKind: "plan" as const,
+        taskName: null,
+        resolvedFields: { scheduleFields: { day: "tomorrow" } },
+        originatingText: "schedule gym tomorrow",
+      },
+    };
+    snapshot.entityRegistry = [existingDraft as any];
+
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(17, 0) },
+      },
+      missingFields: ["scheduleFields.duration"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.duration"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.8,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.duration"],
+      },
+      reply: "Got it, 5pm. How long should it be?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:05:00.000Z",
+    });
+
+    const drafts = result.entityRegistry.filter((e) => e.kind === "draft_task");
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]!.id).toBe("draft-1");
+    expect(drafts[0]!.data).toMatchObject({
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(17, 0) },
+      },
+    });
+  });
+
+  it("does not create a draft_task for edit operations", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "edit",
+      targetRef: { entityId: "task-1" },
+      resolvedFields: { scheduleFields: { time: t(17, 0) } },
+      missingFields: [],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "present_proposal",
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "edit_request",
+        confidence: 0.95,
+        resolvedEntityIds: ["task-1"],
+        ambiguity: "none",
+      },
+      reply: "I'll move it to 5pm. Sound good?",
+      userTurnText: "move it to 5pm",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeUndefined();
+  });
+
+  it("does not create a draft_task when targetRef is non-null", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: { entityId: "task-1" },
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeUndefined();
   });
 });
 
