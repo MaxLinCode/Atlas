@@ -287,6 +287,14 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
         };
       }
 
+      if (entity.kind === "draft_task" && entity.status === "active") {
+        return {
+          ...entity,
+          status: "superseded",
+          updatedAt: occurredAt,
+        };
+      }
+
       return entity;
     });
   let lastConcreteEntityId: string | null = null;

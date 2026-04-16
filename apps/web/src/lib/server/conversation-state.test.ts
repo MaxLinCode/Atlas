@@ -888,4 +888,82 @@ describe("deriveMutationState", () => {
 
     expect(result.discourseState.pending_write_operation).toEqual(op);
   });
+
+  it("supersedes active draft_task after mutation creates a real task", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "draft-1",
+        conversationId: "conversation-1",
+        kind: "draft_task",
+        label: "schedule gym tomorrow",
+        status: "active",
+        createdAt: "2026-04-16T10:00:00.000Z",
+        updatedAt: "2026-04-16T10:05:00.000Z",
+        data: {
+          operationKind: "plan",
+          taskName: null,
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
+          originatingText: "schedule gym tomorrow",
+        },
+      } as any,
+    ];
+
+    const processing: MutationResult = {
+      outcome: "created",
+      tasks: [
+        {
+          id: "task-1",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Gym",
+          lifecycleState: "scheduled",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: "2026-04-17T17:00:00.000Z",
+          scheduledEndAt: "2026-04-17T18:00:00.000Z",
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium",
+        },
+      ],
+      scheduleBlocks: [
+        {
+          id: "block-1",
+          userId: "user-1",
+          taskId: "task-1",
+          startAt: "2026-04-17T17:00:00.000Z",
+          endAt: "2026-04-17T18:00:00.000Z",
+          confidence: 0.92,
+          reason: "User requested 5 PM.",
+          rescheduleCount: 0,
+          externalCalendarId: null,
+        },
+      ],
+      followUpMessage: "Scheduled gym for 5 PM tomorrow.",
+    };
+
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-04-16T10:10:00.000Z",
+    });
+
+    const draft = result.entityRegistry.find((e) => e.kind === "draft_task");
+    expect(draft).toBeDefined();
+    expect(draft!.status).toBe("superseded");
+
+    const task = result.entityRegistry.find((e) => e.kind === "task");
+    expect(task).toBeDefined();
+    expect(task!.data.taskId).toBe("task-1");
+  });
 });
