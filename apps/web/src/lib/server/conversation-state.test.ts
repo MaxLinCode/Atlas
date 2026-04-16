@@ -212,7 +212,7 @@ describe("deriveConversationReplyState", () => {
     expect(result.discourseState?.mode).toBe("confirming");
   });
 
-  it("persists pending_write_operation when resolvedOperation is provided", () => {
+  it("persists pending_write_operation with patched targetRef when draft is created", () => {
     const op = buildPendingWriteOperation({
       resolvedFields: { scheduleFields: { day: "tomorrow" } },
       missingFields: ["scheduleFields.time"],
@@ -238,7 +238,12 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
-    expect(result.discourseState?.pending_write_operation).toEqual(op);
+    const draftEntity = result.entityRegistry.find((e) => e.kind === "draft_task");
+    expect(draftEntity).toBeDefined();
+    expect(result.discourseState?.pending_write_operation).toEqual({
+      ...op,
+      targetRef: { entityId: draftEntity!.id },
+    });
   });
 
   it("does not set pending_write_operation when resolvedOperation is absent", () => {
@@ -366,7 +371,7 @@ describe("deriveConversationReplyState", () => {
     expect(clarEntity!.data.parentTargetRef).toEqual({ entityId: "task-1" });
   });
 
-  it("sets parentTargetRef to null on clarification entity for new plans", () => {
+  it("sets parentTargetRef to draft entity on clarification for new plans", () => {
     const op = buildPendingWriteOperation({
       targetRef: null,
       resolvedFields: { scheduleFields: { day: "tomorrow" } },
@@ -393,9 +398,11 @@ describe("deriveConversationReplyState", () => {
       occurredAt: "2026-03-22T16:05:00.000Z",
     });
 
+    const draftEntity = result.entityRegistry.find((e) => e.kind === "draft_task");
     const clarEntity = result.entityRegistry.find((e) => e.kind === "clarification");
+    expect(draftEntity).toBeDefined();
     expect(clarEntity).toBeDefined();
-    expect(clarEntity!.data.parentTargetRef).toBeNull();
+    expect(clarEntity!.data.parentTargetRef).toEqual({ entityId: draftEntity!.id });
   });
 
   it("closes prior open clarification when a new one is created", () => {
@@ -460,6 +467,250 @@ describe("deriveConversationReplyState", () => {
     );
     expect(newClars).toHaveLength(1);
     expect(newClars[0]!.data).toMatchObject({ reason: "scheduleFields.duration" });
+  });
+
+  it("creates a draft_task entity when operationKind is plan and targetRef is null", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeDefined();
+    expect(draftEntity!.status).toBe("active");
+    expect(draftEntity!.data).toMatchObject({
+      operationKind: "plan",
+      taskName: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      originatingText: "schedule gym tomorrow",
+    });
+  });
+
+  it("sets parentTargetRef on clarification to draft entity for new plans", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    const clarEntity = result.entityRegistry.find(
+      (e) => e.kind === "clarification",
+    );
+
+    expect(draftEntity).toBeDefined();
+    expect(clarEntity).toBeDefined();
+    expect(clarEntity!.data.parentTargetRef).toEqual({
+      entityId: draftEntity!.id,
+    });
+  });
+
+  it("patches pending_write_operation targetRef to draft entity ID for new plans", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeDefined();
+    expect(result.discourseState?.pending_write_operation?.targetRef).toEqual({
+      entityId: draftEntity!.id,
+    });
+  });
+
+  it("updates existing draft_task instead of creating a new one on subsequent turns", () => {
+    const snapshot = buildSnapshot();
+    const existingDraft = {
+      id: "draft-1",
+      conversationId: "conversation-1",
+      kind: "draft_task" as const,
+      label: "schedule gym tomorrow",
+      status: "active" as const,
+      createdAt: "2026-04-16T10:00:00.000Z",
+      updatedAt: "2026-04-16T10:00:00.000Z",
+      data: {
+        operationKind: "plan" as const,
+        taskName: null,
+        resolvedFields: { scheduleFields: { day: "tomorrow" } },
+        originatingText: "schedule gym tomorrow",
+      },
+    };
+    snapshot.entityRegistry = [existingDraft as any];
+
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(17, 0) },
+      },
+      missingFields: ["scheduleFields.duration"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot,
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.duration"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.8,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.duration"],
+      },
+      reply: "Got it, 5pm. How long should it be?",
+      userTurnText: "5pm",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:05:00.000Z",
+    });
+
+    const drafts = result.entityRegistry.filter((e) => e.kind === "draft_task");
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]!.id).toBe("draft-1");
+    expect(drafts[0]!.data).toMatchObject({
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(17, 0) },
+      },
+    });
+  });
+
+  it("does not create a draft_task for edit operations", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "edit",
+      targetRef: { entityId: "task-1" },
+      resolvedFields: { scheduleFields: { time: t(17, 0) } },
+      missingFields: [],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "present_proposal",
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "edit_request",
+        confidence: 0.95,
+        resolvedEntityIds: ["task-1"],
+        ambiguity: "none",
+      },
+      reply: "I'll move it to 5pm. Sound good?",
+      userTurnText: "move it to 5pm",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeUndefined();
+  });
+
+  it("does not create a draft_task when targetRef is non-null", () => {
+    const op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: { entityId: "task-1" },
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule it?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    const draftEntity = result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(draftEntity).toBeUndefined();
   });
 });
 
@@ -636,5 +887,245 @@ describe("deriveMutationState", () => {
     });
 
     expect(result.discourseState.pending_write_operation).toEqual(op);
+  });
+
+  it("supersedes active draft_task after mutation creates a real task", () => {
+    const snapshot = buildSnapshot();
+    snapshot.entityRegistry = [
+      {
+        id: "draft-1",
+        conversationId: "conversation-1",
+        kind: "draft_task",
+        label: "schedule gym tomorrow",
+        status: "active",
+        createdAt: "2026-04-16T10:00:00.000Z",
+        updatedAt: "2026-04-16T10:05:00.000Z",
+        data: {
+          operationKind: "plan",
+          taskName: null,
+          resolvedFields: {
+            scheduleFields: { day: "tomorrow", time: t(17, 0) },
+          },
+          originatingText: "schedule gym tomorrow",
+        },
+      } as any,
+    ];
+
+    const processing: MutationResult = {
+      outcome: "created",
+      tasks: [
+        {
+          id: "task-1",
+          userId: "user-1",
+          sourceInboxItemId: "inbox-1",
+          lastInboxItemId: "inbox-1",
+          title: "Gym",
+          lifecycleState: "scheduled",
+          externalCalendarEventId: null,
+          externalCalendarId: null,
+          scheduledStartAt: "2026-04-17T17:00:00.000Z",
+          scheduledEndAt: "2026-04-17T18:00:00.000Z",
+          calendarSyncStatus: "in_sync",
+          calendarSyncUpdatedAt: null,
+          rescheduleCount: 0,
+          lastFollowupAt: null,
+          followupReminderSentAt: null,
+          completedAt: null,
+          archivedAt: null,
+          priority: "medium",
+          urgency: "medium",
+        },
+      ],
+      scheduleBlocks: [
+        {
+          id: "block-1",
+          userId: "user-1",
+          taskId: "task-1",
+          startAt: "2026-04-17T17:00:00.000Z",
+          endAt: "2026-04-17T18:00:00.000Z",
+          confidence: 0.92,
+          reason: "User requested 5 PM.",
+          rescheduleCount: 0,
+          externalCalendarId: null,
+        },
+      ],
+      followUpMessage: "Scheduled gym for 5 PM tomorrow.",
+    };
+
+    const result = deriveMutationState({
+      snapshot,
+      processing,
+      occurredAt: "2026-04-16T10:10:00.000Z",
+    });
+
+    const draft = result.entityRegistry.find((e) => e.kind === "draft_task");
+    expect(draft).toBeDefined();
+    expect(draft!.status).toBe("superseded");
+
+    const task = result.entityRegistry.find((e) => e.kind === "task");
+    expect(task).toBeDefined();
+    expect(task!.data.taskId).toBe("task-1");
+  });
+});
+
+describe("draft_task integration: 2-turn new-task clarification", () => {
+  it("accumulates fields across turns without resetting", () => {
+    // --- Turn 1: "schedule gym tomorrow" → creates draft + clarification ---
+    const turn1Op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: null,
+      resolvedFields: { scheduleFields: { day: "tomorrow" } },
+      missingFields: ["scheduleFields.time"],
+    });
+
+    const turn1Result = deriveConversationReplyState({
+      snapshot: buildSnapshot(),
+      policy: {
+        action: "ask_clarification",
+        clarificationSlots: ["scheduleFields.time"],
+        resolvedOperation: turn1Op,
+      },
+      interpretation: {
+        turnType: "planning_request",
+        confidence: 0.58,
+        resolvedEntityIds: [],
+        ambiguity: "high",
+        missingFields: ["scheduleFields.time"],
+      },
+      reply: "What time should I schedule gym?",
+      userTurnText: "schedule gym tomorrow",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:00:00.000Z",
+    });
+
+    // Verify Turn 1 state
+    const draftEntity = turn1Result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    const clarEntity = turn1Result.entityRegistry.find(
+      (e) => e.kind === "clarification",
+    );
+    expect(draftEntity).toBeDefined();
+    expect(clarEntity).toBeDefined();
+    expect(clarEntity!.data.parentTargetRef).toEqual({
+      entityId: draftEntity!.id,
+    });
+    expect(
+      turn1Result.discourseState?.pending_write_operation?.targetRef,
+    ).toEqual({ entityId: draftEntity!.id });
+
+    // --- Turn 2: "10am 30min" → resolves clarification, accumulates fields ---
+    const turn2Snapshot = buildSnapshot();
+    turn2Snapshot.entityRegistry = turn1Result.entityRegistry;
+    turn2Snapshot.discourseState = turn1Result.discourseState!;
+
+    const turn2Op = buildPendingWriteOperation({
+      operationKind: "plan",
+      targetRef: { entityId: draftEntity!.id },
+      resolvedFields: {
+        scheduleFields: { day: "tomorrow", time: t(10, 0), duration: 30 },
+      },
+      missingFields: [],
+    });
+
+    const turn2Result = deriveConversationReplyState({
+      snapshot: turn2Snapshot,
+      policy: {
+        action: "present_proposal",
+        resolvedOperation: turn2Op,
+      },
+      interpretation: {
+        turnType: "clarification_answer",
+        confidence: 0.93,
+        resolvedEntityIds: [],
+        ambiguity: "none",
+      },
+      reply: "I'll schedule gym for 10 AM, 30 minutes. Sound good?",
+      userTurnText: "10am 30min",
+      summaryText: null,
+      occurredAt: "2026-04-16T10:05:00.000Z",
+    });
+
+    // Verify Turn 2: fields accumulated, not wiped
+    expect(
+      turn2Result.discourseState?.pending_write_operation?.resolvedFields,
+    ).toMatchObject({
+      scheduleFields: { day: "tomorrow", time: t(10, 0), duration: 30 },
+    });
+
+    // Verify the draft is still in the registry (not yet superseded — no mutation happened)
+    const turn2Draft = turn2Result.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(turn2Draft).toBeDefined();
+    expect(turn2Draft!.status).toBe("active");
+
+    // --- Mutation: creates real task → supersedes draft ---
+    const mutationSnapshot = buildSnapshot();
+    mutationSnapshot.entityRegistry = turn2Result.entityRegistry;
+    mutationSnapshot.discourseState = turn2Result.discourseState!;
+
+    const mutationResult = deriveMutationState({
+      snapshot: mutationSnapshot,
+      processing: {
+        outcome: "created",
+        tasks: [
+          {
+            id: "task-1",
+            userId: "user-1",
+            sourceInboxItemId: "inbox-1",
+            lastInboxItemId: "inbox-1",
+            title: "Gym",
+            lifecycleState: "scheduled",
+            externalCalendarEventId: null,
+            externalCalendarId: null,
+            scheduledStartAt: "2026-04-17T10:00:00.000Z",
+            scheduledEndAt: "2026-04-17T10:30:00.000Z",
+            calendarSyncStatus: "in_sync",
+            calendarSyncUpdatedAt: null,
+            rescheduleCount: 0,
+            lastFollowupAt: null,
+            followupReminderSentAt: null,
+            completedAt: null,
+            archivedAt: null,
+            priority: "medium",
+            urgency: "medium",
+          },
+        ],
+        scheduleBlocks: [
+          {
+            id: "block-1",
+            userId: "user-1",
+            taskId: "task-1",
+            startAt: "2026-04-17T10:00:00.000Z",
+            endAt: "2026-04-17T10:30:00.000Z",
+            confidence: 0.92,
+            reason: "User requested 10 AM.",
+            rescheduleCount: 0,
+            externalCalendarId: null,
+          },
+        ],
+        followUpMessage: "Scheduled gym for 10 AM tomorrow.",
+      },
+      occurredAt: "2026-04-16T10:10:00.000Z",
+    });
+
+    // Draft superseded, real task created
+    const finalDraft = mutationResult.entityRegistry.find(
+      (e) => e.kind === "draft_task",
+    );
+    expect(finalDraft).toBeDefined();
+    expect(finalDraft!.status).toBe("superseded");
+
+    const realTask = mutationResult.entityRegistry.find(
+      (e) => e.kind === "task",
+    );
+    expect(realTask).toBeDefined();
+    expect(realTask!.data.taskId).toBe("task-1");
+
+    // pending_write_operation cleared after successful mutation
+    expect(
+      mutationResult.discourseState.pending_write_operation,
+    ).toBeUndefined();
   });
 });

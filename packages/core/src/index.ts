@@ -715,12 +715,24 @@ export const conversationReminderEntitySchema =
     }),
   });
 
+export const conversationDraftTaskEntitySchema =
+  conversationEntityBaseSchema.extend({
+    kind: z.literal("draft_task"),
+    data: z.object({
+      operationKind: operationKindSchema,
+      taskName: z.string().nullable(),
+      resolvedFields: resolvedFieldsSchema,
+      originatingText: z.string().min(1),
+    }),
+  });
+
 export const conversationEntitySchema = z.discriminatedUnion("kind", [
   conversationTaskEntitySchema,
   conversationProposalOptionEntitySchema,
   conversationScheduledBlockEntitySchema,
   conversationClarificationEntitySchema,
   conversationReminderEntitySchema,
+  conversationDraftTaskEntitySchema,
 ]);
 
 export const conversationRecordSchema = z.object({

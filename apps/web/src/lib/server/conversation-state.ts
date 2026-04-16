@@ -85,6 +85,57 @@ export function deriveConversationReplyState(
     }
   }
 
+  // --- Draft task creation for new plan workflows ---
+  let draftEntityId: string | null = null;
+
+  if (
+    input.policy.resolvedOperation &&
+    input.policy.resolvedOperation.operationKind === "plan" &&
+    input.policy.resolvedOperation.targetRef === null
+  ) {
+    const existingDraftIdx = entityRegistry.findIndex(
+      (e) => e.kind === "draft_task" && e.status === "active",
+    );
+    const existingDraft =
+      existingDraftIdx >= 0 ? entityRegistry[existingDraftIdx] : undefined;
+
+    if (existingDraft && existingDraft.kind === "draft_task") {
+      entityRegistry[existingDraftIdx] = {
+        ...existingDraft,
+        updatedAt: occurredAt,
+        data: {
+          ...existingDraft.data,
+          taskName:
+            input.policy.resolvedOperation.resolvedFields.taskFields?.label ??
+            existingDraft.data.taskName,
+          resolvedFields: input.policy.resolvedOperation.resolvedFields,
+        },
+      };
+      draftEntityId = existingDraft.id;
+    } else {
+      const draftEntity = buildConversationEntity(
+        input.snapshot.conversation.id,
+        {
+          kind: "draft_task",
+          label: summarizeLabel(input.userTurnText),
+          status: "active",
+          createdAt: occurredAt,
+          updatedAt: occurredAt,
+          data: {
+            operationKind: input.policy.resolvedOperation.operationKind,
+            taskName:
+              input.policy.resolvedOperation.resolvedFields.taskFields?.label ??
+              null,
+            resolvedFields: input.policy.resolvedOperation.resolvedFields,
+            originatingText: input.userTurnText,
+          },
+        },
+      );
+      entityRegistry.push(draftEntity);
+      draftEntityId = draftEntity.id;
+    }
+  }
+
   if (input.policy.action === "present_proposal") {
     const proposalEntity = upsertActiveProposalEntity(
       entityRegistry,
@@ -128,8 +179,9 @@ export function deriveConversationReplyState(
       );
     }
 
-    const parentTargetRef =
-      input.policy.resolvedOperation?.targetRef ?? null;
+    const parentTargetRef = draftEntityId
+      ? { entityId: draftEntityId }
+      : (input.policy.resolvedOperation?.targetRef ?? null);
 
     // Close any prior open clarifications (one-open-per-workflow)
     for (let i = 0; i < entityRegistry.length; i++) {
@@ -189,10 +241,18 @@ export function deriveConversationReplyState(
     },
   ).state;
 
+  const patchedOperation =
+    input.policy.resolvedOperation && draftEntityId
+      ? {
+          ...input.policy.resolvedOperation,
+          targetRef: { entityId: draftEntityId },
+        }
+      : input.policy.resolvedOperation;
+
   const nextDiscourseState = {
     ...updatedDiscourseState,
-    ...(input.policy.resolvedOperation
-      ? { pending_write_operation: input.policy.resolvedOperation }
+    ...(patchedOperation
+      ? { pending_write_operation: patchedOperation }
       : {}),
   };
 
@@ -223,6 +283,14 @@ export function deriveMutationState(input: DeriveMutationStateInput) {
         return {
           ...entity,
           status: "resolved",
+          updatedAt: occurredAt,
+        };
+      }
+
+      if (entity.kind === "draft_task" && entity.status === "active") {
+        return {
+          ...entity,
+          status: "superseded",
           updatedAt: occurredAt,
         };
       }
@@ -518,6 +586,8 @@ function entityKey(entity: ConversationEntity) {
       return `scheduled_block:${entity.data.blockId}`;
     case "reminder":
       return `reminder:${entity.data.taskId}:${entity.data.reminderKind}`;
+    case "draft_task":
+      return `draft_task:${entity.id}`;
     default:
       return `${entity.kind}:${entity.id}`;
   }

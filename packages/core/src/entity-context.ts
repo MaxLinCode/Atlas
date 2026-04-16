@@ -9,7 +9,8 @@ export type EntityContextEntry = {
     | "proposal"
     | "clarification"
     | "scheduled_block"
-    | "reminder";
+    | "reminder"
+    | "draft_task";
   state: string;
 };
 
@@ -93,6 +94,19 @@ export function buildEntityContext(
           expectedType: "reminder",
           state: entity.status,
         });
+        break;
+      case "draft_task":
+        if (entity.status === "active") {
+          const draftLabel = entity.data.taskName
+            ? `${entity.data.taskName} — ${entity.data.originatingText}`
+            : entity.data.originatingText;
+          knownEntities.push({
+            id: entity.id,
+            label: draftLabel,
+            expectedType: "draft_task",
+            state: "planning",
+          });
+        }
         break;
     }
   }
