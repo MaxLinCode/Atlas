@@ -223,6 +223,66 @@ describe("entity context", () => {
     );
   });
 
+  it("includes active draft_task entities in known entities", () => {
+    const context = buildEntityContext({
+      entityRegistry: [
+        buildEntity({
+          id: "draft-1",
+          label: "Schedule gym tomorrow",
+          kind: "draft_task",
+          status: "active",
+          data: {
+            operationKind: "plan",
+            taskName: "gym",
+            resolvedFields: { scheduleFields: { day: "tomorrow" } },
+            originatingText: "schedule gym tomorrow",
+          },
+        }),
+      ],
+      tasks: [],
+      discourseState: {
+        focus_entity_id: null,
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "planning",
+      },
+    });
+
+    expect(context.knownEntities).toEqual([
+      {
+        id: "draft-1",
+        label: "gym — schedule gym tomorrow",
+        expectedType: "draft_task",
+        state: "planning",
+      },
+    ]);
+  });
+
+  it("excludes superseded draft_task entities from known entities", () => {
+    const context = buildEntityContext({
+      entityRegistry: [
+        buildEntity({
+          id: "draft-1",
+          label: "Schedule gym",
+          kind: "draft_task",
+          status: "superseded",
+          data: {
+            operationKind: "plan",
+            taskName: "gym",
+            resolvedFields: {},
+            originatingText: "schedule gym",
+          },
+        }),
+      ],
+      tasks: [],
+      discourseState: null,
+    });
+
+    expect(context.knownEntities).toEqual([]);
+  });
+
   it("renders an explicit no-known-entities line when the context is empty", () => {
     expect(
       renderEntityContext({
