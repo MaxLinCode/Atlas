@@ -518,6 +518,8 @@ function entityKey(entity: ConversationEntity) {
       return `scheduled_block:${entity.data.blockId}`;
     case "reminder":
       return `reminder:${entity.data.taskId}:${entity.data.reminderKind}`;
+    case "draft_task":
+      return `draft_task:${entity.id}`;
     default:
       return `${entity.kind}:${entity.id}`;
   }
