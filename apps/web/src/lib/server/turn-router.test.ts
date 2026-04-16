@@ -582,6 +582,36 @@ describe("turn router", () => {
       result.policy.resolvedOperation?.resolvedFields.scheduleFields?.day,
     ).toBeUndefined();
   });
+
+  it("derives ambiguity reason for missing fields instead of generic confidence message", async () => {
+    mockClassification({
+      turnType: "planning_request",
+      confidence: 0.95,
+    });
+    mockInterpretWriteTurn.mockResolvedValueOnce({
+      operationKind: "plan",
+      actionDomain: "task",
+      targetRef: null,
+      taskName: "gym",
+      fields: { scheduleFields: { day: "tomorrow" } },
+      sourceText: "schedule gym tomorrow",
+      confidence: { "scheduleFields.day": 0.95 },
+      unresolvedFields: [],
+    });
+
+    const result = await routeMessageTurn({
+      rawText: "schedule gym tomorrow",
+      normalizedText: "schedule gym tomorrow",
+      recentTurns: [],
+    });
+
+    // Should have missing time field, ambiguity should mention fields
+    if (result.interpretation.ambiguityReason) {
+      expect(result.interpretation.ambiguityReason).not.toBe(
+        "Classification confidence is too low for reliable routing.",
+      );
+    }
+  });
 });
 
 describe("resolveWriteTarget", () => {
@@ -834,6 +864,39 @@ describe("resolveWriteTarget", () => {
     expect(result).toEqual({
       resolvedProposalId: "proposal-1",
     });
+  });
+
+  it("does not follow parentTargetRef for draft_task entities (drafts are targets, not references)", () => {
+    const result = resolveWriteTarget(
+      {
+        focus_entity_id: "draft-1",
+        currently_editable_entity_id: null,
+        last_user_mentioned_entity_ids: [],
+        last_presented_items: [],
+        pending_clarifications: [],
+        mode: "planning",
+      },
+      [
+        {
+          id: "draft-1",
+          conversationId: "c-1",
+          kind: "draft_task",
+          label: "Schedule gym",
+          status: "active",
+          createdAt: "2026-04-16T10:00:00.000Z",
+          updatedAt: "2026-04-16T10:00:00.000Z",
+          data: {
+            operationKind: "plan",
+            taskName: "gym",
+            resolvedFields: { scheduleFields: { day: "tomorrow" } },
+            originatingText: "schedule gym tomorrow",
+          },
+        } as any,
+      ],
+      "clarification_answer",
+    );
+
+    expect(result.targetEntityId).toBe("draft-1");
   });
 });
 

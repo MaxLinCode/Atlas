@@ -39,6 +39,8 @@ function getParentEntityId(entity: ConversationEntity): string | undefined {
   switch (entity.kind) {
     case "clarification":
       return entity.data.parentTargetRef?.entityId;
+    case "draft_task":
+      return undefined;
     default:
       return undefined;
   }
@@ -286,6 +288,7 @@ function buildInterpretation(
           ambiguityReason: deriveAmbiguityReason(
             classification.turnType,
             ambiguity,
+            allMissingFields,
           ),
         }
       : {}),
@@ -296,7 +299,12 @@ function buildInterpretation(
 function deriveAmbiguityReason(
   turnType: TurnInterpretation["turnType"],
   ambiguity: TurnAmbiguity,
+  missingFields?: string[],
 ): string {
+  if (missingFields && missingFields.length > 0) {
+    return `Required fields are still missing: ${missingFields.join(", ")}.`;
+  }
+
   if (ambiguity === "high") {
     switch (turnType) {
       case "unknown":
