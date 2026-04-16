@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildEntityContext,
+  conversationEntitySchema,
   renderEntityContext,
   type ConversationEntity,
   type Task,
@@ -233,5 +234,50 @@ describe("entity context", () => {
     ).toBe(
       "Known entities:\nNo known entities.\n\nNo focused entity.\n\nNo active proposal.\n\nNo open clarification.",
     );
+  });
+});
+
+describe("draft_task entity schema", () => {
+  it("parses a valid draft_task entity", () => {
+    const result = conversationEntitySchema.safeParse({
+      id: "draft-1",
+      conversationId: "conversation-1",
+      kind: "draft_task",
+      label: "Schedule gym tomorrow",
+      status: "active",
+      createdAt: "2026-04-16T10:00:00.000Z",
+      updatedAt: "2026-04-16T10:00:00.000Z",
+      data: {
+        operationKind: "plan",
+        taskName: "gym",
+        resolvedFields: { scheduleFields: { day: "tomorrow" } },
+        originatingText: "schedule gym tomorrow",
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("draft_task");
+    }
+  });
+
+  it("rejects draft_task with empty originatingText", () => {
+    const result = conversationEntitySchema.safeParse({
+      id: "draft-1",
+      conversationId: "conversation-1",
+      kind: "draft_task",
+      label: "Draft",
+      status: "active",
+      createdAt: "2026-04-16T10:00:00.000Z",
+      updatedAt: "2026-04-16T10:00:00.000Z",
+      data: {
+        operationKind: "plan",
+        taskName: null,
+        resolvedFields: {},
+        originatingText: "",
+      },
+    });
+
+    expect(result.success).toBe(false);
   });
 });
